@@ -124,6 +124,21 @@ app.on('open-url', (e, url) => {
 // Appearance: System follows macOS; Light/Dark override it for the browser UI and pages that support it.
 function applyTheme(theme = store.getSettings().theme) {
   nativeTheme.themeSource = ['light', 'dark'].includes(theme) ? theme : 'system';
+  redrawTabs();
+}
+
+// Every open page gets the new light/dark preference now, including fleet tiles and background tabs,
+// which are throttled and might otherwise not redraw until clicked.
+function redrawTabs() {
+  for (const t of tabs) {
+    const wc = t.view?.webContents;
+    if (!wc || wc.isDestroyed()) continue;
+    wc.setBackgroundThrottling(false);
+    wc.invalidate();
+    setTimeout(() => {
+      if (!wc.isDestroyed() && (t.aiUntil || 0) < Date.now()) wc.setBackgroundThrottling(true);
+    }, 1500);
+  }
 }
 
 // Look like regular Chrome so sites don't serve "unsupported browser" pages.
@@ -1769,7 +1784,10 @@ app.whenReady().then(async () => {
       : { titleBarStyle: 'hidden', titleBarOverlay: { color: '#00000000', symbolColor: '#a4a4b2', height: 42 }, icon: path.join(__dirname, '..', 'assets', 'icon.png') }),
   });
   if (process.platform !== 'darwin') win.setMenuBarVisibility(false); // shortcuts still work; the ⋮ menu has everything
-  nativeTheme.on('updated', () => win.setBackgroundColor(chromeBg()));
+  nativeTheme.on('updated', () => {
+    win.setBackgroundColor(chromeBg());
+    redrawTabs(); // the theme changed (in Skillerr or in the OS): redraw every tab too
+  });
   chrome = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true } });
   chrome.setBackgroundColor('#00000000');
   // The chrome UI must never navigate away; links it shows open as tabs.

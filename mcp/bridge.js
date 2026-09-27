@@ -104,7 +104,12 @@ function clientName(server) {
   const info = server.getClientVersion();
   const raw = info?.name || 'MCP client';
   const known = { 'claude-ai': 'Claude Desktop', 'claude-code': 'Claude Code', cursor: 'Cursor', 'cursor-vscode': 'Cursor', windsurf: 'Windsurf' };
-  return known[raw] || raw;
+  if (known[raw]) return known[raw];
+  // Claude Desktop's agent mode introduces itself as "local-agent-mode-<server>".
+  if (/^local-agent-mode/i.test(raw) || /^claude[- ]desktop/i.test(raw)) return 'Claude Desktop';
+  if (/^claude-code/i.test(raw)) return 'Claude Code';
+  if (/^cursor/i.test(raw)) return 'Cursor';
+  return raw;
 }
 
 async function main() {

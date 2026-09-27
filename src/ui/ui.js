@@ -1201,7 +1201,7 @@ async function renderProAccount() {
   const [a, st] = await Promise.all([skillerr.invoke('pro-account'), skillerr.invoke('pro-status')]);
   box.innerHTML = '';
   // Until Pro opens, say so plainly; a key bought later activates here without a new download.
-  $('proIntro').innerHTML = st.pro ? 'Top models built in, no provider accounts or API keys. $20/month or $192/year.'
+  $('proIntro').innerHTML = st.pro ? 'Top models built in, no provider accounts or API keys.'
     : '<b>Skillerr Pro is coming soon</b>: top models built in, no accounts or API keys. Already have a Pro key? Paste it below.';
   if (!a.signedIn && !st.signIn) return;
   if (!a.signedIn) {
@@ -1215,7 +1215,7 @@ async function renderProAccount() {
   const line = h('div', 'pro-line', `<span>Signed in as <b>${esc(a.email)}</b></span><span class="${a.pro ? 'ok-text' : 'muted'}">${a.pro ? 'Pro active' : a.pro === null ? 'Offline' : 'No Pro yet'}</span>`);
   box.appendChild(line);
   const row = h('div', 'imp-row');
-  if (!a.pro) row.appendChild(btn('Get Pro · $20/mo', 'primary', () => skillerr.send('open-url', a.checkout || 'https://skillerr.com/#pricing')));
+  if (!a.pro && st.pro) row.appendChild(btn('Get Pro', 'primary', () => skillerr.send('open-url', a.checkout || 'https://skillerr.com/#pricing')));
   row.appendChild(btn('Sign out', 'ghost', async () => {
     await skillerr.invoke('pro-sign-out');
     renderProAccount();

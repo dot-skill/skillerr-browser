@@ -52,13 +52,10 @@
     /* Page-load signature: the aurora sweeps clockwise once behind everything, then fades. Content never hides. */
     .aurora-load { position: fixed; inset: -20vmax; z-index: -1; pointer-events: none; opacity: 0;
       background: conic-gradient(from var(--spin) at 50% 38%, #8b6cff, #3de0c0, #ff7ac6, #8b6cff);
-      filter: blur(90px) saturate(1.1); animation: aurora-sweep 2.8s cubic-bezier(.45,.05,.25,1) forwards; }
-    @keyframes aurora-sweep {
-      0% { opacity: 0; --spin: 0deg; }
-      18% { opacity: .38; }
-      70% { opacity: .30; }
-      100% { opacity: 0; --spin: 360deg; }
-    }
+      filter: blur(90px) saturate(1.1);
+      /* fades in as the page loads, then keeps turning clockwise for as long as the page is open */
+      animation: aurora-fade 1.4s ease-out forwards, spin 4s linear infinite; }
+    @keyframes aurora-fade { to { opacity: .3; } }
     @keyframes spin { to { --spin: 360deg; } }
     body { position: relative; isolation: isolate; }
 
@@ -141,7 +138,7 @@
     .built:hover { color: var(--text); border-color: var(--text-3); }
     .apps span { padding: 9px 14px; border-radius: 11px; background: var(--surface); border: 1px solid var(--line); font-size: 14px; font-weight: 600; }
 
-    .pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 40px; }
+    .pricing { display: grid; grid-template-columns: minmax(0, 560px); gap: 16px; margin-top: 40px; }
     .plan { padding: 28px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line-2); position: relative; }
     .plan h3 { font-size: 22px; }
     .plan .price { font-size: 38px; font-weight: 750; letter-spacing: -.03em; margin: 12px 0 2px; }
@@ -257,7 +254,7 @@
         <a class="btn primary dl-btn" id="heroDl" href="#download">Download Skillerr</a>
         <a class="btn" href="#research">See it dig ↓</a>
       </div>
-      <p class="fine">Free with Claude Desktop, Claude Code, Cursor or a local model. Mac, Windows and Linux. <a href="#pricing">Pro is coming soon.</a></p>
+      <p class="fine">Free with Claude Desktop, Claude Code, Cursor or a local model. Mac, Windows and Linux.</p>
     </div>
   </header>
 
@@ -373,7 +370,7 @@
     <div class="wrap">
       <p class="kicker">Pricing</p>
       <h2>Free with your AI.</h2>
-      <p class="lede">Every feature is free when you bring the AI. Pro, for people who'd rather not set one up, is coming soon.</p>
+      <p class="lede">Every feature is free when you bring the AI: Claude Desktop, Claude Code, Cursor, a local model or your own key.</p>
       <div class="pricing">
         <div class="plan">
           <h3>Skillerr</h3>
@@ -388,18 +385,6 @@
           </ul>
           <a class="btn primary dl-btn" href="#download">Download free</a>
         </div>
-        <div class="plan">
-          <span class="soon">Coming soon</span>
-          <h3>Skillerr Pro</h3>
-          <div class="price">Soon <small>for people who'd rather not set up an AI</small></div>
-          <ul>
-            <li>Everything in Skillerr</li>
-            <li>Built-in AI: Claude Sonnet 5, Opus 5.5, Haiku 4.5, Gemini 3.5 Flash</li>
-            <li>No provider accounts, no API keys</li>
-            <li>Activate with a key inside the app. No new download</li>
-          </ul>
-          <a class="btn" aria-disabled="true">Coming soon</a>
-        </div>
       </div>
     </div>
   </section>
@@ -409,7 +394,7 @@
       <p class="kicker">Questions</p>
       <h2>Straight answers.</h2>
       <div class="faq">
-        <details><summary>Is it really free?</summary><p>Yes. Connect Claude Desktop (the free plan works), Claude Code, Cursor, a local model or your own API key, and Skillerr costs nothing, with no features held back. Pro will only charge for the AI we provide.</p></details>
+        <details><summary>Is it really free?</summary><p>Yes. Connect Claude Desktop (the free plan works), Claude Code, Cursor, a local model or your own API key, and Skillerr costs nothing, with no features held back.</p></details>
         <details><summary>Where does my research graph live?</summary><p>On your computer. Skillerr has no server that collects it. What leaves your computer is what your chosen AI reads to do the task: the pages it opens, and related past research it gets from <code>recall</code>. That goes to the AI you connected, or nowhere if it's a local model.</p></details>
         <details><summary>What does it remember, and how do I make it forget?</summary><p>For each research session: the goal, which AI ran it, the pages visited (URL, title and a few keywords, never the full text), the notes and skills it produced, and its topics. Pages with password or payment fields are kept as a visit only. Use "Don't remember" on any session, Forget on any node, turn memory off, or clear everything in History &amp; Bookmarks.</p></details>
         <details><summary>Can my AI pick up earlier research in a new chat?</summary><p>Yes. Notes live in <code>~/Skillerr/notes</code>, and Skillerr tells connected AIs where they are, offers them as MCP resources, and gives your AI <code>my_research</code> and <code>read_note</code>, so a new chat continues instead of starting over. Learned skills can also be shared with Claude Code.</p></details>
