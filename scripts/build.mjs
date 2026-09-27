@@ -17,6 +17,7 @@ const node = { platform: 'node', format: 'cjs', target: 'node22', bundle: true, 
 await build({ ...node, entryPoints: [path.join(root, 'src/main.js')], outfile: path.join(out, 'src/main.js') });
 await build({ ...node, entryPoints: [path.join(root, 'src/preload.js')], outfile: path.join(out, 'src/preload.js') });
 await build({ ...node, entryPoints: [path.join(root, 'mcp/bridge.js')], outfile: path.join(out, 'mcp/bridge.js') });
+await build({ ...node, entryPoints: [path.join(root, 'mcp/setup.js')], outfile: path.join(out, 'mcp/setup.js') });
 
 // Browser UI: minify each script (they share globals, so no bundling), copy markup, styles and images.
 const ui = path.join(root, 'src/ui');

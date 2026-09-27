@@ -16,7 +16,7 @@ Website: https://skillerr.com
 | **Research memory** | A local knowledge graph of sessions, pages, notes, skills, topics and entities. Relationships (co-visits, backlinks, topics) build up as you browse. `recall` brings back related past research. There's an interactive map with an attention glow, plus search. |
 | **Research folders** | The topic taxonomy becomes a tree, and real folders in `~/Skillerr/research` with a README index and linked notes. Open a folder, or copy a one-line prompt to hand the research to your AI. |
 | **Continuity** | `my_research` and `read_note`. Notes and skills are exposed as MCP resources straight from disk, and learned skills can be mirrored into Claude Code. |
-| **Skills** | Standard `SKILL.md` skills. The AI saves procedures it worked out (with the user's approval). Sealed `.skill` packages are verified with the skillerr CLI before install. Built-in skills: demo-recorder and screenshots. |
+| **Skills** | Standard `SKILL.md` skills. The AI saves procedures it worked out (with the user's approval). Sealed, shareable skill packages are coming soon. Built-in skills: demo-recorder and screenshots. |
 | **Control and safety** | A plain-English activity log, Pause and Human mode, undo, and approval for payments, passwords, sign-ins and deletions. Robot checks are handed to the user. Connected apps can be switched off individually. |
 | **Everyday browser** | Tab groups per research task, tab sleeping to stay light, per-tab zoom, a pop-up blocker, site permission prompts, country-aware Google search, find in page, downloads, a context menu with "Ask Skillerr", history and bookmarks with delete and reset, Chrome import, light and dark themes. |
 
@@ -28,7 +28,7 @@ src/
   tools.js         Tool definitions and page-level implementations (shared by MCP and the built-in agent)
   agent.js         Built-in agent (Anthropic SDK, or any OpenAI-compatible endpoint)
   memory.js        Research memory: append-only JSONL graph, recall, taxonomy, heat
-  skills.js        Skill loading, learning, install (with skillerr verification), Claude Code sharing
+  skills.js        Skill loading, learning, install, Claude Code sharing
   recorder.js      Tab and window recording, captions, step guides
   connect.js       One-click MCP setup for Claude Desktop, Claude Code and Cursor
   chrome-import.js Chrome bookmarks and history import (local profile only)
@@ -36,11 +36,26 @@ src/
   store.js         Settings and session files in ~/.skillerr/browser
   ui/              Browser chrome, pilot panel, start page, memory map and folders, history, HUD, captions
 mcp/bridge.js      MCP stdio server that forwards to the running app (and serves notes/skills as resources)
+mcp/setup.js       Connects AI apps and, if asked, makes Skillerr their web browser (runs inside the app, no Node needed)
 skills/            Built-in skills
 scripts/build.mjs  Production bundle (esbuild, minified) into out/, packed into app.asar
 site/              skillerr.com: static landing page and Vercel functions (download gate, Pro proxy, sign-in)
 demo/              Local fixture pages for testing
 ```
+
+## Let an AI set it up
+
+An AI with a terminal (Claude Code, for example) can install and connect Skillerr by following
+[`site/agents.md`](site/agents.md), served at https://skillerr.com/agents.md. By hand:
+
+```bash
+curl -fsSL https://skillerr.com/install.sh | sh              # macOS, Linux
+irm https://skillerr.com/install.ps1 | iex                   # Windows (PowerShell)
+```
+
+The installer downloads the right build, installs and opens it, then runs `mcp/setup.js` to connect the AI apps it finds.
+`--prefer` makes Skillerr the AI's web browser (Claude Code's built-in WebSearch/WebFetch are turned off, with backups);
+`--undo-prefer` reverses it; `--dry-run` changes nothing.
 
 ## Develop
 

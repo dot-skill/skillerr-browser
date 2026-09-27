@@ -102,6 +102,14 @@
     .chips-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
     .chips-grid span { padding: 9px 14px; border-radius: 11px; background: var(--surface); border: 1px solid var(--line); font-size: 14px; color: var(--text-2); }
     @media (max-width: 900px) { .duo { grid-template-columns: 1fr; } }
+.agent-setup { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 30px; }
+    .agent-setup > div { padding: 20px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); min-width: 0; }
+    .agent-setup h3 { font-size: 17px; margin-bottom: 6px; }
+    .agent-setup p { color: var(--text-2); font-size: 14px; margin: 6px 0 10px; }
+    .copyline { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line-2); }
+    .copyline code { flex: 1; min-width: 0; background: none; padding: 0; font-size: 12.5px; white-space: nowrap; overflow-x: auto; }
+    .copyline button { flex: none; height: 28px; padding: 0 10px; border-radius: 8px; border: 0; background: var(--surface-3); color: var(--text); font: 600 12px -apple-system, sans-serif; cursor: pointer; }
+    @media (max-width: 900px) { .agent-setup { grid-template-columns: 1fr; } }
     .mission h2 { max-width: 760px; }
     .mission-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 48px; margin-top: 28px; }
     .mission-grid > * { min-width: 0; }
@@ -328,10 +336,10 @@
         <p class="lede">Skills form out of research. When your AI has to work something out on a site, like where the real search box is, which filter to set, or which step it hid, Skillerr offers to keep that as a skill. You approve it, and next time any AI you connect goes straight through.</p>
         <ul class="bullets">
           <li><b>It compounds.</b> Research leaves notes; working things out leaves skills. Refine a skill instead of duplicating it, and your AI gets better at the sites you use.</li>
-          <li><b>Standard <code>SKILL.md</code></b>, shared with Claude Code if you like. Sealed <b>.skill</b> packages are checked before install, so you see who made a skill and that it wasn't changed.</li>
+          <li><b>Standard <code>SKILL.md</code></b>, shared with Claude Code if you like.</li>
           <li><b>Notes you keep.</b> Finished research is saved as Markdown in <code>~/Skillerr/notes</code>. Your AI can reopen it in any new chat.</li>
           <li><b>History, bookmarks, resets.</b> Import from Chrome, delete anything, start fresh anytime.</li>
-          <li><b>The .skill protocol.</b> Skillerr is home to <a href="https://docs.skillerr.com">.skill</a>, an open way to seal, verify and share a skill like a signed app. Skillerr never runs bundled scripts.</li>
+          <li><b>Sealed skill packages.</b> Coming soon.</li>
           <li><b>Built-in skills.</b> <i>demo-recorder</i> makes captioned videos and step-by-step guides. <i>screenshots</i> captures a page, a full page or the whole window.</li>
         </ul>
       </div>
@@ -418,7 +426,7 @@
         <div class="why">
           <h3>Why “Skillerr”</h3>
           <p>A <b>skill</b> is something you only have to learn once. A <b>skiller</b> is the one who keeps learning them. When your AI works out how a site really works, like the hidden step or the fussy date picker, Skillerr saves it as a skill, with your OK, and uses it next time.</p>
-          <p>Skillerr is also home to the open <a href="https://docs.skillerr.com">.skill protocol</a>: a way to package a skill so it can be sealed, verified and shared, like a signed app, so you can trust a skill before your AI follows it.</p>
+          <p>Sealed, shareable skill packages are coming soon.</p>
         </div>
       </div>
       <div class="grid4 tabs-pain">
@@ -443,6 +451,20 @@
         <a href="https://github.com/bharatdudeja13-cmd/skillerr-releases/releases/latest/download/Skillerr-0.1.0-arm64.AppImage"><b>Linux (ARM)</b><span>AppImage</span></a>
       </div>
       <p class="fine" style="text-align:left">Early builds aren't notarized by Apple or signed for Windows yet. <b>Mac:</b> open Skillerr once, then System Settings → Privacy &amp; Security → <b>Open Anyway</b>. <b>Windows:</b> More info → Run anyway. <a href="https://github.com/bharatdudeja13-cmd/skillerr-releases#opening-an-early-build">Details</a></p>
+      <div class="agent-setup">
+        <div>
+          <h3>Or let your AI set it up</h3>
+          <p>Paste this into Claude Code (or any AI that can use a terminal). It installs Skillerr, connects it, and asks you before making Skillerr its browser.</p>
+          <div class="copyline"><code id="agentPrompt">Set up Skillerr as my browser: follow https://skillerr.com/agents.md</code><button type="button" data-copy="agentPrompt">Copy</button></div>
+        </div>
+        <div>
+          <h3>Or install from a terminal</h3>
+          <p>macOS or Linux:</p>
+          <div class="copyline"><code id="shInstall">curl -fsSL https://skillerr.com/install.sh | sh</code><button type="button" data-copy="shInstall">Copy</button></div>
+          <p>Windows (PowerShell):</p>
+          <div class="copyline"><code id="psInstall">irm https://skillerr.com/install.ps1 | iex</code><button type="button" data-copy="psInstall">Copy</button></div>
+        </div>
+      </div>
       <div class="steps3">
         <div><b>Download and open.</b> Three quick screens and you're in.</div>
         <div><b>Pick your driver.</b> Connect Claude Desktop, Claude Code or Cursor in one click, or use a local model.</div>
@@ -470,7 +492,7 @@
         <a class="logo" href="#"><svg class="mark" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true"><path d="M16 6.5a9.5 9.5 0 1 1 0 19a9.5 9.5 0 1 1 0-19zM16 9.5a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13zM14.8 3.6L17.2 3.6L17.2 7L14.8 7zM26.14 8.76L27.34 10.84L24.39 12.54L23.19 10.46zM27.34 21.16L26.14 23.24L23.19 21.54L24.39 19.46zM17.2 28.4L14.8 28.4L14.8 25L17.2 25zM5.86 23.24L4.66 21.16L7.61 19.46L8.81 21.54zM4.66 10.84L5.86 8.76L8.81 10.46L7.61 12.54zM13.7 3a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM24.96 9.5a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM24.96 22.5a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM13.7 29a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM2.44 22.5a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM2.44 9.5a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM13 16a3 3 0 1 1 6 0a3 3 0 1 1-6 0z"/></svg>Skillerr</a>
         <p>© 2026 Bharat Dudeja. Early release (v0.1).<br />Support: <a href="mailto:support@skillerr.com">support@skillerr.com</a><br />Developer: Bharat Dudeja · <a href="mailto:bharat.dudeja13@gmail.com">bharat.dudeja13@gmail.com</a></p>
         <p><a class="built" href="https://www.anthropic.com/claude" rel="noopener"><i class="bi" style="--c:#D97757;--m:url(brands/claude.svg)"></i>Built with Claude</a></p>
-        <p class="links"><a href="terms.html">Terms</a><a href="privacy.html">Privacy</a><a href="brand/">Brand</a><a href="https://docs.skillerr.com">.skill protocol</a></p>
+        <p class="links"><a href="terms.html">Terms</a><a href="privacy.html">Privacy</a><a href="brand/">Brand</a></p>
       </div>
       <div>
         <h4>Known limits, said plainly</h4>
@@ -485,6 +507,12 @@
   </footer>
 
   <script>
+
+    document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(document.getElementById(b.dataset.copy).innerText); b.textContent = 'Copied'; }
+      catch { b.textContent = 'Select and copy'; }
+      setTimeout(() => (b.textContent = 'Copy'), 1600);
+    }));
 
     // Download button: point at the right file for this computer.
     const REL = 'https://github.com/bharatdudeja13-cmd/skillerr-releases/releases/latest/download/';

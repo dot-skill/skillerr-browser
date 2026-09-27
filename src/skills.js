@@ -143,6 +143,8 @@ async function inspect(file) {
     fs.cpSync(file, dir, { recursive: true });
     trust = { state: 'unsigned', summary: 'A plain folder, no seal. Only install skills from people you trust.' };
   } else if (file.endsWith('.skill')) {
+    throw new Error('Sealed .skill packages are coming soon. For now, install a skill folder (one with a SKILL.md).');
+  } else if (file.endsWith('.skill-sealed-install')) { // kept for when sealed packages ship
     const bin = findSkillerr();
     if (!bin) throw new Error('Opening .skill packages needs the skillerr CLI. Install it with: npm i -g skillerr');
     dir = path.join(staging, 'skill');

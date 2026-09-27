@@ -1622,7 +1622,7 @@ function wireIpc() {
   ipcMain.handle('skills-pick', async () => {
     const r = await dialog.showOpenDialog(win, {
       title: 'Install a skill',
-      message: 'Choose a skill folder (with SKILL.md) or a sealed .skill package',
+      message: 'Choose a skill folder (one with a SKILL.md)',
       properties: ['openFile', 'openDirectory'],
       filters: [{ name: 'Skills', extensions: ['skill', 'md'] }],
     });

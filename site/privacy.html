@@ -119,7 +119,7 @@
         </tbody>
       </table>
     </div>
-    <p>The <code>~/.skillerr/</code> folder is shared with the <strong>skillerr</strong> command-line tool, which keeps its own files there, such as <code>trust-store.json</code> (the publishers you trust), <code>issuer-key.pem</code> (your private signing key, if you created one) and <code>registry/</code>. The Skillerr app keeps its files in the <code>browser/</code> subfolder and never sends any of these files anywhere.</p>
+    <p>Skillerr keeps its files in <code>~/.skillerr/browser/</code> and never sends them anywhere.</p>
     <p>The activity list (what the AI did) and the built-in agent's conversation are kept in memory while Skillerr is running and are not written to disk by Skillerr.</p>
 
     <h2 id="memory">Research memory</h2>
@@ -184,7 +184,7 @@
     <p class="muted">Skillerr is built on Electron, which includes Chromium. Chromium or the operating system may make background requests of their own, such as checks your system performs on apps. These aren't part of Skillerr's code and we haven't reviewed all of them.</p>
 
     <h2>Skills</h2>
-    <p>Skills are instructions that an AI reads. They can come from you, from other people, or from an AI that saved one while working (see the table above). Skillerr never runs the scripts that come bundled with a skill. When you install a sealed <code>.skill</code> package, Skillerr runs the <strong>skillerr</strong> command-line tool on your computer to unpack it and check its seal. You install the skillerr tool yourself, and the app runs it only when you install a <code>.skill</code> file. It uses its own trust store and keys in <code>~/.skillerr/</code> for that check.</p>
+    <p>Skills are instructions that an AI reads. They can come from you, from other people, or from an AI that saved one while working (see the table above). Skillerr never runs the scripts that come bundled with a skill.</p>
 
     <h2>Recordings of other people</h2>
     <p>Recordings stay on your computer unless you share them. If a recording shows other people's information, it's up to you to have their permission before you share it.</p>
@@ -203,7 +203,7 @@
 
     <h2>Your choices</h2>
     <ul>
-      <li>Delete <code>~/.skillerr/browser/</code> to remove the app's settings, API key, skills and research memory. Deleting the whole <code>~/.skillerr/</code> folder also removes the skillerr tool's trust store and signing key, so only do that if you mean to. Delete the <code>Skillerr</code> folder in your Videos folder to remove recordings, and <code>~/Skillerr/notes/</code> to remove notes.</li>
+      <li>Delete <code>~/.skillerr/browser/</code> to remove the app's settings, API key, skills and research memory. Delete the <code>Skillerr</code> folder in your Videos folder to remove recordings, and <code>~/Skillerr/notes/</code> and <code>~/Skillerr/research/</code> to remove notes and research folders.</li>
       <li>Remove the <code>skillerr</code> entry from an AI app's configuration to disconnect it (for Claude Code, <code>claude mcp remove skillerr</code>).</li>
       <li>Turn off <strong>Remember research</strong>, use <strong>Don't remember</strong> on a session, or use <strong>Forget everything</strong> to control the research memory.</li>
       <li>Use a local model if you don't want page content to leave your computer.</li>
