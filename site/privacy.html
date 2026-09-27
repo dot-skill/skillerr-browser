@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Skillerr privacy policy</title>
+  <meta name="description" content="What Skillerr stores on your computer, what it sends and to whom." />
+  <link rel="icon" href="brand/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="brand/favicon-32.png" sizes="32x32" type="image/png" />
+  <link rel="apple-touch-icon" href="brand/app-icon-1024.png" />
+  <meta property="og:image" content="https://skillerr.com/tokyo-fleet-poster.jpg" />
+  <style>
+    /* Neutral tokens from the app (src/ui/ui.css). Legal pages carry no aurora: nothing here is an AI acting. */
+    :root {
+      --chrome: #0c0c10; --surface: #17171d; --surface-2: #1d1d25;
+      --line: rgba(255, 255, 255, .07); --line-2: rgba(255, 255, 255, .12);
+      --text: #ededf2; --text-2: #a4a4b2; --text-3: #6d6d7c;
+      --warn: #fbbf24; --warn-bg: rgba(251, 191, 36, .1);
+      --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      color-scheme: dark;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --chrome: #f5f6f8; --surface: #ffffff; --surface-2: #eceef2;
+        --line: rgba(15, 18, 30, .08); --line-2: rgba(15, 18, 30, .14);
+        --text: #15161c; --text-2: #5a5d6b; --text-3: #9295a3;
+        --warn: #b45309; --warn-bg: rgba(217, 119, 6, .1);
+        color-scheme: light;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { margin: 0; background: var(--chrome); color: var(--text); font: 16.5px/1.7 var(--sans); -webkit-font-smoothing: antialiased; }
+    a { color: inherit; text-underline-offset: 3px; text-decoration-color: var(--text-3); }
+    a:hover { text-decoration-color: currentColor; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+    header { border-bottom: 1px solid var(--line); }
+    header .wrap { display: flex; align-items: center; gap: 18px; height: 56px; font-size: 14px; }
+    header .home { display: flex; align-items: center; gap: 9px; color: var(--text); margin-right: auto; text-decoration: none; font-weight: 650; font-size: 17px; letter-spacing: -.015em; }
+    /* The wheel mark takes the text colour (brand/mark.svg). */
+    header a:not(.home) { color: var(--text-2); text-decoration: none; }
+    header a:not(.home):hover, header a[aria-current] { color: var(--text); }
+    .draft { margin: 28px 0 0; padding: 12px 16px; border-radius: 12px; background: var(--warn-bg); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); color: var(--warn); font-size: 14.5px; font-weight: 600; }
+    h1 { font-size: clamp(32px, 6vw, 42px); line-height: 1.1; letter-spacing: -.03em; font-weight: 650; margin: 36px 0 8px; }
+    .meta { color: var(--text-3); font-size: 14px; margin: 0 0 28px; }
+    .summary { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin: 0 0 12px; }
+    .summary h2 { margin-top: 0; font-size: 17px; }
+    .summary ul { margin-bottom: 0; }
+    h2 { font-size: 21px; line-height: 1.3; letter-spacing: -.015em; font-weight: 650; margin: 44px 0 10px; }
+    h3 { font-size: 16.5px; font-weight: 600; margin: 24px 0 6px; }
+    p, ul { margin: 0 0 14px; }
+    ul { padding-left: 22px; }
+    li { margin: 4px 0; }
+    li::marker { color: var(--text-3); }
+    code { font: 14px/1.4 var(--mono); background: var(--surface-2); border: 1px solid var(--line); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+    .muted { color: var(--text-2); }
+    .ph { background: var(--warn-bg); color: var(--warn); padding: 0 4px; border-radius: 4px; font-weight: 500; }
+    .table { overflow-x: auto; margin: 0 0 14px; border: 1px solid var(--line); border-radius: 12px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14.5px; line-height: 1.5; }
+    th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+    tr:last-child td { border-bottom: 0; }
+    th { font-weight: 600; color: var(--text-2); font-size: 13px; background: var(--surface); }
+    @media (max-width: 560px) {
+      thead { display: none; }
+      tr { display: block; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+      tr:last-child { border-bottom: 0; }
+      td { display: block; padding: 3px 0; border: 0; }
+      td:first-child { font-weight: 600; }
+    }
+    footer { margin-top: 64px; border-top: 1px solid var(--line); padding: 28px 0 56px; font-size: 14px; color: var(--text-3); }
+    footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 22px; }
+    footer a { color: var(--text-2); }
+  </style>
+  <script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="home" href="index.html" aria-label="Skillerr home">
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true"><path d="M16 6.5a9.5 9.5 0 1 1 0 19a9.5 9.5 0 1 1 0-19zM16 9.5a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13zM14.8 3.6L17.2 3.6L17.2 7L14.8 7zM26.14 8.76L27.34 10.84L24.39 12.54L23.19 10.46zM27.34 21.16L26.14 23.24L23.19 21.54L24.39 19.46zM17.2 28.4L14.8 28.4L14.8 25L17.2 25zM5.86 23.24L4.66 21.16L7.61 19.46L8.81 21.54zM4.66 10.84L5.86 8.76L8.81 10.46L7.61 12.54zM13.7 3a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM24.96 9.5a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM24.96 22.5a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM13.7 29a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM2.44 22.5a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM2.44 9.5a2.3 2.3 0 1 1 4.6 0a2.3 2.3 0 1 1-4.6 0zM13 16a3 3 0 1 1 6 0a3 3 0 1 1-6 0z"/></svg>Skillerr
+      </a>
+      <a href="privacy.html" aria-current="page">Privacy</a>
+      <a href="terms.html">Terms</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p class="draft" role="note">Draft. Have this reviewed by a lawyer before publishing.</p>
+
+    <h1>Privacy policy</h1>
+    <p class="meta">Effective 27 September 2026 · Applies to the Skillerr desktop app, version 0.1</p>
+
+    <div class="summary">
+      <h2>The short version</h2>
+      <ul>
+        <li>Skillerr has no accounts, no Skillerr servers and no analytics or telemetry. We (Bharat Dudeja) don't receive your browsing, your prompts or your keys.</li>
+        <li>Everything Skillerr keeps, it keeps on your computer.</li>
+        <li>When an AI drives Skillerr, page content goes to the AI you chose. That AI provider's terms and privacy policy apply to it.</li>
+      </ul>
+    </div>
+
+    <h2>Who this is from</h2>
+    <p>Skillerr is made by Bharat Dudeja ("we"). You can reach us at support@skillerr.com (developer: <a href="mailto:bharat.dudeja13@gmail.com">bharat.dudeja13@gmail.com</a>). This policy describes what the Skillerr app does with information, based on what its code does today.</p>
+
+    <h2>What Skillerr stores on your computer</h2>
+    <p>Skillerr saves the following files on your device. We have no copy of them.</p>
+    <div class="table">
+      <table>
+        <thead><tr><th>What</th><th>Where</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Settings for the built-in AI, including your API key if you enter one</td><td><code>~/.skillerr/browser/settings.json</code></td><td>Readable only by your user account (file mode 600, folder mode 700). The key is stored as plain text in that file, not encrypted, so anyone or anything with access to your user account can read it.</td></tr>
+          <tr><td>Session file: the local port, a random access token and the process ID</td><td><code>~/.skillerr/browser/session.json</code></td><td>Also mode 600. Created when Skillerr starts and deleted when it quits. It lets AI apps on your computer reach Skillerr.</td></tr>
+          <tr><td>Skills you install, and skills an AI learns for you</td><td><code>~/.skillerr/browser/skills/</code></td><td>Plain folders of instructions, each with a <code>SKILL.md</code> file. An AI can write a new skill here, or update one, with the <code>save_skill</code> tool. Skillerr asks you to approve every save, and each one shows in the activity list. You can remove skills from the Skills sheet.</td></tr>
+          <tr><td>Recordings made with the recording tools</td><td>Your Videos folder, in <code>Skillerr/&lt;title&gt;-&lt;date&gt;/</code> (on macOS, <code>~/Movies/Skillerr</code>)</td><td>A video (<code>demo.mp4</code>), numbered screenshots (<code>step-NN.png</code>) and a guide (<code>guide.html</code>, <code>guide.md</code>). Recordings capture only the tab being recorded.</td></tr>
+          <tr><td>Notes an AI saves for you</td><td><code>~/Skillerr/notes/</code></td><td>Plain Markdown files, written only when an AI uses the save-note tool.</td></tr>
+          <tr><td>Research memory: past research sessions, pages the AI visited, topics and links between them</td><td><code>~/.skillerr/browser/memory/</code> (<code>nodes.jsonl</code> and <code>edges.jsonl</code>)</td><td>Keywords, not page text. Nothing from pages with password or payment fields. You can turn it off or erase it. See <a href="#memory">Research memory</a> below.</td></tr>
+          <tr><td>Browsing data: cookies, site storage, cache and similar</td><td>Electron's application data folder for the app name “Skillerr” (on macOS, <code>~/Library/Application Support/Skillerr</code>)</td><td>Skillerr is built on Electron (Chromium) and uses its default browser profile, the same kind of data any browser keeps.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The <code>~/.skillerr/</code> folder is shared with the <strong>skillerr</strong> command-line tool, which keeps its own files there, such as <code>trust-store.json</code> (the publishers you trust), <code>issuer-key.pem</code> (your private signing key, if you created one) and <code>registry/</code>. The Skillerr app keeps its files in the <code>browser/</code> subfolder and never sends any of these files anywhere.</p>
+    <p>The activity list (what the AI did) and the built-in agent's conversation are kept in memory while Skillerr is running and are not written to disk by Skillerr.</p>
+
+    <h2 id="memory">Research memory</h2>
+    <p>Skillerr keeps a local memory of the research AIs do in it, so an AI can find what was already looked up instead of starting again. It is stored only on your computer, in <code>~/.skillerr/browser/memory/</code>, as two files: <code>nodes.jsonl</code> (the items) and <code>edges.jsonl</code> (the links between them).</p>
+    <h3>What it records</h3>
+    <ul>
+      <li><strong>Research sessions:</strong> the goal of the task, when it ran, and which AI drove it.</li>
+      <li><strong>Pages the AI visited or read:</strong> the web address, the page title, when it was visited, and up to about 40 keywords taken from the page's text. The full text of the page is never stored.</li>
+      <li><strong>Notes and skills</strong> the AI produced during the session.</li>
+      <li><strong>Topic tags</strong>, such as Travel &gt; Japan &gt; Tokyo.</li>
+      <li><strong>Named things the AI tags</strong>, such as places, products, companies and people.</li>
+      <li><strong>Links</strong> between all of these, for example which pages a session visited.</li>
+    </ul>
+    <h3>What it never records</h3>
+    <p>No content from pages that contain password fields or payment or card fields, or from anything Skillerr's approval check flags as sensitive: no keywords and no excerpts. At most, the fact that a page was visited may be kept, or nothing at all.</p>
+    <h3>Your controls</h3>
+    <ul>
+      <li><strong>Remember research</strong> in Settings turns the memory on or off. It is on by default.</li>
+      <li><strong>Don't remember</strong> on any session in the activity panel deletes that session, and any pages that were seen only in it.</li>
+      <li><strong>Forget everything</strong> in Settings deletes the whole memory.</li>
+    </ul>
+    <h3>Who sees it</h3>
+    <p>Skillerr doesn't send the memory anywhere. When an AI uses the <code>recall</code> tool, Skillerr returns the matching past items (titles, web addresses, keywords, and the names of notes and skills) to that AI. Like any other tool result, they then reach that AI's provider under its terms.</p>
+
+    <h3>Changes Skillerr makes to other apps' settings</h3>
+    <p>Only when you click Connect for an AI app, Skillerr adds an entry named <code>skillerr</code> to that app's configuration on your computer:</p>
+    <ul>
+      <li><strong>Claude Desktop:</strong> its <code>claude_desktop_config.json</code>. <strong>Cursor:</strong> <code>~/.cursor/mcp.json</code>. Skillerr first saves a backup copy next to the file, ending in <code>.skillerr-backup</code>, and leaves the file alone if it can't read it.</li>
+      <li><strong>Claude Code:</strong> Skillerr runs the <code>claude mcp add</code> command on your computer. To show whether Claude Code is connected, Skillerr reads <code>~/.claude.json</code>.</li>
+    </ul>
+
+    <h2>What leaves your computer, and where it goes</h2>
+    <p>We reviewed the app's source code for every network request it makes. Skillerr itself only connects to these:</p>
+
+    <h3>1. The websites you visit</h3>
+    <p>Like any browser, Skillerr loads the pages that you, or an AI you connected, open. Those sites receive what browsers normally send (your IP address, cookies, and so on), under their own privacy policies. When you type words into the address bar that aren't a web address, Skillerr searches them with your chosen search engine: <strong>Google</strong> for your country by default, or DuckDuckGo or Bing if you pick one in Settings. Site permissions (camera, microphone, location, notifications) are asked for per site and remembered only on your computer.</p>
+
+    <h3>2. The AI provider you set up for the built-in agent</h3>
+    <p>If you use the built-in agent, Skillerr sends requests only to the provider you configure in Settings:</p>
+    <ul>
+      <li><strong>Anthropic (Claude):</strong> Anthropic's API (<code>api.anthropic.com</code>), or the base URL you enter. Anthropic's software library also sends standard technical headers with each request, such as the library version, operating system, processor type and runtime version.</li>
+      <li><strong>Any OpenAI-compatible service:</strong> the base URL you enter. Skillerr offers shortcuts for Google Gemini, OpenRouter and OpenAI, and for local models from Ollama or LM Studio, which run on your own computer.</li>
+    </ul>
+    <p>What is sent: your task, Skillerr's instructions to the AI, the list of installed skills, the conversation so far, and the results of the AI's tool calls, including anything it recalls from the <a href="#memory">research memory</a>. Those results can include the text of the pages it reads, the labels and values of page elements (including what's typed into forms), and, for Claude, screenshots of the page. Your API key is sent to that provider to authenticate you. <strong>The provider's own terms and privacy policy govern this data</strong>, including whether it is stored or used for training.</p>
+
+    <h3>3. Local model detection (stays on your computer)</h3>
+    <p>To offer free local models, Skillerr checks <code>localhost:11434</code> (Ollama) and <code>localhost:1234</code> (LM Studio). These requests never leave your computer.</p>
+
+    <h3>4. AI apps you connect (MCP)</h3>
+    <p>Skillerr runs a small control service on your computer at <code>127.0.0.1</code>, which other devices on your network can't reach. It accepts only requests carrying the random token from <code>~/.skillerr/browser/session.json</code>, and it refuses requests that come from web pages (any request with a browser <code>Origin</code> header). Apps like Claude Desktop, Claude Code or Cursor use it through Skillerr's connector.</p>
+    <p>When one of those apps drives Skillerr, Skillerr returns page content, element lists and screenshots to that app. <strong>The app then sends them to its own AI provider under that app's terms.</strong> Skillerr has no control over what happens to the data after that.</p>
+
+    <h3>5. Links you choose to open</h3>
+    <p>Some setup screens link to other sites, such as the Claude download page, Ollama's download page, the Anthropic console and the skillerr documentation. They open as normal tabs only when you click them.</p>
+
+    <h3>What Skillerr doesn't do</h3>
+    <ul>
+      <li>No analytics, telemetry, crash reporting or advertising code.</li>
+      <li>No Skillerr account and no Skillerr server. Nothing is sent to us.</li>
+      <li>No automatic updates that contact us. <span class="muted">(If we add updates or a hosted service later, we will update this policy first.)</span></li>
+    </ul>
+    <p class="muted">Skillerr is built on Electron, which includes Chromium. Chromium or the operating system may make background requests of their own, such as checks your system performs on apps. These aren't part of Skillerr's code and we haven't reviewed all of them.</p>
+
+    <h2>Skills</h2>
+    <p>Skills are instructions that an AI reads. They can come from you, from other people, or from an AI that saved one while working (see the table above). Skillerr never runs the scripts that come bundled with a skill. When you install a sealed <code>.skill</code> package, Skillerr runs the <strong>skillerr</strong> command-line tool on your computer to unpack it and check its seal. You install the skillerr tool yourself, and the app runs it only when you install a <code>.skill</code> file. It uses its own trust store and keys in <code>~/.skillerr/</code> for that check.</p>
+
+    <h2>Recordings of other people</h2>
+    <p>Recordings stay on your computer unless you share them. If a recording shows other people's information, it's up to you to have their permission before you share it.</p>
+
+    <h2 id="website">The Skillerr website</h2>
+    <p>When you download Skillerr from skillerr.com we ask for your email address. We store it, the file you chose, the date, your country (as reported by our host) and whether you ticked “email me about new releases”, in a database run by Upstash on our hosting provider, Vercel. We use it to know who downloaded, to answer support requests, and, only if you ticked the box, to tell you about new releases. You can ask us to delete it at any time: write to support@skillerr.com.</p>
+    <p>The website uses Vercel Web Analytics, which counts page views without cookies and without identifying you. The Skillerr app itself has no analytics.</p>
+    <p>Skillerr Pro, sign-in with Google and payments are not available yet. When they are, this page will describe the data they use before they go live.</p>
+
+    <h2 id="your-ai">Your notes and skills, and your AI</h2>
+    <p>Skillerr tells the AI apps you connect where your notes (<code>~/Skillerr/notes</code>) and skills are kept, and offers them to those apps so a new chat can continue earlier research. They are read from your computer only when your AI asks for them, and then go to that AI's provider like any other conversation.</p>
+    <p>If “Share skills with Claude Code” is on (it turns on when you connect Claude Code, and you can switch it off in Settings), Skillerr copies skills it learns or installs into <code>~/.claude/skills</code> so Claude Code can use them. It only changes folders it created there.</p>
+
+    <h2 id="robot-checks">Robot checks</h2>
+    <p>When a website shows a robot check (such as “I'm not a robot” or “verify you are human”), Skillerr stops the AI from interacting with it and asks you to complete it yourself. Skillerr does not try to solve or get around these checks.</p>
+
+    <h2>Your choices</h2>
+    <ul>
+      <li>Delete <code>~/.skillerr/browser/</code> to remove the app's settings, API key, skills and research memory. Deleting the whole <code>~/.skillerr/</code> folder also removes the skillerr tool's trust store and signing key, so only do that if you mean to. Delete the <code>Skillerr</code> folder in your Videos folder to remove recordings, and <code>~/Skillerr/notes/</code> to remove notes.</li>
+      <li>Remove the <code>skillerr</code> entry from an AI app's configuration to disconnect it (for Claude Code, <code>claude mcp remove skillerr</code>).</li>
+      <li>Turn off <strong>Remember research</strong>, use <strong>Don't remember</strong> on a session, or use <strong>Forget everything</strong> to control the research memory.</li>
+      <li>Use a local model if you don't want page content to leave your computer.</li>
+      <li>For data held by an AI provider, use that provider's own controls.</li>
+    </ul>
+    <p>Because we don't collect personal information through Skillerr, we generally have nothing to access, correct or delete on our side. If you have a question or a request, write to support@skillerr.com.</p>
+
+    <h2>Children</h2>
+    <p>Skillerr is not directed at children under <span class="ph">[13 / 16, depending on jurisdiction]</span>.</p>
+
+    <h2>Changes</h2>
+    <p>If Skillerr starts handling information differently, we will update this page and its effective date before the change ships, and describe the change in the release notes.</p>
+
+    <h2>Contact</h2>
+    <p>Bharat Dudeja · <span class="ph">[postal address, if required]</span> · support@skillerr.com</p>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <a href="terms.html">Terms</a>
+      <a href="brand/">Brand</a>
+      <span>Skillerr · <a href="https://skillerr.com">skillerr.com</a> · Bharat Dudeja</span>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,360 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * data:; style-src 'self' 'unsafe-inline'" />
+  <title>Skillerr</title>
+  <link rel="stylesheet" href="ui.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="tabstrip">
+      <div class="tabs" id="tabs"></div>
+      <button class="ibtn newtab" id="newtab" title="New tab  ⌘T"></button>
+    </div>
+    <div class="toolbar">
+      <div class="navbtns">
+        <button class="ibtn" id="back" title="Back  ⌘["></button>
+        <button class="ibtn" id="forward" title="Forward  ⌘]"></button>
+        <button class="ibtn" id="reload" title="Reload  ⌘R"></button>
+      </div>
+      <form class="omni" id="omni" autocomplete="off">
+        <button type="button" class="intent" id="intent" title="Tab to switch"></button>
+        <input id="url" spellcheck="false" placeholder="Search, enter an address, or tell Skillerr what to do" />
+        <span class="omni-hint" id="omniHint"></span>
+        <button type="button" class="zoom-badge" id="zoomBadge" hidden title="Reset zoom  ⌘0"></button>
+      </form>
+      <div class="findbar" id="findBar" hidden>
+        <input id="findInput" spellcheck="false" placeholder="Find in page" />
+        <span class="find-count" id="findCount"></span>
+        <button type="button" class="ibtn" id="findPrev" title="Previous  ⇧⌘G"></button>
+        <button type="button" class="ibtn" id="findNext" title="Next  ⌘G"></button>
+        <button type="button" class="ibtn" id="findClose" title="Close  Esc"></button>
+      </div>
+      <div class="popup-chip" id="popupChip" hidden></div>
+      <div class="popup-chip passkey-chip" id="passkeyChip" hidden></div>
+      <button class="ibtn dl-btn" id="dlBtn" hidden title="Downloads"></button>
+      <button class="human-pill" id="humanPill" hidden title="AI is paused. You're browsing on your own; nothing is sent to an AI or added to research memory. Click to let AI act again  ⇧⌘P"><span class="hp-dot"></span>Human mode <span class="hp-resume">Resume AI</span></button>
+      <button class="pilot-btn" id="togglePanel" title="Pilot panel  ⌘J"><span class="orb xs" id="miniOrb"></span>Pilot</button>
+      <button class="ibtn more-btn" id="moreMenu" title="More"></button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="frame" id="frame"></div>
+
+    <section class="start" id="start" hidden>
+      <div class="start-glow"></div>
+      <div class="start-inner">
+        <div class="orb xl"></div>
+        <h1 id="greeting">What should we do?</h1>
+        <p class="lede">Browse like always — or just say what you want done, and watch it happen.</p>
+        <form class="hero" id="heroForm" autocomplete="off">
+          <button type="button" class="intent" id="heroIntent"></button>
+          <input id="hero" spellcheck="false" placeholder="Ask, search, or type a URL" />
+          <button class="send" id="heroSend" type="submit"></button>
+        </form>
+        <div class="hero-hint"><kbd>Tab</kbd> switches between <b>Ask</b>, <b>Search</b> and <b>Go</b></div>
+        <div class="ideas" id="ideas"></div>
+
+        <div class="section-label" id="liveGroupsLabel" hidden>Research in progress</div>
+        <div class="live-groups" id="liveGroups"></div>
+
+        <div class="section-label">Your AI</div>
+        <div class="ai-grid" id="aiGrid"></div>
+        <div class="trust">
+          <span id="trustIcon"></span>
+          You stay in control: Skillerr asks before payments, passwords and deletions, every action can be seen, and most can be undone.
+        </div>
+      </div>
+    </section>
+    <section class="dataview" id="dataView" hidden>
+      <div class="dv-top">
+        <h2>History &amp; Bookmarks</h2>
+        <div class="seg small-seg dv-tabs" id="dvTabs"><button type="button" data-tab="history" class="on">History</button><button type="button" data-tab="bookmarks">Bookmarks</button><button type="button" data-tab="reset">Reset</button></div>
+      </div>
+      <div class="dv-pane on" data-pane="history">
+        <div class="dv-bar">
+          <input id="dvHistQ" spellcheck="false" placeholder="Search history" />
+          <select id="dvRange" title="Clear by time"><option value="">Clear…</option><option value="3600000">Last hour</option><option value="86400000">Last 24 hours</option><option value="604800000">Last 7 days</option><option value="all">All history</option></select>
+          <button type="button" class="btn ghost sm" id="dvDelSel" disabled>Delete selected</button>
+        </div>
+        <ul class="dv-list" id="dvHist"></ul>
+      </div>
+      <div class="dv-pane" data-pane="bookmarks">
+        <div class="dv-bar">
+          <input id="dvBmQ" spellcheck="false" placeholder="Search bookmarks" />
+          <button type="button" class="btn ghost sm" id="dvBmAdd">Bookmark current page  ⌘D</button>
+        </div>
+        <ul class="dv-list" id="dvBm"></ul>
+      </div>
+      <div class="dv-pane" data-pane="reset">
+        <p class="muted">Choose what to clear. This can't be undone.</p>
+        <div class="dv-reset">
+          <label class="check"><input type="checkbox" data-r="browsing" /> <span><b>Cookies and site data</b><br /><span class="muted small">Signs you out of websites.</span></span></label>
+          <label class="check"><input type="checkbox" data-r="memory" /> <span><b>Research memory and history</b><br /><span class="muted small">Sessions, pages, topics and links. Notes and skills files stay.</span></span></label>
+          <label class="check"><input type="checkbox" data-r="bookmarks" /> <span><b>Bookmarks</b></span></label>
+          <label class="check"><input type="checkbox" data-r="settings" /> <span><b>Settings</b><br /><span class="muted small">AI choice, appearance, switches.</span></span></label>
+          <label class="check"><input type="checkbox" data-r="everything" /> <span><b>Everything</b><br /><span class="muted small">All of the above, and sign out of Skillerr Pro.</span></span></label>
+        </div>
+        <div class="imp-row"><button type="button" class="btn sm danger" id="dvReset">Clear selected</button><span class="small" id="dvResetMsg"></span></div>
+      </div>
+    </section>
+
+    <section class="memview" id="memView" hidden>
+      <div class="mv-top">
+        <div>
+          <h2>Research memory</h2>
+          <div class="muted small" id="mvStats"></div>
+        </div>
+        <div class="seg small-seg mv-mode" id="mvMode"><button type="button" data-m="map" class="on">Map</button><button type="button" data-m="folders">Folders</button></div>
+        <form class="mv-search" id="mvSearch" autocomplete="off"><input id="mvQuery" spellcheck="false" placeholder="Ask your memory, e.g. “Tokyo hotels”" /></form>
+      </div>
+      <div class="mv-body">
+        <canvas id="mvCanvas"></canvas>
+        <aside class="mv-side" id="mvSide" hidden></aside>
+        <div class="mv-empty" id="mvEmpty" hidden>
+          <h3>Nothing remembered yet</h3>
+          <p class="muted">As your AIs research in Skillerr, their sessions, notes, skills, topics and the pages they read appear here, connected.</p>
+          <button type="button" class="btn ghost sm" data-sheet="settings">Import Chrome bookmarks and history</button>
+        </div>
+      </div>
+      <div class="mv-folders" id="mvFolders" hidden>
+        <nav class="fd-tree" id="fdTree"></nav>
+        <div class="fd-detail" id="fdDetail"></div>
+      </div>
+      <div class="mv-bottom" id="mvBottom">
+        <div class="mv-show">
+          <label class="mv-toggle" title="Warm glow where you research most: often, recently, and together"><input type="checkbox" id="mvHeat" checked /> Attention glow</label>
+          <label class="mv-toggle" title="Include every web page your AI read, not just sessions, notes, skills and topics"><input type="checkbox" id="mvPages" checked /> Show web pages</label>
+        </div>
+        <div class="mv-legend" id="mvLegend"></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="mosaic-layer" id="mosaic"></div>
+
+  <!-- First launch: three screens, then out of the way for good. -->
+  <section class="onboard" id="onboard" hidden>
+    <div class="ob-glow"></div>
+    <div class="ob-step on" data-step="0">
+      <div class="orb ob-wheel"></div>
+      <div class="ob-brand">Skillerr</div>
+      <h1>Watch it research.<br />Keep what it finds.</h1>
+      <p>Every page opens in a tab. Every finding joins your graph.</p>
+      <button type="button" class="btn primary ob-next">Get started</button>
+    </div>
+    <div class="ob-step" data-step="1">
+      <h2>Pick your driver.</h2>
+      <p>Connect the AI you already use. It's free. You can change this any time.</p>
+      <div class="ob-cards" id="obCards"></div>
+      <button type="button" class="btn primary ob-next">Continue</button>
+    </div>
+    <div class="ob-step" data-step="2">
+      <h2>Start your research graph.</h2>
+      <p>Everything below stays on this computer.</p>
+      <div class="ob-opts">
+        <label class="switch-row" id="obImportRow"><div><b>Bring my Chrome bookmarks and history</b><span>Copied from Chrome on this computer, never from Google.</span></div><input type="checkbox" id="obImport" checked /><span class="switch"></span></label>
+        <label class="switch-row"><div><b>Remember my research</b><span>A private map of what your AIs researched, so new questions build on old answers.</span></div><input type="checkbox" id="obRemember" checked /><span class="switch"></span></label>
+        <div class="theme-row"><b>Search engine</b>
+          <select id="searchEngine"><option value="google">Google (your country)</option><option value="duckduckgo">DuckDuckGo</option><option value="bing">Bing</option></select>
+        </div>
+        <div class="theme-row"><b>Appearance</b><div class="seg small-seg" id="obTheme"><button type="button" data-t="system">System</button><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button></div></div>
+      </div>
+      <button type="button" class="btn primary ob-done">Start browsing</button>
+    </div>
+    <div class="ob-dots"><i class="on"></i><i></i><i></i></div>
+  </section>
+
+  <aside class="panel" id="panel">
+    <header class="p-head">
+      <div class="presence">
+        <div class="orb" id="orb"></div>
+        <div class="who">
+          <div class="who-name" id="whoName">Skillerr Pilot</div>
+          <div class="who-sub" id="whoSub">Ready when you are</div>
+        </div>
+      </div>
+      <div class="p-actions">
+        <button class="rec-pill" id="recPill" hidden title="Stop recording"><span class="rec-dot"></span><span id="recTime">0:00</span><span class="rec-stop"></span></button>
+        <button class="pause-btn" id="pauseBtn"></button>
+        <button class="ibtn" id="openSkills" title="Skills"></button>
+        <button class="ibtn" id="openConnect" title="Connect AI apps"></button>
+        <button class="ibtn" id="openSettings" title="Settings"></button>
+        <button class="ibtn" id="closePanel" title="Hide  ⌘J"></button>
+      </div>
+    </header>
+
+    <div class="timeline" id="timeline">
+      <div class="welcome" id="welcome">
+        <h2>Your browser has a pilot.</h2>
+        <ol class="how">
+          <li><span class="n">1</span><div><b>Say what you want.</b> Type below or in the address bar — “find”, “compare”, “summarize”, “fill in”.</div></li>
+          <li><span class="n">2</span><div><b>Watch it work.</b> A glow shows when AI is acting. Every step appears here in plain words.</div></li>
+          <li><span class="n">3</span><div><b>Take over anytime.</b> Pause stops it instantly. Payments and passwords always wait for your OK.</div></li>
+        </ol>
+        <p class="also">Already use Claude Desktop, Claude Code or Cursor? <a href="#" data-sheet="connect">Connect it</a> and it can drive Skillerr too — free.</p>
+      </div>
+    </div>
+
+    <form class="composer" id="composer" autocomplete="off">
+      <div class="chips" id="chips"></div>
+      <div class="slash" id="slash" hidden></div>
+      <div class="box" id="box">
+        <div class="ctx" id="ctx"></div>
+        <textarea id="task" rows="1" placeholder="Ask Skillerr to do something…"></textarea>
+        <div class="box-row">
+          <div class="box-left">
+            <button type="button" class="model-pill" id="modelPill" title="Choose AI"></button>
+            <button type="button" class="deep-btn" id="deepBtn" title="Deep research: read pages, follow their most relevant links, and keep going"></button>
+            <select class="deep-depth" id="deepDepth" title="How many links deep to follow" hidden>
+              <option value="1">depth 1</option><option value="2">depth 2</option><option value="3">depth 3</option><option value="4">depth 4</option><option value="5">depth 5</option>
+            </select>
+          </div>
+          <button type="submit" class="send" id="send" title="Run  ↵"></button>
+        </div>
+      </div>
+    </form>
+
+    <!-- slide-over sheets -->
+    <section class="sheet" id="sheet-connect">
+      <header class="sheet-head"><button class="ibtn back-btn" data-close></button><h3>Connect your AI</h3></header>
+      <div class="sheet-body">
+        <p class="sheet-lede">Let the AI app you already use see and drive Skillerr. No account, no API key — you'll see everything it does.</p>
+        <div class="conn-list" id="connList"></div>
+        <details class="manual">
+          <summary>Other MCP apps (Windsurf, Cline, LM Studio…)</summary>
+          <p>Add an MCP server with this command, args and env:</p>
+          <pre id="mcpJson">…</pre>
+          <button type="button" class="btn ghost sm" id="copyJson">Copy config</button>
+        </details>
+      </div>
+    </section>
+
+    <section class="sheet" id="sheet-downloads">
+      <header class="sheet-head"><button class="ibtn back-btn" data-close></button><h3>Downloads</h3></header>
+      <div class="sheet-body"><div class="dl-list" id="dlList"><div class="muted">Nothing downloaded yet.</div></div></div>
+    </section>
+
+    <section class="sheet" id="sheet-skills">
+      <header class="sheet-head"><button class="ibtn back-btn" data-close></button><h3>Skills</h3></header>
+      <div class="sheet-body">
+        <p class="sheet-lede">Ready-made playbooks your AI can follow. Type <kbd>/</kbd> in the composer to use one, or ask for the job and Skillerr picks the right skill.</p>
+        <div class="skill-list" id="skillList"></div>
+        <div class="install-preview" id="installPreview" hidden></div>
+        <button type="button" class="btn ghost install-btn" id="installSkill"></button>
+        <p class="muted small">Skills are standard <code>SKILL.md</code> folders, so the same skill works in Claude Code and Cursor too.
+          Sealed <code>.skill</code> packages are checked with <a href="#" data-url="https://github.com/dot-skill/skillerr">skillerr</a> before you install them.
+          Skillerr follows a skill's instructions but never runs its scripts.</p>
+      </div>
+    </section>
+
+    <section class="sheet" id="sheet-settings">
+      <header class="sheet-head"><button class="ibtn back-btn" data-close></button><h3>Built-in AI</h3></header>
+      <div class="sheet-body">
+        <div class="banner" id="setupBanner" hidden>Pick an AI to power Skillerr. Local models are free and private.</div>
+        <div class="seg" id="providerSeg">
+          <button type="button" data-p="local">Local · free</button>
+          <button type="button" data-p="claude">Claude</button>
+          <button type="button" data-p="other">Other</button>
+          <button type="button" data-p="cloud">Skillerr <span class="pro">PRO</span></button>
+        </div>
+
+        <div class="pane" data-pane="local">
+          <p class="muted">Runs on your computer with Ollama or LM Studio. Nothing leaves your machine.</p>
+          <div class="model-list" id="localModels"><div class="muted">Looking for local models…</div></div>
+        </div>
+
+        <div class="pane" data-pane="claude">
+          <label class="field">Model
+            <select id="claudeModel">
+              <option value="claude-opus-5">Claude Opus 5 — most capable</option>
+              <option value="claude-sonnet-5">Claude Sonnet 5 — faster</option>
+              <option value="claude-haiku-4-5">Claude Haiku 4.5 — fastest</option>
+            </select>
+          </label>
+          <label class="field">Anthropic API key <input id="claudeKey" type="password" spellcheck="false" placeholder="sk-ant-…" /></label>
+          <p class="muted">Get one at <a href="#" data-url="https://console.anthropic.com/settings/keys">console.anthropic.com</a>. Stored only on this computer.</p>
+        </div>
+
+        <div class="pane" data-pane="cloud">
+          <p class="muted" id="proIntro">Top models built in, no provider accounts or API keys.</p>
+          <label class="field">Model
+            <select id="proModel">
+              <option value="anthropic/claude-sonnet-5">Claude Sonnet 5 — fast and capable</option>
+              <option value="anthropic/claude-opus-5.5">Claude Opus 5.5 — most capable</option>
+              <option value="anthropic/claude-haiku-4.5">Claude Haiku 4.5 — fastest</option>
+              <option value="google/gemini-3.5-flash">Gemini 3.5 Flash — low cost</option>
+            </select>
+          </label>
+          <div class="pro-account" id="proAccount"></div>
+          <label class="field">Pro key <input id="proKey" type="password" spellcheck="false" placeholder="Paste your Skillerr Pro key" /></label>
+          <div class="imp-row"><button type="button" class="btn primary sm" id="proActivate">Activate</button></div>
+          <div class="small" id="proStatus"></div>
+        </div>
+
+        <div class="pane" data-pane="other">
+          <label class="field">Service
+            <select id="otherPreset">
+              <option value="gemini">Google Gemini (free tier)</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="openai">OpenAI</option>
+              <option value="custom">Custom (OpenAI-compatible)</option>
+            </select>
+          </label>
+          <label class="field">Base URL <input id="otherUrl" spellcheck="false" /></label>
+          <label class="field">Model <input id="otherModel" spellcheck="false" /></label>
+          <label class="field">API key <input id="otherKey" type="password" spellcheck="false" /></label>
+        </div>
+
+        <div class="divider"></div>
+        <div class="theme-row"><b>Appearance</b>
+          <div class="seg small-seg" id="themeSeg"><button type="button" data-t="system">System</button><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button></div>
+        </div>
+        <label class="switch-row">
+          <div><b>Ask before every action</b><span>Payments, passwords and deletions always ask, even when this is off.</span></div>
+          <input type="checkbox" id="requireApproval" /><span class="switch"></span>
+        </label>
+        <label class="switch-row">
+          <div><b>Remember research</b><span>Keeps a private map of what your AIs researched (pages, notes, skills, topics) on this computer, so new tasks can build on it. Never page text from password or payment pages.</span></div>
+          <input type="checkbox" id="remember" /><span class="switch"></span>
+        </label>
+        <label class="switch-row">
+          <div><b>Sleep inactive tabs</b><span>Keeps Skillerr light: tabs you and your AI aren't using unload after a few minutes and wake instantly when you come back. What your AI read stays in research memory.</span></div>
+          <input type="checkbox" id="sleepTabs" /><span class="switch"></span>
+        </label>
+        <label class="switch-row">
+          <div><b>Share skills with Claude Code</b><span>Skills Skillerr learns or installs also appear in Claude Code (~/.claude/skills), so your AI keeps them outside the browser too.</span></div>
+          <input type="checkbox" id="shareSkills" /><span class="switch"></span>
+        </label>
+        <div class="mem-row"><span class="muted small" id="memStats"></span><button type="button" class="btn ghost sm" id="forgetAll">Forget everything</button></div>
+
+        <div class="divider"></div>
+        <div class="import-box" id="importBox">
+          <b>Bring your Chrome data</b>
+          <span class="muted small">Copied from Chrome on this computer. Nothing is sent to Google or to anyone else.</span>
+          <label class="field">Chrome profile <select id="chromeProfile"></select></label>
+          <label class="check"><input type="checkbox" id="impBookmarks" checked /> Bookmarks</label>
+          <label class="check"><input type="checkbox" id="impHistory" checked /> History from the last 90 days (into research memory)</label>
+          <div class="imp-row">
+            <button type="button" class="btn primary sm" id="doImport">Import</button>
+            <button type="button" class="btn ghost sm" id="signInGoogle">Sign in with Google</button>
+          </div>
+          <div class="muted small" id="importResult"></div>
+        </div>
+
+        <div class="sheet-foot">
+          <button type="button" class="btn primary" id="saveSettings">Save</button>
+          <span class="muted" id="saved"></span>
+        </div>
+      </div>
+    </section>
+  </aside>
+
+  <script src="shared.js"></script>
+  <script src="ui.js"></script>
+  <script src="memoryview.js"></script>
+  <script src="dataview.js"></script>
+</body>
+</html>
