@@ -1,0 +1,65 @@
+name: Bug report
+description: Something in Skillerr doesn't work as it should.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. For a security issue, please don't file it here: email support@skillerr.com instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. A screenshot helps.
+      placeholder: I asked Claude to compare three pages; the fleet view opened but one tile stayed blank.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Connect Claude Desktop
+        2. Ask it to …
+        3. See …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Skillerr version
+      description: Settings → About, or the version in the release you downloaded.
+      placeholder: "0.1.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: dropdown
+    id: ai
+    attributes:
+      label: Which AI was driving?
+      multiple: true
+      options:
+        - Claude Desktop
+        - Claude Code
+        - Cursor
+        - Built-in AI (local model)
+        - Built-in AI (API key)
+        - Another MCP client
+        - None, it happened while I was browsing
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error messages
+      description: Anything from the Pilot panel or the terminal. Remove anything private first.
+      render: shell

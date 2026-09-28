@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+dist/
+.vercel
+out
+mcp/preview.html
+build/entitlements.generated.plist

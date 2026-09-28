@@ -1,0 +1,52 @@
+:root {
+  --bg: #ffffff; --surface: #f4f5f7; --line: #e3e5ea; --text: #16171b; --text-2: #5b5f6b; --accent: #6d4aff;
+  --ok: #12a37f; --warn: #c9730a; --err: #d23b3b; --ring: conic-gradient(from 0deg, #ff6ec4, #7873f5, #4ade80, #ff6ec4);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #16171b; --surface: #1f2126; --line: #2d3037; --text: #eceef3; --text-2: #9ca1ad; --accent: #9b85ff;
+  --ok: #3ccf9f; --warn: #f0a646; --err: #ff6b6b; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif); }
+main { padding: 10px 12px 12px; }
+.bar { display: flex; align-items: center; gap: 10px; min-height: 32px; }
+.mark { width: 22px; height: 22px; flex: none; border-radius: 50%; background: var(--ring); -webkit-mask: radial-gradient(circle, transparent 5px, #000 6px); mask: radial-gradient(circle, transparent 5px, #000 6px); }
+.state-live .mark { animation: spin 2.4s linear infinite; }
+@keyframes spin { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { .state-live .mark { animation: none; } }
+.who { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.who b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--surface); color: var(--text-2); white-space: nowrap; }
+.state-live .pill { color: var(--ok); }
+.state-paused .pill, .state-approval .pill { color: var(--warn); }
+.actions { display: flex; gap: 6px; flex: none; }
+button { font: inherit; font-size: 12px; font-weight: 600; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
+button:hover { background: var(--surface); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.icon { width: 28px; padding: 0; display: grid; place-items: center; }
+button svg { display: block; }
+.stage { margin-top: 10px; display: grid; gap: 8px; }
+.stage.fleet { grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); }
+@media (max-width: 420px) { .stage.fleet { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tile { position: relative; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); cursor: pointer; padding: 0; height: auto; text-align: left; display: block; width: 100%; }
+.tile.working { border-color: transparent; box-shadow: 0 0 0 2px var(--accent); }
+.shot { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; object-position: top; background: var(--surface); }
+.placeholder { display: grid; place-items: center; aspect-ratio: 16 / 10; color: var(--text-2); font-size: 12px; }
+.cap { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--line); background: var(--bg); font-size: 12px; min-width: 0; }
+.cap .host { color: var(--text-2); white-space: nowrap; }
+.cap .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; font-weight: 600; }
+.badge { font-size: 10px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+.fleet .cap { padding: 4px 6px; font-size: 11px; }
+.fleet .cap .host { display: none; }
+.steps { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
+.steps li { display: flex; gap: 8px; align-items: baseline; color: var(--text-2); font-size: 12px; min-width: 0; }
+.steps li span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.steps li.running { color: var(--text); }
+.steps li i { font-style: normal; width: 12px; flex: none; text-align: center; }
+.steps li.ok i { color: var(--ok); }
+.steps li.error i { color: var(--err); }
+.steps li.approval { color: var(--warn); font-weight: 600; }
+.note { margin: 10px 0 0; color: var(--text-2); font-size: 12px; }
+.state-superseded .stage, .state-offline .stage { opacity: 0.55; }

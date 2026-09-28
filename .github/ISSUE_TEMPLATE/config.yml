@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/dot-skill/skillerr-browser/blob/main/.github/SECURITY.md
+    about: Please don't open a public issue. Email support@skillerr.com instead.
+  - name: Download Skillerr
+    url: https://github.com/dot-skill/skillerr-releases/releases/latest
+    about: The latest builds for macOS, Windows and Linux.
+  - name: Website and help
+    url: https://skillerr.com
+    about: What Skillerr is, how to install it, and how to reach us.

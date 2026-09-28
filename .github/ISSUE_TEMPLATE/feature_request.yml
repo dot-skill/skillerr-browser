@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest an idea or an improvement for Skillerr.
+title: "[Idea]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem or the moment where Skillerr gets in the way. Real examples help most.
+      placeholder: When my AI researches flights, I want to …
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would help?
+      description: How you imagine it working.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you've tried instead?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Watching the AI (tabs, fleet view, Pilot panel)
+        - Approvals and page safety
+        - Research memory, folders and notes
+        - Skills
+        - Connecting AI apps (MCP)
+        - Everyday browsing
+        - Install and updates
+        - Something else
