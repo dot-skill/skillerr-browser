@@ -75,6 +75,12 @@ Set up Skillerr as my browser: follow https://skillerr.com/agents.md
 Installer options: `--prefer` makes Skillerr your AI's web browser (Claude Code's built-in WebSearch and WebFetch are
 turned off, with backups), `--undo-prefer` reverses it, and `--dry-run` changes nothing.
 
+**Uninstall.** Deleting the app leaves Skillerr connected in Claude Desktop, Claude Code and Cursor, so use
+**Uninstall Skillerr…** in its menu (the ⋮ menu on Windows and Linux) or
+`curl -fsSL https://skillerr.com/install.sh | sh -s -- --uninstall` (add `--purge` to delete its data too). The Windows
+uninstaller does it as well. If the app was deleted anyway and you reinstall after deleting `~/.skillerr/browser`,
+Skillerr removes the leftover connections on first launch.
+
 ## How it works
 
 ```mermaid

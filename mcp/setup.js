@@ -5,47 +5,22 @@
 //   --claude-code --claude-desktop --cursor   which apps (default: every one found on this computer)
 //   --prefer        make Skillerr the AI's web browser (Claude Code: turn off its own WebSearch/WebFetch)
 //   --undo-prefer   give the AI its own web tools back
+//   --uninstall     disconnect every AI app and undo --prefer (the uninstallers run this); --purge also deletes
+//                   Skillerr's settings, research memory and skills (~/.skillerr/browser). Notes in ~/Skillerr stay.
 //   --dry-run       say what would change, change nothing
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const connectors = require('../src/connect');
 
 const args = new Set(process.argv.slice(2));
 const dry = args.has('--dry-run');
-const home = os.homedir();
 const say = (s) => process.stdout.write(s + '\n');
 
 // The command every AI app should run: this Skillerr binary, in Node mode, on the bundled bridge.
 const entry = { command: process.execPath, args: [path.join(__dirname, 'bridge.js')], env: { ELECTRON_RUN_AS_NODE: '1' } };
 
-const CLAUDE_SETTINGS = path.join(home, '.claude', 'settings.json');
-const CLAUDE_MD = path.join(home, '.claude', 'CLAUDE.md');
-const BLOCK_START = '<!-- skillerr:start -->';
-const BLOCK_END = '<!-- skillerr:end -->';
-const BLOCK = `${BLOCK_START}
-## Web access: use Skillerr
-For anything on the web, use the Skillerr browser (MCP server "skillerr"): \`web_search\` to search, \`fetch_page\` to read a page,
-and the other Skillerr tools to browse, compare or dig deeper. Don't use built-in web search or fetch tools. Skillerr shows the
-user every page you read, lets them pause you, and keeps the research so it can be recalled later (\`recall\`, \`my_research\`).
-${BLOCK_END}
-`;
-
-function readJson(file) {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (err) {
-    if (err.code === 'ENOENT') return {};
-    throw new Error(`${file} isn't valid JSON, so it was left alone.`);
-  }
-}
-
-function write(file, text) {
-  if (dry) return say(`  would write ${file}`);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.skillerr-backup`);
-  fs.writeFileSync(file, text);
-}
+const { setPrefer, isPreferred } = require('../src/prefer');
+const store = require('../src/store');
 
 async function connectAll() {
   const targets = await connectors.listTargets();
@@ -71,19 +46,8 @@ async function connectAll() {
 }
 
 function prefer(on) {
-  // Claude Code: deny its built-in web tools, and tell it why.
-  const settings = readJson(CLAUDE_SETTINGS);
-  const deny = new Set(settings.permissions?.deny || []);
-  for (const tool of ['WebSearch', 'WebFetch']) on ? deny.add(tool) : deny.delete(tool);
-  settings.permissions = { ...(settings.permissions || {}), deny: [...deny] };
-  write(CLAUDE_SETTINGS, JSON.stringify(settings, null, 2) + '\n');
-
-  let md = '';
-  try {
-    md = fs.readFileSync(CLAUDE_MD, 'utf8');
-  } catch {}
-  const without = md.replace(new RegExp(`\\n?${BLOCK_START}[\\s\\S]*?${BLOCK_END}\\n?`), '\n').trimEnd();
-  write(CLAUDE_MD, (on ? `${without ? without + '\n\n' : ''}${BLOCK}` : `${without}\n`));
+  setPrefer(on, { dry, say });
+  if (!dry) connectors.recordPrefer(on);
   const verb = dry ? 'would be' : on ? 'turned off' : 'restored';
   say(on ? `${dry ? '•' : '✓'} Claude Code: built-in WebSearch/WebFetch ${dry ? 'would be turned off' : verb}; it will browse through Skillerr.`
     : `${dry ? '•' : '✓'} Claude Code: built-in web tools ${dry ? 'would be restored' : verb}.`);
@@ -93,8 +57,36 @@ function prefer(on) {
   }
 }
 
+// Everything Skillerr added to other apps, removed: MCP entries in every app, and --prefer.
+async function uninstall() {
+  for (const id of await connectors.withEntries()) {
+    if (dry) {
+      say(`• ${id}: would disconnect`);
+      continue;
+    }
+    try {
+      say(`✓ ${id}: ${await connectors.disconnect(id)}`);
+    } catch (err) {
+      say(`✗ ${id}: ${err.message}`);
+    }
+  }
+  if (isPreferred()) prefer(false);
+  if (args.has('--purge')) {
+    if (dry) say(`• would delete ${store.DIR}`);
+    else {
+      fs.rmSync(store.DIR, { recursive: true, force: true });
+      say(`✓ Deleted ${store.DIR}`);
+    }
+  }
+}
+
 (async () => {
   if (dry) say('(dry run: nothing will change)');
+  if (args.has('--uninstall')) {
+    await uninstall();
+    say(dry ? 'Done (dry run).' : 'Skillerr is disconnected from your AI apps. Restart Claude Desktop and Cursor to finish.');
+    return;
+  }
   if (!args.has('--undo-prefer')) await connectAll();
   if (args.has('--prefer')) prefer(true);
   if (args.has('--undo-prefer')) prefer(false);

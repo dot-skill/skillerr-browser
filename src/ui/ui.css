@@ -705,3 +705,5 @@ body.os-other .tab, body.os-other .ibtn, body.os-other button { -webkit-app-regi
 body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animation: none; }
 .tab.asleep .fav, .tab.asleep .title { opacity: .45; }
 .tab.asleep .title { font-style: italic; }
+
+.ai-note { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface); color: var(--text-2); font-size: 13px; }

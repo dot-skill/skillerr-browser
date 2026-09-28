@@ -3,6 +3,8 @@
 #   curl -fsSL https://skillerr.com/install.sh | sh
 #   curl -fsSL https://skillerr.com/install.sh | sh -s -- --prefer     # also make Skillerr your AI's browser
 # Options are passed to Skillerr's setup: --prefer, --dry-run, --claude-code, --claude-desktop, --cursor, --no-connect
+# Uninstall (disconnects your AI apps, then removes Skillerr; --purge also deletes its settings and research memory):
+#   curl -fsSL https://skillerr.com/install.sh | sh -s -- --uninstall [--purge]
 set -e
 VERSION="${SKILLERR_VERSION:-0.1.3}"
 BASE="${SKILLERR_RELEASE:-https://github.com/dot-skill/skillerr-releases/releases/download/v$VERSION}"
@@ -10,6 +12,26 @@ CONNECT=1
 for a in "$@"; do [ "$a" = "--no-connect" ] && CONNECT=0; done
 SETUP_ARGS=$(printf '%s ' "$@" | sed 's/--no-connect//g')
 say() { printf '%s\n' "$*"; }
+
+for a in "$@"; do
+  [ "$a" = "--uninstall" ] || continue
+  case "$(uname -s)" in
+    Darwin) APP=/Applications/Skillerr.app; BIN=$APP/Contents/MacOS/Skillerr; SETUP=$APP/Contents/Resources/app.asar/mcp/setup.js ;;
+    *) APP=$HOME/.local/share/skillerr/app; BIN="$APP/$(ls "$APP" 2>/dev/null | grep -iE '^skillerr' | grep -v '\.' | head -1)"; SETUP=$APP/resources/app.asar/mcp/setup.js ;;
+  esac
+  if [ -x "$BIN" ]; then
+    osascript -e 'quit app "Skillerr"' >/dev/null 2>&1 || pkill -f "$BIN" 2>/dev/null || true
+    # shellcheck disable=SC2046
+    ELECTRON_RUN_AS_NODE=1 "$BIN" "$SETUP" --uninstall $(printf '%s ' "$@" | grep -oE -- '--purge|--dry-run')
+  else
+    say "Skillerr isn't installed where this installer puts it ($APP)."
+  fi
+  case "$*" in *--dry-run*) say "Dry run: nothing removed."; exit 0 ;; esac
+  rm -rf "$APP" "$HOME/.local/bin/skillerr" "$HOME/.local/share/applications/skillerr.desktop"
+  case "$*" in *--purge*) rm -rf "$HOME/Library/Application Support/Skillerr" "${XDG_CONFIG_HOME:-$HOME/.config}/Skillerr" ;; esac
+  say "Skillerr is uninstalled. Your notes in ~/Skillerr stay."
+  exit 0
+done
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 case "$(uname -s)" in
   Darwin)
