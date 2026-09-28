@@ -27,7 +27,7 @@ class ScoutEmbed {
   }
 
   static load(dir = DIR) {
-    return new ScoutEmbed(fs.readFileSync(path.join(dir, 'scout-embed.bin')), fs.readFileSync(path.join(dir, 'vocab.txt'), 'utf8').split('\n'));
+    return new ScoutEmbed(fs.readFileSync(path.join(dir, 'scout-embed.bin')), fs.readFileSync(path.join(dir, 'vocab.txt'), 'utf8').split(/\r?\n/)); // CRLF-safe
   }
 
   // Unit-length Float32Array, or null for a text with no known pieces.

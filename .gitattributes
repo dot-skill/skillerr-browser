@@ -1,0 +1,3 @@
+# Scout's model: exact bytes on every platform (a CRLF vocab.txt would break the word lookup).
+assets/scout/*.bin binary
+assets/scout/vocab.txt -text

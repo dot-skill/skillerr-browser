@@ -172,8 +172,8 @@ test('trails survive a restart; forget everything keeps excluded sites', () => {
   tr.observe({ url: 'https://coffee.example/grinders', title: 'Espresso grinders compared' }, { tabTrail: id, tabAt: T0 });
   tr.ignoreHost('private.example');
   tr.save();
-  const mode = fs.statSync(path.join(dir, 'trails.json')).mode & 0o777;
-  assert.strictEqual(mode, 0o600);
+  // Readable only by the user (Windows has no Unix permissions; its per-user folders do that job).
+  if (process.platform !== 'win32') assert.strictEqual(fs.statSync(path.join(dir, 'trails.json')).mode & 0o777, 0o600);
   const again = new Trails(dir, { now: () => T0 });
   assert.strictEqual(again.get(id).title, 'Espresso grinder');
   again.forgetAll();
