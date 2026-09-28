@@ -20,6 +20,7 @@ Your AI browses in real tabs you can watch, asks before anything that matters, a
   <a href="https://modelcontextprotocol.io"><img alt="MCP" src="https://img.shields.io/badge/MCP-server-ff7ac6"></a>
   <a href="#install"><img alt="Works with Claude" src="https://img.shields.io/badge/works%20with-Claude-d97757"></a>
   <a href="#install"><img alt="Works with Cursor" src="https://img.shields.io/badge/works%20with-Cursor-111111"></a>
+  <a href="#privacy"><img alt="No telemetry" src="https://img.shields.io/badge/telemetry-none-3de0c0"></a>
 </p>
 
 <p>
@@ -29,7 +30,7 @@ Your AI browses in real tabs you can watch, asks before anything that matters, a
   <a href="CONTRIBUTING.md"><b>Contributing</b></a>
 </p>
 
-<img alt="Skillerr's fleet view: an AI researching power bank rules across TSA, FAA, JAL and IATA in four live tabs, with the Pilot panel logging each step" src=".github/assets/fleet.png" width="100%">
+<img alt="Skillerr's fleet view: an AI researching power bank rules across TSA, FAA, JAL and Tokyo Cheapo in four live tabs, with the Pilot panel logging each step" src=".github/assets/fleet.png" width="100%">
 
 </div>
 
@@ -44,6 +45,7 @@ own API keys. It rests on three ideas:
 | **Visible** | Every page your AI reads opens as a real tab you can watch. Many at once, side by side, live. |
 | **Governed** | You pause, take over and undo. Payments, passwords, sign-ins and deletions wait for your approval. |
 | **Kept** | Its research stays on your computer: a research memory, topic folders and notes on disk, and reusable skills. Next time, it checks what you already know before it searches again. |
+| **Light & private** | Chrome's page speed with less memory, and **no telemetry**: nothing about your browsing leaves your computer. |
 
 ## Install
 
@@ -207,9 +209,25 @@ flowchart LR
   find in page, downloads, a context menu with "Ask Skillerr", history and bookmarks, Chrome import, and light and
   dark themes.
 - Recordings of a tab or the window with captions, and screenshots, saved to your Movies and Pictures folders.
-- Same Chromium, same page speed as Chrome, with lower memory use. See [docs/benchmarks.md](docs/benchmarks.md).
 
 </details>
+
+## Performance
+
+Skillerr runs on the same Chromium as Chrome, so pages are just as fast, and it uses less memory doing it.
+Measured against Chrome 152 on the same machine ([details](docs/benchmarks.md)):
+
+| | Chrome 152 | Skillerr |
+|---|---|---|
+| Page speed (Speedometer 3.1) | 16.0 | **16.3** (same, within noise) |
+| Memory, idle | ~500 MB | **~385 MB** (about 23% less) |
+| Memory, 5 heavy pages | ~615 MB | **~565 MB** (about 8% less) |
+| Ready for your AI | | **~216 ms** after launch |
+
+- **Sleeping tabs:** tabs nobody is using unload after a few minutes and wake instantly. With 50 tabs open, memory drops
+  by about 60%.
+- **Parallel research:** your AI can read many pages at once in Fleet view, instead of one tab at a time.
+- **Nothing added to pages:** Skillerr's own work runs only when your AI asks for it.
 
 ## Privacy
 

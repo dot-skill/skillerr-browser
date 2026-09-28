@@ -63,9 +63,7 @@ renders mcp/preview.html in a sandboxed iframe
 | `src/main.js` | `previewFrame()`, `previewAction()`, recent steps, newest-view tracking |
 | `test/bridge.test.js` | Capability negotiation, resource, app-only tools, no launch when closed |
 
-## Testing it without Claude Desktop
+## Try it
 
-The view was tested end to end against the real bridge and a running Skillerr, using a small host built on the SDK's
-`AppBridge`. It embeds `preview.html` and forwards the view's tool calls to `bridge.js` over stdio. The screenshots above
-come from that host. With Claude Desktop, connect Skillerr as usual (`mcp/setup.js`), restart Claude Desktop, and ask
-something that needs the web.
+Connect Skillerr to Claude Desktop (`node mcp/setup.js --claude-desktop`, or the Connect button in Skillerr), restart
+Claude Desktop, and ask something that needs the web. The live view appears under the first browsing step.
