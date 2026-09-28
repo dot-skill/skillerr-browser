@@ -1120,6 +1120,21 @@ async function humanCheck(controller, tab) {
   togglePanel(true);
   win.focus();
   ui('human-check', { controller: controller.name, via: controller.via, tabId: tab.id, title: tab.view.webContents.getTitle() });
+  // If Skillerr isn't in front, make sure the user notices: a notification (once a minute per tab), a bouncing Dock
+  // icon on macOS, a flashing taskbar button on Windows. Clicking the notification opens that tab.
+  if (!win.isFocused() && Date.now() - (tab.checkNotifiedAt || 0) > 60000) {
+    tab.checkNotifiedAt = Date.now();
+    let host = '';
+    try { host = new URL(tab.view.webContents.getURL()).hostname.replace(/^www\./, ''); } catch {}
+    const { Notification } = require('electron');
+    if (Notification.isSupported()) {
+      const n = new Notification({ title: 'Your turn in Skillerr', body: `${host || 'A page'} wants to check you're human. ${controller.name} is waiting for you.`, silent: false });
+      n.on('click', () => { if (win.isMinimized()) win.restore(); win.focus(); if (getTab(tab.id)) switchTab(tab.id); });
+      n.show();
+    }
+    if (process.platform === 'darwin') app.dock?.bounce('critical');
+    else win.flashFrame(true);
+  }
   return true;
 }
 
@@ -1159,7 +1174,7 @@ async function execute(controller, name, args) {
 
   if (['click', 'type', 'press_key'].includes(name) && (CHECK_FRAME.test(info?.frameUrl || '') || CHECK_LABEL.test(info?.label || ''))) {
     await humanCheck(controller, tab);
-    throw new Error('That is a robot check. Only the user may complete it: Skillerr has asked them to. Wait, then take a new snapshot.');
+    throw new Error('That is a robot check. Only the user may complete it: Skillerr has asked them to. Carry on with your other tabs meanwhile, then come back to this one and take a new snapshot.');
   }
 
   // Sensitive actions always need a human, even with approval mode off. Enforced here, not by the prompt.
@@ -1198,7 +1213,7 @@ async function execute(controller, name, args) {
     if (opened.length) assignGroup(controller, opened);
     if ((name === 'navigate' && tab && before.wasStart) || name === 'fetch_page') assignGroup(controller, [tab.id]);
     if (['navigate', 'click', 'snapshot', 'new_tab', 'type', 'press_key'].includes(name) && (await humanCheck(controller, name === 'new_tab' ? activeTab() : tab))) {
-      result.text = `${result.text || ''}\n\nThis page is showing a robot check. Skillerr has asked the user to complete it. Don't try to solve or click it; wait for them, then take a new snapshot.`;
+      result.text = `${result.text || ''}\n\nThis page is showing a robot check. Skillerr has asked the user to complete it. Don't try to solve or click it. Carry on with your other tabs meanwhile, then come back to this one and take a new snapshot.`;
     }
     return result;
   } catch (err) {
@@ -2199,6 +2214,7 @@ app.whenReady().then(async () => {
   });
   win.contentView.addChildView(chrome);
   win.on('resize', layout);
+  win.on('focus', () => process.platform !== 'darwin' && win.flashFrame(false)); // stop the taskbar flash from a robot check
   win.on('closed', () => app.quit());
   wireIpc();
   buildMenu();
