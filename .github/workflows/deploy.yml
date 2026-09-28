@@ -54,7 +54,7 @@ jobs:
           else
             # A beta must sort above the current release: once v<base> is out, stage the next patch.
             core=${base%%-*}
-            if [ -n "$GH_TOKEN" ] && gh release view "v$core" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
+            if [ -n "$GH_TOKEN" ] && [ "$(gh release view "v$core" --repo "$RELEASES_REPO" --json isDraft --jq .isDraft 2>/dev/null)" = "false" ]; then
               core=$(echo "$core" | awk -F. '{print $1"."$2"."$3+1}')
             fi
             version="${core}-beta.${GITHUB_RUN_NUMBER}"; environment=staging
@@ -62,7 +62,7 @@ jobs:
           skip=false
           if [ -z "$GH_TOKEN" ]; then
             echo "::warning::RELEASES_TOKEN is not set, so nothing is deployed."; skip=true
-          elif gh release view "v$version" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
+          elif [ "$(gh release view "v$version" --repo "$RELEASES_REPO" --json isDraft --jq .isDraft 2>/dev/null)" = "false" ]; then
             echo "::notice::v$version is already released. Bump the version in package.json to ship a new one."; skip=true
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
