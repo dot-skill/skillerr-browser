@@ -164,6 +164,10 @@ See [docs/trails.md](docs/trails.md).
 - **Knows your work by meaning.** Pages join the right trail even in different words, "Ask Wenlo" on the Trails page
   finds "plane tickets to Japan" in a trail of Tokyo flights, and the start page says where you were and what's
   unfinished.
+- **Your tabs sort themselves** into named trail groups as you browse, and **the address bar finds anything by
+  meaning**: type "newborn feeding" and the tucked "How often to feed a newborn" comes back, scrolled where you were.
+- **Learns your words.** Every week (it asks first, or runs on its own when you're away), Wenlo retrains on your own
+  trails in under a second, on this computer, and keeps the result only if it files your pages better.
 - **Recall by meaning, out of the box.** No Ollama needed any more.
 - **It doesn't make things up.** Wenlo chooses from the facts of your own trails; it never generates text.
 - **Ours.** Distilled from an open model (Apache-2.0) with a closed-form fit anyone can rerun on a laptop. See

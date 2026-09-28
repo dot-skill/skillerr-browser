@@ -76,6 +76,23 @@ What was typed is never read or stored, only that something was.
   sleeping tabs (Settings → Sleep inactive tabs) keep their scroll position too.
 - Sites the user excluded are never tucked, since trails keep nothing from them.
 
+## Tabs sort themselves
+
+Open tabs of the same trail (two or more) show as one named, coloured group in the tab strip. When a page joins a
+trail, its tab moves next to the trail's other tabs, so browsing that jumps between topics still ends up sorted. Click a
+group to fold it, **Focus** (eye) to fold every other trail, **×** to put the trail's tabs away. Groups an AI opened for
+its research keep priority.
+
+## Find anything by meaning
+
+Typing in the address bar (or the start page's box) shows open tabs, tucked tabs and trail pages that match, by words
+(where words start) and by Wenlo's sense of meaning, above web search. ↑/↓ choose, ↵ opens: it switches to the tab, or
+brings a tucked or visited page back, scrolled where the user was. Typing an address skips it. See docs/wenlo.md.
+
+## Duplicates
+
+**Tidy tabs** also closes the older copies of a page that's open more than once; the copy used last stays.
+
 ## The trail shelf
 
 Tucked tabs don't disappear from where people look for them. At the start of the tab strip, each trail holding tucked

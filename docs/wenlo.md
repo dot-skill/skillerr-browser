@@ -20,6 +20,9 @@ nothing to install and nothing to download, and nothing leaves the computer.
 
 | Where | What Wenlo does |
 |---|---|
+| **Tabs sort themselves** | Open tabs of the same trail show as one named group in the tab strip, and a tab that joins a trail moves next to its trail's other tabs. Click folds a group, **Focus** folds the other trails, **×** puts the trail's tabs away. |
+| **Find anything by meaning** | Type what you remember in the address bar ("newborn feeding", "train from tokyo to kyoto"): open tabs, tucked tabs and trail pages appear above web search. ↵ switches to the tab, or brings a tucked or visited page back where you were. |
+| **Learns your words** | Weekly (by default it asks first), Wenlo retrains on your own trails so your jargon joins the right trail. Below. |
 | **Trails: filing pages** | A page joins a trail by meaning as well as by shared words. "hotels in japan for october" joins a trail of "cheap flights to tokyo". |
 | **Trails: search** | The Trails page search box is "Ask Wenlo": "plane tickets to Japan" finds the Tokyo flights trail. |
 | **Start page** | One line above the trail cards: the latest trail, where you stopped and what's unfinished, with **Continue**. |
@@ -49,6 +52,45 @@ The table is made by **distilling** a transformer (the *teacher*, `all-MiniLM-L6
 
 Wenlo's cosines are calibrated on held-back data (`src/wenlo/calibration.js`): sentence pairs people scored (STS-B dev)
 for recall, and pages against the centre of real threads of work for Trails.
+
+## Learning from your trails
+
+Pages you keep in one trail (clicked through, opened from each other, merged by hand) belong together, so Wenlo moves
+the vectors of the word pieces in your own pages toward the rest of each trail. It's the same kind of closed-form least
+squares as its distillation (`src/wenlo/train.js`):
+
+`minimise Σᵢ ‖ mean(E + Δ)[pieces of item i] − yᵢ ‖² + λ‖Δ‖²`,  `yᵢ` = the centre of the rest of item i's trail
+
+- **No teacher, no GPU:** plain JavaScript, conjugate gradients on all 256 dimensions at once, under a second for a
+  week of browsing.
+- **Only topic words move:** word pieces used in at most max(2, 20%) of your trails. Common words stay put, so
+  unrelated pages aren't pulled into your topics.
+- **It proves itself first:** a quarter of each trail is held back. The new vectors are kept only if they file
+  held-back items at least as well as now, and either file more of them right or tell trails apart more clearly
+  (margin +0.02). Otherwise nothing changes. Training always starts from the shipped model.
+- **Private and light:** runs in a worker thread capped at 192 MB; your trail texts live only there and are gone when
+  it ends. The result is a small file (`~/.skillerr/browser/wenlo/personal.bin`, 264 bytes per word piece learned: tens of KB for a busy week).
+  **Forget what Wenlo learned** deletes it. Recall re-makes its vectors when it changes.
+- **When:** `wenloLearn` = `suggest` (default: a card on the start page when due) | `auto` (when the computer has
+  been idle 2 minutes) | `off`; `wenloLearnEvery` = `daily` | `weekly` (default) | `monthly`. Due means that period
+  has passed and there are 20+ new pages. Trails → Settings has all of it, plus **Learn now**.
+
+Measured on the Trails threads (`scripts/wenlo/eval-trails.js`, trained on the tuning threads):
+
+| | Your topics (learned) | Other topics (not learned) |
+|---|---|---|
+| Before | F1 0.53 (precision 0.99, recall 0.36) | F1 0.71 (precision 0.95) |
+| After learning | **F1 0.95** (precision 0.94, recall 0.97) | F1 0.71 (precision 0.95), unchanged |
+
+On a week of jargon-heavy browsing (`scripts/wenlo/eval-personal.js`: ryokan, tokio, bassinet, Gateron, VTI), the
+following week's new pages that Trails joins by meaning go from 60% to 95%, with no wrong joins.
+
+## Light enough for 4 GB
+
+Wenlo is about 22 MB of memory, computes nothing on the graphics card, and only works when a page is filed or a
+search is typed (microseconds each). Learning is a short burst in a capped worker thread. Tidy and tucked tabs keep
+the number of loaded pages down, and sleeping tabs unload the rest; those matter far more on a 4 GB machine than
+Wenlo does.
 
 ## How good it is
 
@@ -85,6 +127,24 @@ In everyday browsing most pages also come with a tab or an opener, which Trails 
   than the current rule (first search, or first page title). Trails keep that rule; naming needs a small text generator.
 - **English.** The vocabulary is English (uncased). Other languages fall back to word matching in practice.
 
+## Where this stands
+
+Done, on `develop`:
+
+- The model: distilled table, tokenizer, calibration, runtime (`src/wenlo/`), build pipeline (`scripts/wenlo/`).
+- Trails matching and search by meaning; the start-page line; "Ask Wenlo"; recall by meaning without Ollama.
+- Weekly learning from the user's trails, with the proof-before-keep check, worker thread, schedule and settings.
+- Tabs sort themselves into trail groups; find anything by meaning from the address bar; Tidy closes duplicates.
+
+Next, in order of value:
+
+1. **A stronger teacher, distilled in CI.** Better base vectors lift everything at the same size and speed. The
+   pipeline takes any teacher; the strong small embedding models are on Hugging Face (reachable from GitHub Actions).
+2. **Learn from more than titles.** Research memory's keywords for pages the AI read, and the user's own
+   corrections (moving a page between trails, merging) as extra-strong signals.
+3. **Wenlo in the .skill protocol.** Export a trail as a signed .skill file; `my_trails` answers with one.
+4. **Naming trails** needs a small text generator. Phrase-picking was tried and read worse than the current rule.
+
 ## Code
 
 | File | Role |
@@ -93,8 +153,10 @@ In everyday browsing most pages also come with a tab or an opener, which Trails 
 | `src/wenlo/embed.js` | Loads the table, embeds texts, cosine and centroid |
 | `src/wenlo/index.js` | `Wenlo`: page–trail affinity, ranking trails for a question, answers from a trail's facts |
 | `src/wenlo/calibration.js` | Where Wenlo's cosines fall |
+| `src/wenlo/train.js`, `train-worker.js` | Learning from the user's trails; runs in a worker thread |
 | `src/embed.js` | Recall by meaning: Wenlo built in, or an endpoint |
 | `src/trails.js` | Uses Wenlo (`meaning`) when given, words otherwise |
 | `assets/wenlo/` | The model (`wenlo-embed.bin`, `vocab.txt`) and its provenance |
 | `scripts/wenlo/` | Building, calibrating, benchmarking and evaluating it |
-| `test/wenlo.test.js` | Tokenizer, model, meaning, answers, Trails grouping on held-out threads, recall |
+| `test/wenlo.test.js` | Tokenizer, model, meaning, answers, Trails grouping on held-out threads, recall, learning, the worker |
+| `scripts/wenlo/eval-trails.js`, `eval-personal.js`, `personal-data.js` | How well Wenlo groups threads of work, and what learning adds |
