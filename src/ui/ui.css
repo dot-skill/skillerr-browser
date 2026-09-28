@@ -343,6 +343,7 @@ pre { font: 11.5px/1.5 ui-monospace, Menlo, monospace; background: var(--surface
 .field input, .field select { display: block; width: 100%; margin-top: 5px; height: 34px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line-2);
   background: var(--surface); outline: none; font-weight: 400; font-size: 13px; }
 .field input:focus, .field select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent); }
+.field > .muted.small { display: block; margin-top: 2px; font-weight: 400; }
 .model-list { display: flex; flex-direction: column; gap: 6px; }
 .model-opt { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); text-align: left; }
 .model-opt:hover { border-color: var(--line-2); }

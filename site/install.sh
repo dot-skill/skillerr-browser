@@ -4,8 +4,8 @@
 #   curl -fsSL https://skillerr.com/install.sh | sh -s -- --prefer     # also make Skillerr your AI's browser
 # Options are passed to Skillerr's setup: --prefer, --dry-run, --claude-code, --claude-desktop, --cursor, --no-connect
 set -e
-VERSION="${SKILLERR_VERSION:-0.1.2}"
-BASE="${SKILLERR_RELEASE:-https://github.com/bharatdudeja13-cmd/skillerr-releases/releases/download/v$VERSION}"
+VERSION="${SKILLERR_VERSION:-0.1.3}"
+BASE="${SKILLERR_RELEASE:-https://github.com/dot-skill/skillerr-releases/releases/download/v$VERSION}"
 CONNECT=1
 for a in "$@"; do [ "$a" = "--no-connect" ] && CONNECT=0; done
 SETUP_ARGS=$(printf '%s ' "$@" | sed 's/--no-connect//g')

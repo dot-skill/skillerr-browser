@@ -6,7 +6,7 @@ const crypto = require('crypto');
 
 const PREFERRED_PORT = 47821;
 
-function startApiServer({ tools, onHello, onCall }) {
+function startApiServer({ tools, onHello, onCall, onPreview }) {
   const token = crypto.randomBytes(24).toString('hex');
 
   const server = http.createServer(async (req, res) => {
@@ -33,6 +33,10 @@ function startApiServer({ tools, onHello, onCall }) {
       if (req.method === 'POST' && req.url === '/hello') {
         onHello(body.client || 'Unknown AI');
         return send(200, { ok: true });
+      }
+      // Live preview for AI apps: frames and Pause / Take over. Not an AI action, so not logged or gated.
+      if (req.method === 'POST' && req.url === '/preview' && onPreview) {
+        return send(200, await onPreview(body.client || 'Unknown AI', body.op, body.args || {}));
       }
       if (req.method === 'POST' && req.url === '/call') {
         const result = await onCall(body.client || 'Unknown AI', body.name, body.args || {});

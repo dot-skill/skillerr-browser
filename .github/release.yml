@@ -1,0 +1,20 @@
+# Categories for GitHub's auto-generated release notes.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - duplicate
+      - invalid
+  categories:
+    - title: New
+      labels: [enhancement, feature]
+    - title: Fixes
+      labels: [bug, fix]
+    - title: Safety and security
+      labels: [security, safety]
+    - title: Docs
+      labels: [documentation, docs]
+    - title: Build and CI
+      labels: [ci, build, dependencies]
+    - title: Other changes
+      labels: ["*"]

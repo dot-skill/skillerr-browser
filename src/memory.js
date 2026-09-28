@@ -61,14 +61,29 @@ function entityOf(e) {
 }
 
 class Memory {
-  constructor(dir) {
+  // lazy: read the logs on first use instead of now, so the browser can start without waiting on a big memory.
+  constructor(dir, { lazy = false } = {}) {
     this.dir = dir;
-    this.nodes = new Map();
-    this.edges = new Map();
+    this._nodes = null;
+    this._edges = null;
     this.active = new Map(); // controller name → { id, last }
     this.sessionPages = new Map(); // session id → recent page ids (for co-visit links)
     this.ops = 0;
-    this.load();
+    if (!lazy) this.load();
+  }
+
+  get nodes() {
+    if (!this._nodes) this.load();
+    return this._nodes;
+  }
+
+  get edges() {
+    if (!this._edges) this.load();
+    return this._edges;
+  }
+
+  get loaded() {
+    return !!this._nodes;
   }
 
   // ---------- storage ----------
@@ -77,7 +92,10 @@ class Memory {
   }
 
   load() {
-    for (const [name, map] of [['nodes.jsonl', this.nodes], ['edges.jsonl', this.edges]]) {
+    if (this._nodes) return;
+    this._nodes = new Map();
+    this._edges = new Map();
+    for (const [name, map] of [['nodes.jsonl', this._nodes], ['edges.jsonl', this._edges]]) {
       let text = '';
       try {
         text = fs.readFileSync(this.pathOf(name), 'utf8');
@@ -334,9 +352,10 @@ class Memory {
   }
 
   // Past sessions, notes, skills and pages relevant to a new task, each with the path that connects it.
-  recall(query, { limit = 8, excludeSession } = {}) {
+  // semantic: optional Map of node id → embedding similarity (src/embed.js), for matches phrased differently.
+  recall(query, { limit = 8, excludeSession, semantic = null } = {}) {
     const q = [...new Set(tokens(query))];
-    if (!q.length) return [];
+    if (!q.length && !semantic?.size) return [];
     const all = [...this.nodes.values()].filter((n) => n.id !== excludeSession);
     const df = new Map();
     const docs = new Map();
@@ -359,6 +378,16 @@ class Memory {
       }
       if (s > 0) direct.set(n.id, { score: s / Math.sqrt(q.length), hits });
     }
+    // Meaning, not just shared words: a close embedding adds to (or creates) a direct match.
+    if (semantic) {
+      for (const [id, sim] of semantic) {
+        if (id === excludeSession || !this.nodes.has(id)) continue;
+        const boost = Math.max(0, 4 * (sim - 0.5));
+        const d = direct.get(id);
+        if (d) d.score += boost;
+        else if (boost > 0) direct.set(id, { score: boost, hits: [], similar: true });
+      }
+    }
     // Spread from what matched along the graph, so a topic or entity pulls in what it's about.
     const best = new Map();
     const offer = (node, score, why) => {
@@ -368,7 +397,7 @@ class Memory {
     };
     for (const [id, d] of direct) {
       const n = this.nodes.get(id);
-      offer(n, d.score, `matches ${d.hits.slice(0, 3).map((w) => `“${w}”`).join(', ')}`);
+      offer(n, d.score, d.hits.length ? `matches ${d.hits.slice(0, 3).map((w) => `“${w}”`).join(', ')}` : 'similar in meaning');
       for (const { edge, node } of this.neighbors(id)) {
         const via = n.type === 'topic' ? `topic ${n.name}` : n.type === 'entity' ? `${n.kind} ${n.name}` : `${n.type} “${this.label(n).slice(0, 50)}”`;
         const w = edge.type === 'co_visited' ? 0.5 : edge.type === 'links_to' ? 0.55 : 0.6; // co-visits/backlinks: related, but less than a direct tag

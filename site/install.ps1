@@ -2,8 +2,8 @@
 #   irm https://skillerr.com/install.ps1 | iex
 #   & ([scriptblock]::Create((irm https://skillerr.com/install.ps1))) --prefer     # also make Skillerr your AI's browser
 $ErrorActionPreference = 'Stop'
-$version = if ($env:SKILLERR_VERSION) { $env:SKILLERR_VERSION } else { '0.1.2' }
-$base = if ($env:SKILLERR_RELEASE) { $env:SKILLERR_RELEASE } else { "https://github.com/bharatdudeja13-cmd/skillerr-releases/releases/download/v$version" }
+$version = if ($env:SKILLERR_VERSION) { $env:SKILLERR_VERSION } else { '0.1.3' }
+$base = if ($env:SKILLERR_RELEASE) { $env:SKILLERR_RELEASE } else { "https://github.com/dot-skill/skillerr-releases/releases/download/v$version" }
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
 $file = "Skillerr-Setup-$version-$arch.exe"
 $tmp = Join-Path $env:TEMP $file

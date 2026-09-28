@@ -102,9 +102,10 @@ skillerr.on('popup-blocked', ({ host, url }) => {
 skillerr.on('update', (u) => {
   const chip = $('updateChip');
   chip.hidden = false;
-  chip.title = u.version ? `Skillerr ${u.version} is available${u.text ? `: ${u.text}` : ''}. Click to download.` : u.text;
-  chip.innerHTML = `<span class="dot"></span><span>${u.version ? 'Update' : esc(u.text.length > 32 ? u.text.slice(0, 31) + '…' : u.text)}</span>`;
-  chip.onclick = () => u.url && skillerr.send('update-open', u.url);
+  chip.title = u.restart ? `Skillerr ${u.version} is ready. Click to restart and update.`
+    : u.version ? `Skillerr ${u.version} is available${u.text ? `: ${u.text}` : ''}. Click to download.` : u.text;
+  chip.innerHTML = `<span class="dot"></span><span>${u.restart ? 'Restart to update' : u.version ? 'Update' : esc(u.text.length > 32 ? u.text.slice(0, 31) + '…' : u.text)}</span>`;
+  chip.onclick = () => (u.restart ? skillerr.send('update-restart') : u.url && skillerr.send('update-open', u.url));
   chip.append(btn(icon('x', 10), 'ghost icon-only', (e) => {
     e?.stopPropagation?.();
     skillerr.send('update-dismiss', u.id);
@@ -112,11 +113,16 @@ skillerr.on('update', (u) => {
   }));
 });
 
-// ----- passkeys (not available in early builds): point to the site's other sign-in route -----
-skillerr.on('passkey-help', ({ tabId }) => {
+// ----- passkeys: when one can't be used here, say why and point to the site's other sign-in route -----
+skillerr.on('passkey-help', ({ tabId, reason, platform }) => {
   const chip = $('passkeyChip');
   chip.hidden = false;
-  chip.innerHTML = `${icon('key', 12)}<span>Passkeys aren't supported in Skillerr yet</span>`;
+  const text = reason === 'failed' ? "That passkey isn't saved in Skillerr"
+    : platform === 'darwin' ? 'Passkeys need the signed Skillerr for Mac' : "Passkeys aren't available here yet";
+  chip.title = reason === 'failed'
+    ? 'Skillerr can use passkeys created in Skillerr (Touch ID or Windows Hello). Passkeys saved in iCloud Keychain or another browser stay there. Sign in another way, then add a passkey for Skillerr in your account settings.'
+    : 'Sign in another way, like a password or a code sent to your phone.';
+  chip.innerHTML = `${icon('key', 12)}<span>${esc(text)}</span>`;
   chip.append(btn('Use another way', 'ghost', () => {
     skillerr.send('passkey-other-way', tabId);
     chip.hidden = true;
@@ -202,6 +208,7 @@ skillerr.on('prefill-task', (text) => {
 
 // Search engine applies right away.
 $('searchEngine').onchange = () => saveSettings({ searchEngine: $('searchEngine').value });
+$('searchApi').onchange = () => ($('searchApiKeyRow').hidden = !$('searchApi').value);
 skillerr.on('close-sheets', () => closeSheets());
 $('installSkill').innerHTML = `${icon('plus', 14)}Install a skill…`;
 document.querySelector('#recPill .rec-stop').innerHTML = icon('stop', 11);
@@ -1048,10 +1055,15 @@ async function loadSettingsSheet({ setup } = {}) {
   $('proKey').value = s.proKey || '';
   $('requireApproval').checked = !!s.requireApproval;
   $('remember').checked = s.remember !== false;
+  $('semanticRecall').checked = s.semanticRecall !== false;
   $('shareSkills').checked = !!s.shareSkillsWithClaudeCode;
   $('sleepTabs').checked = s.sleepTabs !== false;
   $('updateChecks').checked = s.updateChecks !== false;
+  $('betaUpdates').checked = s.betaUpdates === true;
   $('searchEngine').value = s.searchEngine || 'google';
+  $('searchApi').value = s.searchApi || '';
+  $('searchApiKey').value = s.searchApiKey || '';
+  $('searchApiKeyRow').hidden = !$('searchApi').value;
   document.querySelectorAll('#themeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.t === (s.theme || 'system')));
   renderMemStats();
   loadImportBox();
@@ -1092,9 +1104,13 @@ $('saveSettings').onclick = async () => {
     pane,
     requireApproval: $('requireApproval').checked,
     remember: $('remember').checked,
+    semanticRecall: $('semanticRecall').checked,
     shareSkillsWithClaudeCode: $('shareSkills').checked,
     sleepTabs: $('sleepTabs').checked,
     updateChecks: $('updateChecks').checked,
+    betaUpdates: $('betaUpdates').checked,
+    searchApi: $('searchApi').value,
+    searchApiKey: $('searchApiKey').value.trim(),
     claudeModel: $('claudeModel').value,
     anthropicKey: $('claudeKey').value.trim(),
     otherPreset: $('otherPreset').value,

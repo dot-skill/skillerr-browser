@@ -17,15 +17,21 @@ const DEFAULTS = {
   baseUrl: '',
   requireApproval: false,
   remember: true, // research memory (src/memory.js)
+  semanticRecall: true, // recall by meaning with a local embedding model, when one is running (src/embed.js)
+  embedBaseUrl: '', // OpenAI-compatible embeddings endpoint; default Ollama on this computer
+  embedModel: '', // default nomic-embed-text
   deepResearch: false, // follow links from pages being researched
   deepDepth: 3,
   theme: 'system', // 'system' | 'light' | 'dark'
   onboarded: false, // first-launch welcome shown
   searchEngine: 'google', // 'google' (your country's) | 'duckduckgo' | 'bing'
+  searchApi: '', // '' (search the results page in a tab) | 'brave' | 'tavily' | 'exa'
+  searchApiKey: '',
   sitePermissions: {}, // origin → { permission: 'allow' | 'block' }
   popupsAllowed: {}, // host → true
   sleepTabs: true, // unload tabs nobody is using, to stay light
   updateChecks: true, // ask skillerr.com if there's a newer version (sends only the version and platform)
+  betaUpdates: false, // also take staging builds (prereleases from the develop branch)
   dismissedNotices: [], // update/notice ids the user closed
 };
 

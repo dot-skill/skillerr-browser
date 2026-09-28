@@ -143,7 +143,10 @@ function describeStep(e) {
     case 'record_start': return { icon: 'record', text: a.title ? `Recording “${trunc(a.title, 40)}”` : 'Starting a recording' };
     case 'caption': return { icon: 'captions', text: a.text ? `Caption: “${trunc(a.text, 48)}”` : 'Hiding the caption' };
     case 'record_stop': return { icon: 'film', text: 'Saving the recording' };
-    default: return { icon: 'sparkle', text: e.tool };
+    case 'show_tabs': return { icon: 'layers', text: (a.tab_ids || []).length ? `Showing ${a.tab_ids.length} tabs side by side` : 'Showing tabs side by side' };
+    case 'say': return { icon: 'sparkle', text: 'Posting an answer' };
+    case 'view_capture': return { icon: 'eye', text: 'Looking at what you shared' };
+    default: { const n = String(e.tool || '').replace(/_/g, ' '); return { icon: 'sparkle', text: n.charAt(0).toUpperCase() + n.slice(1) }; }
   }
 }
 

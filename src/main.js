@@ -1,17 +1,31 @@
+// SKILLERR_TRACE_STARTUP=1 prints how long each start-up step took (ms since the process started).
+const traceStartup = process.env.SKILLERR_TRACE_STARTUP ? (step) => process.stderr.write(`[startup] ${Math.round(performance.now())} ms ${step}\n`) : () => {};
+traceStartup('main.js running');
 const fs = require('fs');
 const path = require('path');
 const { app, BaseWindow, WebContentsView, ipcMain, Menu, clipboard, nativeTheme, dialog, shell } = require('electron');
-const { TOOLS, runTool, toUrl, setSearchTemplate, inspectTarget, restoreValue } = require('./tools');
+const { TOOLS, runTool, toUrl, setSearchTemplate, setSearchApi, inspectTarget, restoreValue } = require('./tools');
 const { startApiServer } = require('./api-server');
 const { Agent } = require('./agent');
 const connectors = require('./connect');
 const skills = require('./skills');
+const guard = require('./guard');
 const { Recorder } = require('./recorder');
 const store = require('./store');
 const { Memory, recallText, tokens } = require('./memory');
 const chrome_ = require('./chrome-import');
 
-const memory = new Memory(path.join(store.DIR, 'memory'));
+traceStartup('modules loaded');
+// Read on first use (or in the background once the window is up), never before the window: a big memory
+// (a Chrome history import is thousands of pages) would otherwise hold up every start.
+const memory = new Memory(path.join(store.DIR, 'memory'), { lazy: true });
+const { Embedder } = require('./embed');
+const embedder = new Embedder({
+  memory, dir: path.join(store.DIR, 'memory'),
+  getConfig: () => { const s = store.getSettings(); return { on: s.semanticRecall !== false && remembering(), baseUrl: s.embedBaseUrl, model: s.embedModel }; },
+});
+// Semantic matches for a recall; null (keyword-only) if no local embedding model answers in time.
+const similarTo = (q) => Promise.race([embedder.similar(q).catch(() => null), new Promise((r) => setTimeout(() => r(null), 3000))]);
 const remembering = () => store.getSettings().remember !== false;
 
 // The research session a controller is in; tells the panel when a new one starts (for "Don't remember").
@@ -44,14 +58,14 @@ async function capture(controller, name, args, tab, result, info) {
     if (name === 'read_tabs') {
       for (const part of String(result.text || '').split(/^## tab /m).slice(1)) {
         const id = Number(part.match(/^(\d+)/)?.[1]);
-        await rememberPage(controller, getTab(id), part.split('\n').slice(1).join('\n'));
+        await rememberPage(controller, getTab(id), guard.unwrap(part.split('\n').slice(1).join('\n')));
       }
     } else if (name === 'open_tabs') {
       const ids = [];
       for (const m of String(result.text || '').matchAll(/tab (\d+):/g)) ids.push(await rememberPage(controller, getTab(Number(m[1]))));
       memory.openedTogether(ids); // one cluster of attention
     } else if (name === 'read_page') {
-      await rememberPage(controller, tab, info?.sensitive ? '' : result.text);
+      await rememberPage(controller, tab, info?.sensitive ? '' : guard.unwrap(result.text || ''));
     } else if (['navigate', 'click', 'go_back', 'go_forward', 'new_tab', 'switch_tab', 'snapshot', 'type', 'press_key'].includes(name)) {
       await rememberPage(controller, name === 'new_tab' || name === 'switch_tab' ? activeTab() : tab);
     }
@@ -172,6 +186,76 @@ const pendingApprovals = new Map();
 function ui(channel, data) {
   if (chrome && !chrome.webContents.isDestroyed()) chrome.webContents.send(channel, data);
   if (hud && !hud.webContents.isDestroyed()) hud.webContents.send(channel, data);
+  if (channel === 'log' && data?.id) noteStep(data);
+}
+
+// ---------------- live preview for AI apps (MCP Apps: a view inside Claude Desktop's chat) ----------------
+// The view (mcp/preview/) polls previewFrame through the bridge: what the AI is doing right now, as thumbnails —
+// one tab, or the fleet when it works on several at once — plus Pause and Take over.
+const recentSteps = new Map(); // log entry id → latest state of that step
+function noteStep(e) {
+  recentSteps.set(e.id, { ...(recentSteps.get(e.id) || {}), ...e });
+  if (recentSteps.size > 40) recentSteps.delete(recentSteps.keys().next().value);
+}
+const previewViews = new Map(); // client → { viewId, createdAt } of its newest preview, the only one kept live
+
+async function thumb(tab, width) {
+  const wc = tab?.view?.webContents;
+  if (!wc || wc.isDestroyed() || tab.sleeping || tab.isStart) return null;
+  try {
+    const img = await wc.capturePage();
+    if (img.isEmpty()) return null;
+    const small = img.getSize().width > width ? img.resize({ width, quality: 'good' }) : img;
+    return 'data:image/jpeg;base64,' + small.toJPEG(62).toString('base64');
+  } catch {
+    return null;
+  }
+}
+
+async function previewFrame(client, { viewId = '', createdAt = 0 } = {}) {
+  const newest = previewViews.get(client);
+  if (!newest || createdAt >= newest.createdAt) previewViews.set(client, { viewId, createdAt });
+  const superseded = previewViews.get(client).viewId !== viewId;
+  const now = Date.now();
+  const recentAi = tabs.filter((t) => !t.isStart && t.aiUntil && now - (t.aiUntil - IDLE_AFTER_MS) < 30000)
+    .sort((a, b) => b.aiUntil - a.aiUntil);
+  // Fleet when the AI has tabs side by side, or has been working several tabs at once; otherwise its latest tab.
+  const fleetIds = mosaic?.length > 1 ? mosaic : recentAi.length > 1 ? recentAi.slice(0, 6).map((t) => t.id) : null;
+  const shown = fleetIds ? fleetIds.map(getTab).filter(Boolean) : [recentAi[0] || activeTab()].filter((t) => t && !t.isStart);
+  const width = fleetIds ? 360 : 720;
+  const tiles = superseded ? [] : await Promise.all(shown.map(async (t) => {
+    const wc = t.view.webContents;
+    const url = t.sleeping ? t.sleeping.url : wc.isDestroyed() ? '' : wc.getURL();
+    return { id: t.id, title: (t.sleeping ? t.sleeping.title : wc.getTitle()) || url, url, working: (t.aiUntil || 0) > now,
+      loading: !wc.isDestroyed() && wc.isLoading(), image: await thumb(t, width) };
+  }));
+  const steps = [...recentSteps.values()].filter((e) => !client || e.controller === client).slice(-4)
+    .map((e) => ({ id: e.id, tool: e.tool, args: e.args, target: e.target, state: e.state, reason: e.reason, summary: e.summary, ts: e.ts }));
+  return {
+    superseded, mode: fleetIds ? 'fleet' : 'single', tiles, steps,
+    controller: status.controller?.name || null, live: !!(status.active || status.agentRunning), paused: status.paused,
+    awaitingApproval: status.awaitingApproval, ts: now,
+  };
+}
+
+function previewAction(client, { action, tabId } = {}) {
+  if (action === 'pause') setPaused(true);
+  else if (action === 'resume') setPaused(false);
+  else if (action === 'focus' || action === 'takeover') {
+    if (action === 'takeover') setPaused(true); // Take over: the AI waits while the user drives
+    const t = tabId != null ? getTab(Number(tabId)) : null;
+    if (t) {
+      if (mosaic && !mosaic.includes(t.id)) exitMosaic();
+      if (!mosaic) switchTab(t.id);
+    }
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+      app.focus({ steal: true });
+    }
+  } else throw new Error(`Unknown preview action: ${action}`);
+  return { ok: true, paused: status.paused };
 }
 
 // ---------------- tabs ----------------
@@ -259,16 +343,17 @@ function attachView(tab) {
     return { action: 'deny' };
   });
   wc.on('context-menu', (_e, params) => showPageMenu(tab, params));
-  // Passkeys need an Apple-notarized browser entitlement, which early builds don't have: when a site asks for one,
-  // explain it and offer the site's other sign-in route instead of leaving the user stuck.
+  // Passkeys: when this build can't serve one (or the site wants one that isn't in Skillerr), say why and offer the
+  // site's other sign-in route instead of leaving the user stuck. See setupPasskeys.
   wc.on('dom-ready', () => {
     wc.executeJavaScript(PASSKEY_WATCH_JS).catch(() => {});
     if (mosaic?.includes(tab.id)) tileGuard(tab, true);
   });
-  wc.on('did-navigate', (_e, u) => /accounts\.google\.com\/.*\/challenge\/pk/.test(u || '') && passkeyHelp(tab));
+  wc.on('did-navigate', (_e, u) => passkeys === 'none' && /accounts\.google\.com\/.*\/challenge\/pk/.test(u || '') && passkeyHelp(tab));
   wc.on('console-message', (...a) => {
     const msg = typeof a[0] === 'object' && a[0]?.message !== undefined ? a[0].message : a[2];
-    if (msg === '__skillerr_passkey__') passkeyHelp(tab);
+    if (msg === '__skillerr_passkey__' && passkeys === 'none') passkeyHelp(tab, 'unsupported');
+    else if (msg === '__skillerr_passkey_failed__' && passkeys !== 'none') passkeyHelp(tab, 'failed');
   });
   wc.on('found-in-page', (_e, r) => ui('find-result', { active: r.activeMatchOrdinal, total: r.matches }));
   // The start page is drawn by the browser chrome; the first real navigation reveals the web view.
@@ -493,23 +578,56 @@ function grabWindowLive() {
 }
 
 // ---------- passkeys ----------
+// macOS: Touch ID passkeys stored in Skillerr's keychain group, for any site (app.configureWebAuthn). Needs a Developer ID
+// build with APPLE_TEAM_ID (docs/passkeys.md); iCloud Keychain passkeys saved by Safari or Chrome aren't reachable from an
+// Electron app for arbitrary sites. Windows: Chromium hands WebAuthn to Windows Hello, which brings its own UI.
+// Linux, or an unsigned Mac build: no platform authenticator, so offer the site's other sign-in route instead.
+let passkeys = 'none'; // 'touchid' | 'windows' | 'none'
+function setupPasskeys(ses) {
+  if (process.platform === 'win32') passkeys = 'windows';
+  const group = appMeta().skillerrKeychainGroup;
+  if (process.platform === 'darwin' && group && typeof app.configureWebAuthn === 'function') {
+    try {
+      app.configureWebAuthn({ touchID: { keychainAccessGroup: group, promptReason: 'sign in to $1' } });
+      passkeys = 'touchid';
+    } catch {}
+  }
+  // Several passkeys for one site: let the user pick, like Chrome's account chooser.
+  ses.on('select-webauthn-account', async (_e, details, callback) => {
+    let chosen;
+    try {
+      const names = details.accounts.map((a) => a.displayName || a.name || 'Passkey');
+      const { response } = await dialog.showMessageBox(win, {
+        type: 'question', message: `Sign in to ${details.relyingPartyId} with which passkey?`, buttons: [...names, 'Cancel'], cancelId: names.length,
+      });
+      chosen = details.accounts[response]?.credentialId;
+    } finally {
+      callback(chosen);
+    }
+  });
+}
 const PASSKEY_WATCH_JS = `(() => {
   if (window.__skPk || !navigator.credentials) return;
   window.__skPk = 1;
   const c = navigator.credentials;
   for (const k of ['get', 'create']) {
     const orig = c[k].bind(c);
-    c[k] = (o) => { if (o && o.publicKey) console.info('__skillerr_passkey__'); return orig(o); };
+    c[k] = (o) => {
+      if (!o || !o.publicKey) return orig(o);
+      console.info('__skillerr_passkey__');
+      return orig(o).catch((err) => { if (err && err.name === 'NotAllowedError') console.info('__skillerr_passkey_failed__'); throw err; });
+    };
   }
 })()`;
-function passkeyHelp(tab) {
-  if (tab.passkeyShownFor === tab.view.webContents.getURL()) return;
-  tab.passkeyShownFor = tab.view.webContents.getURL();
+// reason: 'unsupported' (no authenticator here) or 'failed' (the passkey the site wanted isn't in Skillerr).
+function passkeyHelp(tab, reason = 'unsupported') {
+  if (tab.passkeyShownFor === tab.view.webContents.getURL() + reason) return;
+  tab.passkeyShownFor = tab.view.webContents.getURL() + reason;
   let host = '';
   try {
     host = new URL(tab.view.webContents.getURL()).hostname;
   } catch {}
-  ui('passkey-help', { tabId: tab.id, host });
+  ui('passkey-help', { tabId: tab.id, host, reason, platform: process.platform });
 }
 
 // ---------- staying light: sleeping tabs ----------
@@ -588,6 +706,12 @@ const GOOGLE_DOMAINS = { IN: 'google.co.in', GB: 'google.co.uk', AU: 'google.com
   BR: 'google.com.br', ES: 'google.es', IT: 'google.it', NL: 'google.nl', MX: 'google.com.mx', SG: 'google.com.sg', AE: 'google.ae', ZA: 'google.co.za',
   NZ: 'google.co.nz', IE: 'google.ie', PK: 'google.com.pk', BD: 'google.com.bd', ID: 'google.co.id', KR: 'google.co.kr', SA: 'google.com.sa', TR: 'google.com.tr',
   RU: 'google.ru', PL: 'google.pl', SE: 'google.se', CH: 'google.ch', AT: 'google.at', BE: 'google.be', NG: 'google.com.ng', KE: 'google.co.ke', EG: 'google.com.eg' };
+// web_search through a search API (Brave, Tavily, Exa) when the user added a key; otherwise the results page.
+function applySearchApi() {
+  const s = store.getSettings();
+  setSearchApi({ provider: s.searchApi, key: String(s.searchApiKey || '').trim() });
+}
+
 function searchTemplateFor(engine = store.getSettings().searchEngine) {
   if (engine === 'duckduckgo') return 'https://duckduckgo.com/?q=%s';
   if (engine === 'bing') return 'https://www.bing.com/search?q=%s';
@@ -663,7 +787,8 @@ function showPageMenu(tab, p) {
 const ASK = { media: 'use your camera or microphone', geolocation: 'know your location', notifications: 'show notifications', midi: 'use MIDI devices',
   midiSysex: 'use MIDI devices', 'clipboard-read': 'read your clipboard', 'display-capture': 'share your screen', idleDetection: 'know when you are idle',
   hid: 'use HID devices', serial: 'use serial ports', usb: 'use USB devices' };
-const ALWAYS = new Set(['fullscreen', 'clipboard-sanitized-write', 'pointerLock', 'keyboardLock', 'window-management']);
+// Harmless ones are granted without asking, as Chrome does. A prompt nobody answers would stall the page (and an AI driving it).
+const ALWAYS = new Set(['fullscreen', 'screen-wake-lock', 'clipboard-sanitized-write', 'pointerLock', 'keyboardLock', 'window-management']);
 function wirePermissions(ses) {
   const fromUs = (wc) => wc && ((chrome && wc === chrome.webContents) || (hud && wc === hud.webContents) || (captionView && wc === captionView.webContents));
   const originOf = (u) => {
@@ -673,12 +798,22 @@ function wirePermissions(ses) {
       return '';
     }
   };
+  // Recording a tab starts the capture from that tab, so Chromium reports it as the site asking for "media".
+  // It's Skillerr's own capture (no camera or mic is opened): allow it once, just as a recording starts, for that tab only.
+  const ourCapture = (wc, permission) => {
+    const rec = recorder?.rec;
+    return permission === 'media' && rec && !rec.captureGranted && rec.tab?.view?.webContents === wc && Date.now() - rec.startedAt < 10000;
+  };
   ses.setPermissionCheckHandler((wc, permission, origin) => {
-    if (fromUs(wc) || ALWAYS.has(permission)) return true;
+    if (fromUs(wc) || ALWAYS.has(permission) || ourCapture(wc, permission)) return true;
     return store.getSettings().sitePermissions?.[originOf(origin)]?.[permission] === 'allow';
   });
   ses.setPermissionRequestHandler(async (wc, permission, callback, details) => {
     if (fromUs(wc) || ALWAYS.has(permission)) return callback(true); // Skillerr's own UI (e.g. the recorder)
+    if (ourCapture(wc, permission)) {
+      recorder.rec.captureGranted = true;
+      return callback(true);
+    }
     const origin = originOf(details.requestingUrl || wc?.getURL() || '');
     const saved = store.getSettings().sitePermissions?.[origin]?.[permission];
     if (saved) return callback(saved === 'allow');
@@ -990,6 +1125,18 @@ async function humanCheck(controller, tab) {
 
 const blocked = (controller) => controller.via === 'mcp' && (store.getSettings().blockedClients || []).includes(controller.name);
 
+// ---------- pages that try to instruct the AI ----------
+// tools.js strips hidden text, fences page text as untrusted and redacts lines aimed at an AI (src/guard.js).
+// When that happens, Skillerr tells the user. Approvals don't change: in auto mode only sensitive actions ask,
+// in manual mode ("Ask before every action") everything does.
+function flagInjection(controller, p) {
+  const t = p.tabId != null ? getTab(p.tabId) : null;
+  const flag = { host: p.host || 'A page', reasons: p.reasons || [], excerpt: String(p.excerpt || '').slice(0, 160), at: Date.now() };
+  if (t) t.injection = flag;
+  ui('say', { controller: 'Skillerr', text: `⚠ **${flag.host}** contained text aimed at an AI${flag.excerpt ? ` (“${flag.excerpt}”)` : ''}. ` +
+    `Skillerr removed it before ${controller.name} read the page. Payments, passwords, sign-ins and deletions still wait for your OK.` });
+}
+
 async function execute(controller, name, args) {
   if (!TOOLS.some((t) => t.name === name)) throw new Error(`Unknown tool: ${name}`);
   if (blocked(controller)) throw new Error(`The user has turned off ${controller.name} in Skillerr, so it can't use the browser. Ask them to turn it back on in Skillerr → Connected AI apps.`);
@@ -1019,7 +1166,8 @@ async function execute(controller, name, args) {
   // A learned skill steers every future task, so a page can't be allowed to plant one unseen.
   if (name === 'save_skill') entry.target = String(args.name || '');
   const reason = name === 'save_skill' ? `Skills change how AIs work on future tasks. “${trunc(args.description, 140)}”`
-    : info?.sensitive ? `This looks like ${info.sensitive}.` : status.requireApproval && !READ_ONLY.has(name) ? null : undefined;
+    : info?.sensitive ? `This looks like ${info.sensitive}.`
+    : status.requireApproval && !READ_ONLY.has(name) ? null : undefined;
   if (reason !== undefined) {
     const ok = await requestApproval(entry, reason);
     if (!ok) {
@@ -1042,6 +1190,7 @@ async function execute(controller, name, args) {
   try {
     const result = name === 'dispatch' ? await dispatch(controller, args) : name === 'deep_research' ? await deepResearch(controller, args) : BROWSER_TOOLS[name] ? await BROWSER_TOOLS[name](args, controller) : await runTool(browser, name, args);
     ui('log', { ...entry, state: 'ok', ts: Date.now() });
+    if (result?.injection) for (const p of result.injection.pages || [result.injection]) flagInjection(controller, p);
     captureUndo(entry, name, args, tab, before, info);
     capture(controller, name, args, tab, result, info);
     // Group what this AI opened (and a fresh tab it started working in) under its current research task.
@@ -1091,7 +1240,7 @@ const BROWSER_TOOLS = {
   },
   recall: async (args, controller) => {
     const sid = remembering() ? memSession(controller, { goal: args.query }) : null;
-    const items = memory.recall(String(args.query || ''), { excludeSession: sid });
+    const items = memory.recall(String(args.query || ''), { excludeSession: sid, semantic: await similarTo(String(args.query || '')) });
     ui('recall', { controller: controller.name, via: controller.via, query: args.query, items });
     const deep = deepSettings();
     return { text: recallText(items, memory.topics()) + (deep.on ? `\n\nDeep research mode is on (depth ${deep.depth}): for this research, use deep_research to read the relevant pages and follow their links, then answer with sources.` : '') };
@@ -1282,7 +1431,7 @@ async function deepResearch(controller, args) {
         const t = getTab(id);
         if (!t) continue;
         const wc = t.view.webContents;
-        report.push({ level, title: wc.getTitle(), url: wc.getURL(), from: chunk[j]?.from, text: passages(texts.get(id), q) });
+        report.push({ level, title: guard.cleanShort(wc.getTitle()).text, url: wc.getURL(), from: chunk[j]?.from, text: passages(guard.unwrap(texts.get(id) || ''), q) });
         if (chunk[j]?.fromUrl && remembering()) memory.linksTo(chunk[j].fromUrl, [wc.getURL()]); // the link we followed
         if (level < depth) {
           const links = await wc.executeJavaScript(LINKS_JS).catch(() => []);
@@ -1310,7 +1459,7 @@ async function deepResearch(controller, args) {
     }
     frontier = next;
   }
-  const byLevel = report.map((r) => `### ${r.level === 0 ? 'Start' : `Hop ${r.level}`}: ${r.title}\n${r.url}${r.from ? `\n(followed from “${r.from}”)` : ''}\n${r.text}`);
+  const byLevel = report.map((r) => `### ${r.level === 0 ? 'Start' : `Hop ${r.level}`}: ${r.title}\n${r.url}${r.from ? `\n(followed from “${r.from}”)` : ''}\n${guard.wrap(guard.hostOf(r.url), r.text)}`);
   return { text: `Deep research on “${args.query}”: read ${report.length} pages, up to ${depth} link-hop${depth === 1 ? '' : 's'} away.\n\n${byLevel.join('\n\n')}`.slice(0, 40000) };
 }
 
@@ -1451,6 +1600,7 @@ function wireIpc() {
     }
   });
   ipcMain.on('update-open', (_e, url) => trustedUpdateUrl(url) && shell.openExternal(url));
+  ipcMain.on('update-restart', () => { const u = autoUpdater(); if (u) u.quitAndInstall(); });
   ipcMain.on('update-dismiss', (_e, id) => {
     const s = store.getSettings();
     store.saveSettings({ ...s, dismissedNotices: [...new Set([...(s.dismissedNotices || []), String(id)])].slice(-50) });
@@ -1619,7 +1769,7 @@ function wireIpc() {
     shell.openPath(RESEARCH_DIR);
     return RESEARCH_DIR;
   });
-  ipcMain.handle('mem-recall', (_e, q) => memory.recall(String(q || ''), { limit: 12 }));
+  ipcMain.handle('mem-recall', async (_e, q) => memory.recall(String(q || ''), { limit: 12, semantic: await similarTo(String(q || '')) }));
   ipcMain.handle('mem-graph', (_e, { pages = false } = {}) => memory.graph({ pages }));
   ipcMain.handle('mem-forget-node', (_e, id) => {
     const n = memory.nodes.get(String(id));
@@ -1692,6 +1842,7 @@ function wireIpc() {
   ipcMain.handle('mem-forget-session', (_e, id) => memory.forgetSession(String(id)));
   ipcMain.handle('mem-forget-all', () => {
     memory.forgetAll();
+    embedder.forgetAll();
     return memory.stats();
   });
   ipcMain.on('agent-run', (_e, task) => {
@@ -1707,6 +1858,7 @@ function wireIpc() {
     if (s.shareSkillsWithClaudeCode === true) skills.shareWithClaudeCode();
     if (s.theme) applyTheme(s.theme);
     if (s.searchEngine) setSearchTemplate(searchTemplateFor(s.searchEngine));
+    if ('searchApi' in s || 'searchApiKey' in s) applySearchApi();
     status.requireApproval = !!store.getSettings().requireApproval;
     pushStatus();
     return store.getSettings();
@@ -1787,6 +1939,7 @@ function wireIpc() {
     else shell.openPath(p);
   });
   ipcMain.on('ui-ready', () => {
+    traceStartup('browser UI interactive');
     pushTabs();
     pushStatus();
     ui('panel', panelOpen);
@@ -1804,9 +1957,54 @@ const isNewer = (a, b) => {
   return false;
 };
 const trustedUpdateUrl = (u) => { try { return /(^|\.)(skillerr\.com|github\.com)$/.test(new URL(u).hostname) && u.startsWith('https://'); } catch { return false; } };
+// In-place updates (electron-updater, from the releases repo) where the OS will accept them: Windows, the Linux
+// AppImage, and macOS builds signed with a Developer ID (Squirrel.Mac refuses ad-hoc signatures). Elsewhere the
+// notice above points to the download.
+// The packaged app's package.json carries build facts (scripts/build.mjs): signed, passkey keychain group.
+function appMeta() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+const signedBuild = () => appMeta().skillerrSigned === true;
+let updater = null;
+function autoUpdater() {
+  if (updater !== null) return updater;
+  updater = false;
+  if (!app.isPackaged || process.env.SKILLERR_NO_AUTOUPDATE) return updater;
+  if (process.platform === 'linux' ? !process.env.APPIMAGE : process.platform === 'darwin' ? !signedBuild() : process.platform !== 'win32') return updater;
+  try {
+    updater = require('electron-updater').autoUpdater;
+    updater.autoDownload = true;
+    updater.autoInstallOnAppQuit = true;
+    updater.logger = null;
+    updater.on('update-downloaded', (info) => {
+      const id = `v${info.version}`;
+      if (!(store.getSettings().dismissedNotices || []).includes(id)) ui('update', { id, version: info.version, text: 'Restart Skillerr to finish updating.', restart: true });
+    });
+    updater.on('error', () => {}); // offline or no release yet; the next check tries again
+  } catch {
+    updater = false;
+  }
+  return updater;
+}
+
 async function checkForUpdates(manual = false) {
   if (!manual && store.getSettings().updateChecks === false) return;
   const version = app.getVersion();
+  const auto = autoUpdater();
+  let autoFound = null, autoOk = false;
+  if (auto) {
+    // Staging builds (develop → "beta" prereleases on the releases repo) only reach people who opted in, and beta builds.
+    auto.allowPrerelease = store.getSettings().betaUpdates === true || /-beta\./.test(version);
+    try {
+      const r = await auto.checkForUpdates();
+      autoOk = !!r;
+      autoFound = r?.updateInfo?.version && isNewer(r.updateInfo.version, version) ? r.updateInfo.version : null;
+    } catch {}
+  }
   let d = null;
   try {
     const q = new URLSearchParams({ v: version, os: process.platform, arch: process.arch });
@@ -1814,15 +2012,18 @@ async function checkForUpdates(manual = false) {
     if (r.ok) d = await r.json();
   } catch {}
   const seen = manual ? [] : store.getSettings().dismissedNotices || [];
-  const update = d?.latest && isNewer(d.latest, version) && trustedUpdateUrl(d.url) && !seen.includes(`v${d.latest}`)
+  // With in-place updates the chip appears once the download is ready (update-downloaded), not as a link.
+  const update = !auto && d?.latest && isNewer(d.latest, version) && trustedUpdateUrl(d.url) && !seen.includes(`v${d.latest}`)
     ? { id: `v${d.latest}`, version: d.latest, text: String(d.notes || '').slice(0, 200), url: d.url } : null;
   const m = d?.message;
   const notice = m?.id && m.text && !seen.includes(m.id) && (!m.below || isNewer(m.below, version)) && (!m.url || trustedUpdateUrl(m.url))
     ? { id: String(m.id), text: String(m.text).slice(0, 200), url: m.url || '' } : null;
   const show = update || notice;
   if (show) ui('update', show);
-  if (manual && !update) {
-    dialog.showMessageBox(win, { type: 'info', message: d ? `Skillerr ${version} is the latest version.` : "Couldn't reach skillerr.com to check for updates.", buttons: ['OK'] });
+  if (manual && autoFound) {
+    dialog.showMessageBox(win, { type: 'info', message: `Skillerr ${autoFound} is downloading.`, detail: "You'll be asked to restart when it's ready.", buttons: ['OK'] });
+  } else if (manual && !update) {
+    dialog.showMessageBox(win, { type: 'info', message: d || autoOk ? `Skillerr ${version} is the latest version.` : "Couldn't reach skillerr.com to check for updates.", buttons: ['OK'] });
   }
 }
 
@@ -1908,6 +2109,40 @@ function buildMenu() {
 
 const chromeBg = () => (nativeTheme.shouldUseDarkColors ? '#0c0c10' : '#e9ebef');
 
+// The floating AI status bar over the page ("Claude is driving", approvals, Take over). Loaded after the first tab so it
+// never holds up start-up; once loaded it's sent the current state, including approvals already waiting.
+function createStatusBar() {
+  hud = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true } });
+  hud.setBackgroundColor('#00000000');
+  hud.setVisible(false);
+  hud.webContents.on('will-navigate', (e) => e.preventDefault());
+  hud.webContents.once('did-finish-load', () => {
+    hud.webContents.send('status', { ...status });
+    for (const id of pendingApprovals.keys()) if (recentSteps.has(id)) hud.webContents.send('log', recentSteps.get(id));
+    pushStatus();
+    traceStartup('status bar loaded');
+  });
+  hud.webContents.loadFile(path.join(__dirname, 'ui', 'hud.html'));
+  win.contentView.addChildView(hud);
+  if (captionView) win.contentView.addChildView(captionView); // captions stay on top
+  layout();
+}
+
+// Recording captions: a layer created the first time a recording shows one, not at start-up.
+let captionLoading = null;
+function captionLayer() {
+  if (!captionLoading) {
+    captionView = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true } });
+    captionView.setBackgroundColor('#00000000');
+    captionView.setVisible(false);
+    captionView.webContents.on('will-navigate', (e) => e.preventDefault());
+    win.contentView.addChildView(captionView);
+    layout();
+    captionLoading = captionView.webContents.loadFile(path.join(__dirname, 'ui', 'caption.html')).then(() => captionView);
+  }
+  return captionLoading;
+}
+
 // Opened from the installer window or Downloads? Offer to move into Applications, so connections keep working.
 function offerMoveToApplications() {
   if (!app.isPackaged || process.platform !== 'darwin' || app.isInApplicationsFolder()) return false;
@@ -1929,10 +2164,13 @@ function offerMoveToApplications() {
 }
 
 app.whenReady().then(async () => {
+  traceStartup('app ready');
   if (offerMoveToApplications()) return;
   applyTheme();
   setSearchTemplate(searchTemplateFor());
+  applySearchApi();
   wirePermissions(require('electron').session.defaultSession);
+  setupPasskeys(require('electron').session.defaultSession);
   if (process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, '..', 'assets', 'icon.png'));
   win = new BaseWindow({
     width: 1440,
@@ -1964,34 +2202,46 @@ app.whenReady().then(async () => {
   win.on('closed', () => app.quit());
   wireIpc();
   buildMenu();
+  setTimeout(() => embedder.index(), 20000); // semantic recall: embed what's new, if a local model is running
+  setInterval(() => embedder.index(), 10 * 60 * 1000);
   setTimeout(checkForUpdates, 15000); // after start-up settles, then twice a day
   setInterval(checkForUpdates, 12 * 3600 * 1000);
   layout();
+  traceStartup('window created');
+  // AI apps can connect while the UI is still loading: the local API starts now, and calls wait until the browser is ready.
+  let markReady;
+  const ready = new Promise((resolve) => (markReady = resolve));
+  const apiStarting = startApiServer({
+    tools: TOOLS,
+    onPreview: async (client, op, args) => {
+      await ready;
+      return op === 'action' ? previewAction(client, args) : previewFrame(client, args);
+    },
+    onHello: (client) => ready.then(() => markActive({ name: client, via: 'mcp' })),
+    onCall: async (client, name, args) => {
+      await ready;
+      const r = await execute({ name: client, via: 'mcp' }, name, args);
+      return { text: r.text, image: r.image };
+    },
+  }).then((api) => {
+    store.writeSession({ port: api.port, token: api.token, pid: process.pid });
+    traceStartup('local API ready (AI apps can connect)');
+  });
+
   await chrome.webContents.loadFile(path.join(__dirname, 'ui', 'index.html'));
+  traceStartup('browser UI loaded');
   chrome.webContents.focus();
-
-  hud = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true } });
-  hud.setBackgroundColor('#00000000');
-  hud.setVisible(false);
-  hud.webContents.on('will-navigate', (e) => e.preventDefault());
-  await hud.webContents.loadFile(path.join(__dirname, 'ui', 'hud.html'));
-  win.contentView.addChildView(hud);
-
-  captionView = new WebContentsView({ webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true } });
-  captionView.setBackgroundColor('#00000000');
-  captionView.setVisible(false);
-  captionView.webContents.on('will-navigate', (e) => e.preventDefault());
-  await captionView.webContents.loadFile(path.join(__dirname, 'ui', 'caption.html'));
-  win.contentView.addChildView(captionView);
-  layout();
 
   recorder = new Recorder({
     ui,
     chromeWc: chrome.webContents,
     windowSource: () => ({ sourceId: win.getMediaSourceId(), size: win.getContentSize() }),
     showCaption: (text) => {
-      captionView.setVisible(!!text);
-      captionView.webContents.send('caption', text);
+      if (!text && !captionView) return;
+      captionLayer().then((view) => {
+        view.setVisible(!!text);
+        view.webContents.send('caption', text);
+      });
     },
     onChange: () => {
       status.recording = recorder.info();
@@ -2000,16 +2250,15 @@ app.whenReady().then(async () => {
   });
 
   newTab();
-
-  const api = await startApiServer({
-    tools: TOOLS,
-    onHello: (client) => markActive({ name: client, via: 'mcp' }),
-    onCall: async (client, name, args) => {
-      const r = await execute({ name: client, via: 'mcp' }, name, args);
-      return { text: r.text, image: r.image };
-    },
-  });
-  store.writeSession({ port: api.port, token: api.token, pid: process.pid });
+  traceStartup('first tab open');
+  markReady();
+  createStatusBar(); // not awaited: it only matters once an AI connects, and catches up on the state when loaded
+  await apiStarting;
+  // Warm research memory and the embedding index in the background, after the window is usable.
+  setTimeout(() => {
+    memory.load();
+    traceStartup(`research memory loaded (${memory.nodes.size} nodes)`);
+  }, 250);
   const coldLink = process.argv.find((a) => a.startsWith('skillerr://'));
   if (coldLink) handleDeepLink(coldLink);
 });

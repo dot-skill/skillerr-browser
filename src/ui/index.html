@@ -314,6 +314,15 @@
         <div class="theme-row"><b>Appearance</b>
           <div class="seg small-seg" id="themeSeg"><button type="button" data-t="system">System</button><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button></div>
         </div>
+        <label class="field">Search API <span class="muted small">Optional. Your AI's searches go to this provider instead of a search results page, so they don't hit robot checks. Results still open in a tab.</span>
+          <select id="searchApi">
+            <option value="">None (search in a tab)</option>
+            <option value="brave">Brave Search</option>
+            <option value="tavily">Tavily</option>
+            <option value="exa">Exa</option>
+          </select>
+        </label>
+        <label class="field" id="searchApiKeyRow">Search API key <input id="searchApiKey" type="password" spellcheck="false" /></label>
         <label class="switch-row">
           <div><b>Ask before every action</b><span>Payments, passwords and deletions always ask, even when this is off.</span></div>
           <input type="checkbox" id="requireApproval" /><span class="switch"></span>
@@ -323,12 +332,20 @@
           <input type="checkbox" id="remember" /><span class="switch"></span>
         </label>
         <label class="switch-row">
+          <div><b>Recall by meaning</b><span>Finds past research even when it was worded differently, using a local embedding model (run <code>ollama pull nomic-embed-text</code>). Stays on this computer; without it, recall matches words.</span></div>
+          <input type="checkbox" id="semanticRecall" /><span class="switch"></span>
+        </label>
+        <label class="switch-row">
           <div><b>Sleep inactive tabs</b><span>Keeps Skillerr light: tabs you and your AI aren't using unload after a few minutes and wake instantly when you come back. What your AI read stays in research memory.</span></div>
           <input type="checkbox" id="sleepTabs" /><span class="switch"></span>
         </label>
         <label class="switch-row">
-          <div><b>Check for updates</b><span>Twice a day Skillerr asks skillerr.com if there's a newer version. It sends only its version and your platform.</span></div>
+          <div><b>Check for updates</b><span>Twice a day Skillerr asks skillerr.com and its GitHub releases if there's a newer version, and on Windows, Linux and signed Mac builds downloads it for you. It sends only its version and your platform.</span></div>
           <input type="checkbox" id="updateChecks" /><span class="switch"></span>
+        </label>
+        <label class="switch-row">
+          <div><b>Beta updates</b><span>Also get staging builds, with the newest changes before everyone else. They may be less stable.</span></div>
+          <input type="checkbox" id="betaUpdates" /><span class="switch"></span>
         </label>
         <label class="switch-row">
           <div><b>Share skills with Claude Code</b><span>Skills Skillerr learns or installs also appear in Claude Code (~/.claude/skills), so your AI keeps them outside the browser too.</span></div>

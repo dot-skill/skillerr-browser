@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Skillerr live view</title>
+<style>/*CSS*/</style>
+</head>
+<body>
+<main id="root" class="state-connecting" aria-live="polite">
+  <header class="bar">
+    <span class="mark" aria-hidden="true"></span>
+    <div class="who"><b id="who">Skillerr</b><span id="state" class="pill">Connecting…</span></div>
+    <div class="actions">
+      <button type="button" id="pause" hidden></button>
+      <button type="button" id="takeover" class="primary" hidden>Take over</button>
+      <button type="button" id="pip" class="icon" title="Pop out" aria-label="Pop out" hidden></button>
+      <button type="button" id="full" class="icon" title="Expand" aria-label="Expand" hidden></button>
+    </div>
+  </header>
+  <section id="stage" class="stage"></section>
+  <ol id="steps" class="steps"></ol>
+  <p id="note" class="note" hidden></p>
+</main>
+<script>/*SHARED*/</script>
+<script>/*VIEW*/</script>
+</body>
+</html>

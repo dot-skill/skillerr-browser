@@ -1,0 +1,162 @@
+# Deploys Skillerr from branches:
+#   main     → production: a published, "latest" release on the releases repo. Every installed Skillerr updates to it
+#              (Windows, Linux AppImage and signed Mac builds in place; others get the download notice).
+#              Runs only when package.json's version hasn't been released yet, so bumping the version is what ships.
+#   develop  → staging: a prerelease "<version>-beta.<run>" that only people with Settings → Beta updates receive.
+# Pull requests are covered by ci.yml. Every build runs the tests first; installers upload to a draft release that is
+# published only after every platform succeeded, so no one ever sees a half-uploaded release.
+#
+# Secrets (set them on the "production" and "staging" environments, or on the repo):
+#   RELEASES_TOKEN            required. Fine-grained token with Contents: read/write on dot-skill/skillerr-releases.
+#   MAC_CSC_LINK, MAC_CSC_KEY_PASSWORD                    optional. Developer ID Application certificate (.p12, base64).
+#   APPLE_API_KEY_P8, APPLE_API_KEY_ID, APPLE_API_ISSUER  optional. App Store Connect API key, to notarize.
+#   APPLE_TEAM_ID, MAC_PROVISIONING_PROFILE_B64           optional. Touch ID passkeys (docs/passkeys.md).
+#   WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD                    optional. Windows code-signing certificate (.pfx, base64).
+name: Deploy
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASES_REPO: dot-skill/skillerr-releases
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      environment: ${{ steps.plan.outputs.environment }}
+      skip: ${{ steps.plan.outputs.skip }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Work out version and environment
+        id: plan
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          base=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" = "main" ]; then
+            version=$base; environment=production
+          else
+            # A beta must sort above the current release: once v<base> is out, stage the next patch.
+            core=${base%%-*}
+            if [ -n "$GH_TOKEN" ] && gh release view "v$core" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
+              core=$(echo "$core" | awk -F. '{print $1"."$2"."$3+1}')
+            fi
+            version="${core}-beta.${GITHUB_RUN_NUMBER}"; environment=staging
+          fi
+          skip=false
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::RELEASES_TOKEN is not set, so nothing is deployed."; skip=true
+          elif gh release view "v$version" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
+            echo "::notice::v$version is already released. Bump the version in package.json to ship a new one."; skip=true
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "environment=$environment" >> "$GITHUB_OUTPUT"
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          echo "### ${environment}: v${version} $([ $skip = true ] && echo '(skipped)')" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.skip != 'true'
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    environment: ${{ needs.plan.outputs.environment }}
+    env:
+      HAS_NOTARY_KEY: ${{ secrets.APPLE_API_KEY_P8 != '' }}
+      HAS_PROFILE: ${{ secrets.MAC_PROVISIONING_PROFILE_B64 != '' }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { name: macOS, os: macos-latest, args: '--mac dmg zip --arm64 --x64' }
+          - { name: Windows, os: windows-latest, args: '--win nsis --x64 --arm64' }
+          - { name: Linux, os: ubuntu-latest, args: '--linux AppImage --x64 --arm64' }
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Set version
+        shell: bash
+        run: npm version "${{ needs.plan.outputs.version }}" --no-git-tag-version --allow-same-version
+      - name: Install dependencies
+        run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Notarization key
+        if: runner.os == 'macOS' && env.HAS_NOTARY_KEY == 'true'
+        shell: bash
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/apple-api-key.p8"
+          echo "APPLE_API_KEY=$RUNNER_TEMP/apple-api-key.p8" >> "$GITHUB_ENV"
+      - name: Provisioning profile
+        if: runner.os == 'macOS' && env.HAS_PROFILE == 'true'
+        shell: bash
+        env:
+          PROFILE_B64: ${{ secrets.MAC_PROVISIONING_PROFILE_B64 }}
+        run: |
+          printf '%s' "$PROFILE_B64" | base64 --decode > "$RUNNER_TEMP/skillerr.provisionprofile"
+          echo "MAC_PROVISIONING_PROFILE=$RUNNER_TEMP/skillerr.provisionprofile" >> "$GITHUB_ENV"
+      - name: Build and upload (draft)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          RELEASE_TYPE: draft
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WIN_CSC_LINK: ${{ runner.os == 'Windows' && secrets.WIN_CSC_LINK || '' }}
+          WIN_CSC_KEY_PASSWORD: ${{ runner.os == 'Windows' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK != '' }}
+        run: |
+          [ -n "$CSC_LINK" ] || unset CSC_LINK CSC_KEY_PASSWORD
+          [ -n "$WIN_CSC_LINK" ] || unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+          [ -n "$APPLE_TEAM_ID" ] || unset APPLE_TEAM_ID
+          npm run build
+          npx electron-builder --config electron-builder.config.cjs ${{ matrix.args }} --publish always
+
+  publish:
+    name: Publish
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: ${{ needs.plan.outputs.environment }}
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          ENVIRONMENT: ${{ needs.plan.outputs.environment }}
+        run: |
+          if [ "$ENVIRONMENT" = production ]; then
+            gh release edit "v$VERSION" --repo "$RELEASES_REPO" --draft=false --prerelease=false --latest
+          else
+            gh release edit "v$VERSION" --repo "$RELEASES_REPO" --draft=false --prerelease --latest=false \
+              --notes "Staging build from ${GITHUB_SHA::7} on develop. Only Skillerr installs with Beta updates on receive it."
+          fi
+          echo "Published v$VERSION ($ENVIRONMENT): https://github.com/$RELEASES_REPO/releases/tag/v$VERSION" >> "$GITHUB_STEP_SUMMARY"

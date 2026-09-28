@@ -1,6 +1,9 @@
 // Browser tools shared by every AI that drives Skillerr: external agents over MCP
 // and the built-in agent. One definition list, one implementation.
 
+const guard = require('./guard');
+const { searchApi, resultsPage, PROVIDERS } = require('./search-api');
+
 const TAB_ID = {
   type: 'integer',
   description: 'Act on this tab instead of the active one. Calls on different tabs can run in parallel.',
@@ -311,6 +314,13 @@ const LOOKUP_TOOLS = [
   },
 ];
 
+const CAPTURE_TOOL = {
+  name: 'view_capture',
+  description: 'See a screenshot the user captured in Skillerr with "Screenshot for your AI". Use it when the user pastes a line like ' +
+    '"Here\'s my screen from Skillerr (capture 3f9a, …)": pass that id (or "latest") and you get the image of exactly what they saw, then help with what they describe.',
+  input_schema: { type: 'object', properties: { id: { type: 'string', description: 'The capture id from the pasted line, e.g. "3f9a", or "latest".' } } },
+};
+
 const SHOT_TOOL = {
   name: 'save_screenshot',
   description: 'Save a screenshot as a PNG file the user keeps (in ~/Pictures/Skillerr) and see it. scope "page" = the visible part of a tab, ' +
@@ -325,7 +335,7 @@ const SHOT_TOOL = {
   },
 };
 
-const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
+const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, CAPTURE_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
 
 // ---------- page-side scripts ----------
 
@@ -341,11 +351,14 @@ const DEEP = `
 
 const SNAPSHOT_JS = (fullPage, startId) => `(() => {
   ${DEEP}
+  ${guard.HIDE_JS}
+  const __h = __skHide();
+  try {
   const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=radio],[role=tab],[role=menuitem],[role=option],[role=switch],[role=textbox],[role=combobox],[role=searchbox],[contenteditable=""],[contenteditable=true],[onclick]';
   deepAll(document, '[data-skillerr-id]').forEach(e => e.removeAttribute('data-skillerr-id'));
   const vw = innerWidth, vh = innerHeight;
   const clean = s => (s || '').replace(/\\s+/g, ' ').trim().slice(0, 90);
-  const lines = [];
+  const items = [];
   let n = ${startId} - 1;
   for (const el of deepAll(document, SEL)) {
     const r = el.getBoundingClientRect();
@@ -364,17 +377,17 @@ const SNAPSHOT_JS = (fullPage, startId) => `(() => {
       (svgTitle && svgTitle.textContent) || el.name || el.value || (href && '→ ' + href));
     const id = ++n;
     el.setAttribute('data-skillerr-id', id);
-    let extra = '';
+    const it = { id, role, name, inView };
     if (tag === 'input' || tag === 'textarea') {
-      if (el.type === 'checkbox' || el.type === 'radio') extra = el.checked ? ' [checked]' : ' [unchecked]';
-      else if (el.value && el.type !== 'password') extra = ' value="' + clean(el.value) + '"';
-      if (el.placeholder && name !== clean(el.placeholder)) extra += ' placeholder="' + clean(el.placeholder) + '"';
+      if (el.type === 'checkbox' || el.type === 'radio') it.checked = el.checked;
+      else if (el.value && el.type !== 'password') it.value = clean(el.value);
+      if (el.placeholder && name !== clean(el.placeholder)) it.placeholder = clean(el.placeholder);
     } else if (tag === 'select') {
-      extra = ' selected="' + clean(el.options[el.selectedIndex] && el.options[el.selectedIndex].text) + '"';
+      it.selected = clean(el.options[el.selectedIndex] && el.options[el.selectedIndex].text);
     }
-    if (el.disabled) extra += ' [disabled]';
-    lines.push('[' + id + '] ' + role + ' "' + name + '"' + extra + (inView ? '' : ' (offscreen)'));
-    if (lines.length >= 300) break;
+    if (el.disabled) it.disabled = true;
+    items.push(it);
+    if (items.length >= 300) break;
   }
   const doc = document.documentElement;
   return {
@@ -382,9 +395,11 @@ const SNAPSHOT_JS = (fullPage, startId) => `(() => {
     title: document.title,
     scroll: Math.round(100 * scrollY / Math.max(1, doc.scrollHeight - vh)),
     scrollable: doc.scrollHeight > vh + 10,
-    lines,
+    items,
+    hidden: __h.hidden.join('\\n'),
     next: n + 1,
   };
+  } finally { __h.restore(); }
 })()`;
 
 const LOCATE_JS = (id) => `(() => {
@@ -489,6 +504,9 @@ function resolveRedirect(wc, url) {
 }
 
 const RESULTS_JS = (max) => `(() => {
+  ${guard.HIDE_JS}
+  const __h = __skHide();
+  try {
   const out = [];
   const seen = new Set();
   const push = (a, title, snippet) => {
@@ -523,16 +541,24 @@ const RESULTS_JS = (max) => `(() => {
     if (!snippet && box) snippet = box.innerText.split('\\n').filter((l) => l.length > 60 && !a.innerText.includes(l)).sort((x, y) => y.length - x.length)[0];
     push(a, title, snippet);
   }
-  return out.slice(0, ${Number(max) || 8});
+  return { results: out.slice(0, ${Number(max) || 8}), hidden: __h.hidden.join('\\n') };
+  } finally { __h.restore(); }
 })()`;
 
+// Leaves out text a human can't see (see guard.HIDE_JS); returns that separately for the injection detector.
 const READ_JS = `(() => {
-  // Prefer the main content, but some sites keep their text outside <main> (JAL's notices, for one): then read the whole page.
-  const main = document.querySelector('main, article, [role=main]');
-  const pick = (el) => (el && el.innerText) || '';
-  let text = pick(main);
-  if (text.trim().length < 400) text = pick(document.body);
-  return text.replace(/\\n{3,}/g, '\\n\\n').trim();
+  ${guard.HIDE_JS}
+  const __h = __skHide();
+  try {
+    // Prefer the main content, but some sites keep their text outside <main> (JAL's notices, for one): then read the whole page.
+    const main = [...document.querySelectorAll('main, article, [role=main]')].find((el) => !__h.isHidden(el));
+    const pick = (el) => (el && el.innerText) || '';
+    let text = pick(main);
+    if (text.trim().length < 400) text = pick(document.body);
+    return { text: text.replace(/\\n{3,}/g, '\\n\\n').trim(), hidden: __h.hidden.join('\\n'), title: document.title };
+  } finally {
+    __h.restore();
+  }
 })()`;
 
 // ---------- helpers ----------
@@ -561,6 +587,9 @@ async function settle(wc) {
 // Where plain words in the address bar (or from an AI) are searched. main.js sets it from Settings.
 let searchTemplate = 'https://www.google.com/search?q=%s';
 const setSearchTemplate = (t) => (searchTemplate = t);
+// Optional search API for web_search ({ provider, key }); main.js sets it from Settings.
+let searchApiConfig = null;
+const setSearchApi = (c) => (searchApiConfig = c?.provider && c?.key ? c : null);
 
 function toUrl(input) {
   const s = String(input).trim();
@@ -582,6 +611,50 @@ function inFrame(frame, js, ms = 5000) {
   ]);
 }
 
+// Read-only page scripts run in an isolated world, so a page can't tamper with innerText or getComputedStyle.
+const WORLD_ID = 1917;
+function inWorld(wc, js, ms = 5000) {
+  if (typeof wc.executeJavaScriptInIsolatedWorld !== 'function') return inFrame(wc, js, ms);
+  return Promise.race([
+    wc.executeJavaScriptInIsolatedWorld(WORLD_ID, [{ code: js }]),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('The page did not respond in time.')), ms)),
+  ]);
+}
+
+// ---------- injection guard: every page string an AI sees passes through here ----------
+// `found` collects what the detector flagged during one tool call: { tabId, url, host, reasons, excerpt }.
+
+function flag(found, tabId, url, r) {
+  if (r.flagged) found.push({ tabId, url, host: guard.hostOf(url), reasons: r.reasons, excerpt: r.excerpt });
+}
+
+// Page text → stripped, redacted, fenced. `hidden` is what the page hid from people (scanned, never shown).
+function fencePage(found, tabId, url, raw, hidden, max = 20000, label) {
+  const r = guard.neutralise(raw, { hidden });
+  flag(found, tabId, url, r);
+  const text = r.text.length > max ? r.text.slice(0, max) + `\n…[truncated, ${r.text.length} chars total]` : r.text;
+  return guard.wrap(label || guard.hostOf(url), text, r.reasons);
+}
+
+// Titles and other short page strings.
+function short(found, tabId, url, s, max) {
+  const r = guard.cleanShort(s, max);
+  flag(found, tabId, url, r);
+  return r.text;
+}
+
+// One entry per tab: the union of what was found there.
+function summarise(found) {
+  const byTab = new Map();
+  for (const f of found) {
+    const cur = byTab.get(f.tabId);
+    if (!cur) byTab.set(f.tabId, { ...f, reasons: [...f.reasons] });
+    else for (const r of f.reasons) if (!cur.reasons.includes(r)) cur.reasons.push(r);
+  }
+  const pages = [...byTab.values()];
+  return { flagged: true, ...pages[0], pages };
+}
+
 // ---------- frames ----------
 
 function frameById(wc, frameTreeNodeId) {
@@ -592,12 +665,21 @@ function frameById(wc, frameTreeNodeId) {
 // Position of a frame's content inside the top-level viewport (walks up the frame tree).
 async function frameOffset(frame, scrollIntoView = false) {
   const chain = [];
-  for (let f = frame; f && f.parent; f = f.parent) chain.unshift(f);
+  try {
+    for (let f = frame; f && f.parent; f = f.parent) chain.unshift(f);
+  } catch {
+    return null;
+  }
   let x = 0;
   let y = 0;
   let rect = null;
   for (const child of chain) {
-    const index = child.parent.frames.findIndex((f) => f.frameTreeNodeId === child.frameTreeNodeId);
+    let index;
+    try {
+      index = child.parent.frames.findIndex((f) => f.frameTreeNodeId === child.frameTreeNodeId);
+    } catch {
+      return null; // the frame went away mid-snapshot (ads reload their frames)
+    }
     rect = await inFrame(child.parent, FRAME_RECT_JS(index, scrollIntoView)).catch(() => null);
     if (!rect) return null;
     x += rect.x;
@@ -617,7 +699,7 @@ function frameFor(tab, id) {
 
 // ---------- snapshot ----------
 
-async function snapshot(tab, fullPage = false) {
+async function snapshot(tab, fullPage = false, found = []) {
   const wc = tab.view.webContents;
   const main = wc.mainFrame;
   const frames = main.framesInSubtree.filter((f) => !f.detached).slice(0, 20);
@@ -642,6 +724,22 @@ async function snapshot(tab, fullPage = false) {
     if (!res) continue;
     for (let id = next; id < res.next; id++) tab.skillerrFrames.set(id, frame.frameTreeNodeId);
     next = res.next;
+    // Element names, values and labels are page text: strip, redact and check them like any other.
+    const url = res.url || wc.getURL();
+    const findings = [];
+    const q = (v) => short(findings, tab.id, url, v, 90).replace(/"/g, '\u201d');
+    res.lines = res.items.map((it) => {
+      let extra = '';
+      if (it.checked != null) extra = it.checked ? ' [checked]' : ' [unchecked]';
+      if (it.value) extra += ` value="${q(it.value)}"`;
+      if (it.placeholder) extra += ` placeholder="${q(it.placeholder)}"`;
+      if (it.selected != null) extra += ` selected="${q(it.selected)}"`;
+      if (it.disabled) extra += ' [disabled]';
+      return `[${it.id}] ${it.role} "${q(it.name)}"${extra}${it.inView ? '' : ' (offscreen)'}`;
+    });
+    if (res.hidden) flag(findings, tab.id, url, guard.neutralise('', { hidden: res.hidden }));
+    found.push(...findings);
+    res.reasons = [...new Set(findings.flatMap((f) => f.reasons))];
     if (isMain) meta = res;
     else if (res.lines.length) {
       let host = '';
@@ -654,9 +752,11 @@ async function snapshot(tab, fullPage = false) {
   }
   if (!meta) meta = { url: wc.getURL(), title: wc.getTitle(), scrollable: false };
   const count = next - 1;
-  return `URL: ${meta.url}\nTitle: ${meta.title}\n` +
+  const reasons = [...new Set(found.filter((f) => f.tabId === tab.id).flatMap((f) => f.reasons))];
+  return `URL: ${meta.url}\nTitle: ${short(found, tab.id, meta.url, meta.title, 200)}\n` +
     (meta.scrollable ? `Scroll: ${meta.scroll}% down the page\n` : '') +
-    `Interactive elements${fullPage ? '' : ' in view'} (${count}):\n` + (sections.join('\n') || '(none)');
+    `Interactive elements${fullPage ? '' : ' in view'} (${count}):\n` +
+    guard.wrap(guard.hostOf(meta.url), sections.map(guard.escapeMarkers).join('\n') || '(none)', reasons);
 }
 
 // ---------- acting ----------
@@ -723,19 +823,38 @@ function resolveTab(browser, args) {
   return tab;
 }
 
+// Runs a tool. When page text in the result was addressed to an AI, the result carries `injection`:
+// { flagged: true, tabId, url, host, reasons: [..], excerpt, pages: [{ tabId, url, host, reasons, excerpt }, ..] }
+// (one entry in `pages` per tab; read_tabs can flag several). The offending text is already removed from `text`.
 async function runTool(browser, name, args = {}) {
+  const found = [];
+  const result = await runPageTool(browser, name, args, found);
+  if (found.length && result) {
+    result.injection = summarise(found);
+    try {
+      injectionHandler?.(result.injection, name);
+    } catch {}
+  }
+  return result;
+}
+
+// Optional: main.js may prefer a callback to reading result.injection. Called with (injection, toolName).
+let injectionHandler = null;
+const setInjectionHandler = (fn) => (injectionHandler = fn);
+
+async function runPageTool(browser, name, args, found) {
   switch (name) {
     case 'list_tabs':
-      return { text: browser.listTabs().map((t) => `${t.active ? '*' : ' '} tab ${t.id}: ${t.title} — ${t.url || '(new tab)'}` +
+      return { text: browser.listTabs().map((t) => `${t.active ? '*' : ' '} tab ${t.id}: ${short(found, t.id, t.url, t.title, 200)} — ${t.url || '(new tab)'}` +
         (t.group ? `  [group: ${t.group.title}]` : '') + (t.asleep ? '  (sleeping; wakes when used)' : '')).join('\n') };
     case 'new_tab': {
       const t = browser.newTab(args.url ? toUrl(args.url) : undefined);
       await settle(t.view.webContents);
-      return { text: `Opened tab ${t.id}.\n${await snapshot(t)}` };
+      return { text: `Opened tab ${t.id}.\n${await snapshot(t, false, found)}` };
     }
     case 'switch_tab':
       browser.switchTab(Number(args.tab_id));
-      return { text: `Switched to tab ${args.tab_id}.\n${await snapshot(browser.active())}` };
+      return { text: `Switched to tab ${args.tab_id}.\n${await snapshot(browser.active(), false, found)}` };
     case 'close_tab':
       browser.closeTab(args.tab_id != null ? Number(args.tab_id) : browser.active().id);
       return { text: 'Tab closed.' };
@@ -745,7 +864,7 @@ async function runTool(browser, name, args = {}) {
       const opened = urls.map((u) => browser.newTab(toUrl(u), { background: true }));
       browser.onOpened?.(opened.map((t) => t.id)); // show them right away, loading live
       await Promise.all(opened.map((t) => settle(t.view.webContents)));
-      return { text: opened.map((t) => `tab ${t.id}: ${t.view.webContents.getTitle() || '(loading)'} — ${t.view.webContents.getURL()}`).join('\n') };
+      return { text: opened.map((t) => `tab ${t.id}: ${short(found, t.id, t.view.webContents.getURL(), t.view.webContents.getTitle(), 200) || '(loading)'} — ${t.view.webContents.getURL()}`).join('\n') };
     }
     case 'read_tabs': {
       const all = browser.listTabs().filter((t) => !t.isStart);
@@ -755,8 +874,10 @@ async function runTool(browser, name, args = {}) {
         if (!t) return `## tab ${id}\n(no such tab)`;
         await browser.awake?.(t);
         const wc = t.view.webContents;
-        const text = await inFrame(wc, READ_JS).catch((e) => `(could not read: ${e.message})`);
-        return `## tab ${id}: ${wc.getTitle()} — ${wc.getURL()}\n${text.length > 8000 ? text.slice(0, 8000) + '\n…[truncated]' : text}`;
+        const url = wc.getURL();
+        const page = await inWorld(wc, READ_JS).catch((e) => ({ error: e.message }));
+        const body = page.error ? `(could not read: ${page.error})` : fencePage(found, id, url, page.text, page.hidden, 8000);
+        return `## tab ${id}: ${short(found, id, url, wc.getTitle(), 200)} — ${url}\n${body}`;
       }));
       return { text: parts.join('\n\n') };
     }
@@ -777,6 +898,7 @@ async function runTool(browser, name, args = {}) {
     case 'read_note':
     case 'open_view':
     case 'save_screenshot':
+    case 'view_capture':
       throw new Error(`${name} is handled by the browser, not the tool layer`);
   }
 
@@ -788,7 +910,7 @@ async function runTool(browser, name, args = {}) {
 
   switch (name) {
     case 'snapshot':
-      return { text: await snapshot(tab, args.full_page) };
+      return { text: await snapshot(tab, args.full_page, found) };
 
     case 'navigate': {
       const target = toUrl(args.url || '');
@@ -798,16 +920,16 @@ async function runTool(browser, name, args = {}) {
       if (target !== String(args.url || '').trim() && /^https:\/\/(www\.)?google\.[a-z.]+\/sorry\//.test(wc.getURL())) {
         await wc.loadURL('https://duckduckgo.com/?q=' + encodeURIComponent(String(args.url || ''))).catch(() => {});
         await settle(wc);
-        return { text: `Google asked for a robot check, so this search ran on DuckDuckGo instead${where}.\n${await snapshot(tab)}` };
+        return { text: `Google asked for a robot check, so this search ran on DuckDuckGo instead${where}.\n${await snapshot(tab, false, found)}` };
       }
-      return { text: `Navigated${where}.\n${await snapshot(tab)}` };
+      return { text: `Navigated${where}.\n${await snapshot(tab, false, found)}` };
     }
 
     case 'click':
       await clickAt(tab, args.id, visible);
       await settle(wc);
       if (browser.isRecording?.(tab)) await sleep(500); // let viewers see what the click did
-      return { text: `Clicked [${args.id}]${where}.\n${await snapshot(tab)}` };
+      return { text: `Clicked [${args.id}]${where}.\n${await snapshot(tab, false, found)}` };
 
     case 'type': {
       const text = String(args.text ?? '');
@@ -839,7 +961,7 @@ async function runTool(browser, name, args = {}) {
         await sleep(60);
         await pressKey(tab, 'Enter', visible);
         await settle(wc);
-        return { text: `Typed into [${args.id}] and pressed Enter${where}.\n${await snapshot(tab)}` };
+        return { text: `Typed into [${args.id}] and pressed Enter${where}.\n${await snapshot(tab, false, found)}` };
       }
       return { text: `Typed "${text.slice(0, 60)}" into [${args.id}]${where}.` };
     }
@@ -853,13 +975,13 @@ async function runTool(browser, name, args = {}) {
         const want = ${JSON.stringify(String(args.option || '')).toLowerCase()};
         const opt = [...el.options].find(o => o.value.toLowerCase() === want || o.text.trim().toLowerCase() === want)
           || [...el.options].find(o => o.text.toLowerCase().includes(want));
-        if (!opt) return 'no option matching; options: ' + [...el.options].map(o => o.text.trim()).join(' | ');
+        if (!opt) return 'no option matching; options: ' + [...el.options].slice(0, 100).map(o => o.text.trim()).join(' | ');
         el.value = opt.value;
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
         return 'selected "' + opt.text.trim() + '"';
       })()`);
-      return { text: res + where };
+      return { text: short(found, tab.id, frame.url, res, 4000) + where };
     }
 
     case 'press_key':
@@ -871,12 +993,26 @@ async function runTool(browser, name, args = {}) {
       const amount = Number(args.amount) || 0;
       await inFrame(wc, `window.scrollBy({ top: ${args.direction === 'up' ? -1 : 1} * (${amount} || innerHeight * 0.85), behavior: 'instant' })`);
       await sleep(250);
-      return { text: `Scrolled ${args.direction}${where}.\n${await snapshot(tab)}` };
+      return { text: `Scrolled ${args.direction}${where}.\n${await snapshot(tab, false, found)}` };
     }
 
     case 'web_search': {
       const q = String(args.query || '').trim();
       if (!q) throw new Error('Give a search query.');
+      let apiNote = '';
+      if (searchApiConfig) {
+        const max = Math.min(Math.max(Number(args.max_results) || 8, 1), 20);
+        try {
+          const results = await searchApi({ ...searchApiConfig, query: q, max });
+          await wc.loadURL(resultsPage(searchApiConfig.provider, q, results)).catch(() => {});
+          const via = PROVIDERS[searchApiConfig.provider].name;
+          if (!results.length) return { text: `No results from ${via} for “${q}”${where}.` };
+          const list = results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ''}`).join('\n');
+          return { text: `Search results for “${q}”${where} (${via}):\n` + fencePage(found, tab.id, wc.getURL(), list, '', 20000, `search results from ${via}`) };
+        } catch (err) {
+          apiNote = ` (${err.message}; searched the web page instead)`; // bad key, quota or offline: fall back to the results page
+        }
+      }
       await wc.loadURL(toUrl(q.includes(' ') || !/\./.test(q) ? q : `"${q}"`)).catch(() => {});
       await settle(wc);
       if (/^https:\/\/(www\.)?google\.[a-z.]+\/sorry\//.test(wc.getURL())) { // Google wants a robot check: search elsewhere instead
@@ -884,25 +1020,28 @@ async function runTool(browser, name, args = {}) {
         await settle(wc);
       }
       await sleep(400);
-      const results = await inFrame(wc, RESULTS_JS(args.max_results)).catch(() => []);
+      const page = await inWorld(wc, RESULTS_JS(args.max_results)).catch(() => ({ results: [], hidden: '' }));
+      const results = page.results || [];
       await Promise.all(results.map(async (r) => (r.url = await resolveRedirect(wc, r.url))));
-      if (!results.length) return { text: `Searched “${q}”${where} but couldn't pick out results. Use read_page or snapshot on this tab.` };
-      return { text: `Search results for “${q}”${where} (${wc.getURL().split('/')[2]}):\n` +
-        results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ''}`).join('\n') };
+      if (!results.length) return { text: `Searched “${q}”${where}${apiNote} but couldn't pick out results. Use read_page or snapshot on this tab.` };
+      // Titles and snippets come from other sites: each line is checked (and redacted) on its own.
+      const list = results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ''}`).join('\n');
+      return { text: `Search results for “${q}”${where} (${wc.getURL().split('/')[2]}${apiNote}):\n` +
+        fencePage(found, tab.id, wc.getURL(), list, page.hidden, 20000, 'search results (titles and snippets from the sites listed)') };
     }
 
     case 'fetch_page': {
       await wc.loadURL(toUrl(args.url || '')).catch(() => {});
       await settle(wc);
-      const text = await inFrame(wc, READ_JS).catch(() => '');
-      const max = 20000;
-      return { text: `URL: ${wc.getURL()}\nTitle: ${wc.getTitle()}${where}\n\n` + (text.length > max ? text.slice(0, max) + `\n…[truncated, ${text.length} chars total]` : text) };
+      const page = await inWorld(wc, READ_JS).catch(() => ({ text: '', hidden: '' }));
+      const url = wc.getURL();
+      return { text: `URL: ${url}\nTitle: ${short(found, tab.id, url, wc.getTitle(), 200)}${where}\n\n` + fencePage(found, tab.id, url, page.text, page.hidden) };
     }
 
     case 'read_page': {
-      const text = await inFrame(wc, READ_JS);
-      const max = 20000;
-      return { text: `URL: ${wc.getURL()}\n\n` + (text.length > max ? text.slice(0, max) + `\n…[truncated, ${text.length} chars total]` : text) };
+      const page = await inWorld(wc, READ_JS);
+      const url = wc.getURL();
+      return { text: `URL: ${url}\n\n` + fencePage(found, tab.id, url, page.text, page.hidden) };
     }
 
     case 'screenshot': {
@@ -915,12 +1054,12 @@ async function runTool(browser, name, args = {}) {
     case 'go_back':
       if (wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack();
       await settle(wc);
-      return { text: `Went back${where}.\n${await snapshot(tab)}` };
+      return { text: `Went back${where}.\n${await snapshot(tab, false, found)}` };
 
     case 'go_forward':
       if (wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward();
       await settle(wc);
-      return { text: `Went forward${where}.\n${await snapshot(tab)}` };
+      return { text: `Went forward${where}.\n${await snapshot(tab, false, found)}` };
 
     case 'wait':
       await sleep(Math.min(Number(args.ms) || 1000, 10000));
@@ -971,4 +1110,6 @@ async function restoreValue(tab, frameId, undoKey, value) {
   return inFrame(frame, SET_VALUE_JS(`[data-skillerr-undo="${undoKey}"]`, value)).catch(() => false);
 }
 
-module.exports = { TOOLS, runTool, toUrl, setSearchTemplate, inspectTarget, restoreValue };
+module.exports = { TOOLS, runTool, toUrl, setSearchTemplate, setSearchApi, inspectTarget, restoreValue, setInjectionHandler,
+  // For tests and for main.js's own page reads (deep research): the exact page scripts and guard the tools use.
+  READ_JS, RESULTS_JS, SNAPSHOT_JS, inWorld, fencePage, guard };
