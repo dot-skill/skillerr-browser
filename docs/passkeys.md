@@ -1,7 +1,7 @@
 # Passkeys in Skillerr
 
-**Status:** passkey sign-in didn't work on Mac. This change turns on what Electron 44 can do, and explains the rest to
-the user instead of leaving the sign-in page hanging.
+Skillerr supports passkeys wherever the platform allows it, and where it can't, it says so and offers the site's other
+sign-in options instead of leaving the page hanging.
 
 ## What works where
 
@@ -25,19 +25,19 @@ doesn't support today. So on Mac:
 - A passkey that lives in iCloud Keychain or another browser doesn't. Skillerr catches the failure and shows "That
   passkey isn't saved in Skillerr" with "Use another way".
 
-The path to full iCloud Keychain support: ask Apple for the browser entitlement, then bridge `ASAuthorizationController`
-with browser client data, either through a native module (for example
-[vault12/electron-webauthn-mac](https://github.com/vault12/electron-webauthn-mac)) or a future Electron API. That's a
-separate project.
+Full iCloud Keychain support needs Apple's browser entitlement and a bridge to `ASAuthorizationController`, which
+Electron doesn't offer yet.
 
 ## Building a Mac build with passkeys
 
 1. In the Apple Developer portal, register the App ID `com.skillerr.browser` and enable **Keychain Sharing**. Create a
    **Developer ID** provisioning profile for it and download it.
-2. Set these, locally or as CI secrets (see `.github/workflows/release.yml`):
-   - `CSC_LINK` + `CSC_KEY_PASSWORD` (Developer ID Application certificate)
-   - `APPLE_TEAM_ID`, your 10-character Team ID
-   - `MAC_PROVISIONING_PROFILE`, the path to the `.provisionprofile`
+2. Set these locally (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_TEAM_ID`, `MAC_PROVISIONING_PROFILE` as a file path), or as
+   secrets for the release workflow (`MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_TEAM_ID`,
+   `MAC_PROVISIONING_PROFILE_B64`; see `.github/workflows/deploy.yml`):
+   - the Developer ID Application certificate and its password
+   - your 10-character Team ID
+   - the Developer ID provisioning profile
 3. `npm run dist`. Then:
    - `electron-builder.config.cjs` adds `keychain-access-groups: <TEAM_ID>.com.skillerr.browser.webauthn` to the
      entitlements and embeds the profile.
