@@ -224,6 +224,8 @@ const norm = (s) => s.normalize('NFKC').toLowerCase().replace(/[’‘]/g, "'").
 const noLinks = (s) => s.replace(/\b[\w.+-]+@[\w-]+\.[\w.-]+|\bhttps?:\/\/\S+|\bwww\.\S+/g, ' ');
 
 // Score one sentence. ctx: { hidden, metaBefore, aboutInjection }
+const LOGIN_UI = /\b(forgot (your )?(password|email|username)|reset (your )?password|remember me|sign ?in|log ?in|sign ?up|create (an |your )?account|keep me (signed|logged) in|show password)\b/;
+const TO_AN_AI = /\b(ai|a\.i\.|assistant|agent|model|llm|chatbot|gpt|claude|instructions?|system prompt)\b/;
 function scoreSentence(raw, ctx = {}) {
   const s = norm(raw);
   if (s.length < 6) return { score: 0, why: [] };
@@ -238,6 +240,9 @@ function scoreSentence(raw, ctx = {}) {
     why.push(w);
   }
   if (!score) return { score: 0, why, strong };
+  // A site's own login or sign-up form ("Email  Password  Forgot your password?") isn't an instruction to anyone.
+  // Only count it when it also speaks to an AI.
+  if (LOGIN_UI.test(s) && !TO_AN_AI.test(s)) return { score: 0, why: [], strong: 0 };
   if (IMPERATIVE.test(s)) score += 2;
   if (strong && ACTION.test(s) && why.some((w) => /addressed|ignore|new instructions/.test(w))) score += 1;
   let discount = 0;
