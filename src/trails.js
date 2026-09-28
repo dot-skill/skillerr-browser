@@ -460,6 +460,26 @@ class Trails {
     return hit?.id || null;
   }
 
+  // What Wenlo learns from when it retrains (src/wenlo/train.js): each trail's searches and page titles, newest trails
+  // first. Never pages with password or payment fields, never "Other tabs".
+  trainingSet() {
+    return this.trails
+      .filter((t) => !t.loose)
+      .sort((a, b) => b.lastAt - a.lastAt)
+      .map((t) => ({
+        id: t.id,
+        texts: [...t.searches, ...[...t.pages].filter((p) => !p.sensitive).sort((a, b) => b.lastAt - a.lastAt).map((p) => p.title)].filter(Boolean),
+      }))
+      .filter((t) => t.texts.length);
+  }
+
+  // Pages first visited since a time: what's new for Wenlo to learn from.
+  newPagesSince(at) {
+    let n = 0;
+    for (const t of this.trails) if (!t.loose) for (const p of t.pages) if (p.firstAt > at && !p.sensitive) n++;
+    return n;
+  }
+
   isReference(url) {
     const key = pageKey(url);
     return this.trails.some((t) => t.pages.some((p) => p.url === key && p.days.length >= 3));

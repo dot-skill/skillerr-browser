@@ -23,11 +23,27 @@ class WenloEmbed {
     for (let i = 0; i < this.V; i++) this.scale[i] = buf.readFloatLE(scalesAt + i * 4);
     this.vec = new Int8Array(buf.buffer.slice(buf.byteOffset + vecsAt, buf.byteOffset + vecsAt + this.V * this.D));
     this.tok = new WordPiece(vocab);
+    this.id = 'wenlo-embed-1';
     if (vocab.length !== this.V) throw new Error('Wenlo vocabulary and vectors disagree');
   }
 
   static load(dir = DIR) {
     return new WenloEmbed(fs.readFileSync(path.join(dir, 'wenlo-embed.bin')), fs.readFileSync(path.join(dir, 'vocab.txt'), 'utf8').split(/\r?\n/)); // CRLF-safe
+  }
+
+  // A copy with some rows replaced: the user's personal vectors (src/wenlo/train.js). rows: Map id → numbers.
+  withRows(rows, id = 'personal') {
+    const e = Object.create(WenloEmbed.prototype);
+    Object.assign(e, this, { vec: new Int8Array(this.vec), scale: new Float32Array(this.scale), id: `${this.id}+${id}` });
+    for (const [row, v] of rows) {
+      if (row < 0 || row >= this.V || v.length !== this.D) continue;
+      let m = 0;
+      for (let k = 0; k < this.D; k++) m = Math.max(m, Math.abs(v[k]));
+      const s = m / 127 || 1;
+      e.scale[row] = s;
+      for (let k = 0; k < this.D; k++) e.vec[row * this.D + k] = Math.max(-127, Math.min(127, Math.round(v[k] / s)));
+    }
+    return e;
   }
 
   // Unit-length Float32Array, or null for a text with no known pieces.
@@ -50,6 +66,41 @@ class WenloEmbed {
   }
 }
 
+// The user's personal vectors on disk: "WNP1" | uint32 rows | uint32 dims | per row: uint32 id, float32 scale, int8[dims].
+function encodePersonal(rows, D) {
+  const buf = Buffer.alloc(12 + rows.size * (8 + D));
+  buf.write('WNP1', 0, 'latin1');
+  buf.writeUInt32LE(rows.size, 4);
+  buf.writeUInt32LE(D, 8);
+  let o = 12;
+  for (const [id, v] of rows) {
+    let m = 0;
+    for (let k = 0; k < D; k++) m = Math.max(m, Math.abs(v[k]));
+    const s = m / 127 || 1;
+    buf.writeUInt32LE(id, o);
+    buf.writeFloatLE(s, o + 4);
+    for (let k = 0; k < D; k++) buf.writeInt8(Math.max(-127, Math.min(127, Math.round(v[k] / s))), o + 8 + k);
+    o += 8 + D;
+  }
+  return buf;
+}
+
+function decodePersonal(buf) {
+  if (buf.toString('latin1', 0, 4) !== 'WNP1') throw new Error('Not a Wenlo personal file');
+  const n = buf.readUInt32LE(4);
+  const D = buf.readUInt32LE(8);
+  const rows = new Map();
+  let o = 12;
+  for (let i = 0; i < n; i++) {
+    const s = buf.readFloatLE(o + 4);
+    const v = new Float32Array(D);
+    for (let k = 0; k < D; k++) v[k] = buf.readInt8(o + 8 + k) * s;
+    rows.set(buf.readUInt32LE(o), v);
+    o += 8 + D;
+  }
+  return { rows, D };
+}
+
 const cosine = (a, b) => {
   if (!a || !b) return 0;
   let s = 0;
@@ -70,4 +121,4 @@ function centroid(vs) {
   return out;
 }
 
-module.exports = { WenloEmbed, cosine, centroid, DIR };
+module.exports = { WenloEmbed, cosine, centroid, encodePersonal, decodePersonal, DIR };

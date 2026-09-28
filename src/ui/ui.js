@@ -494,7 +494,7 @@ function trailCard(t, { onChange } = {}) {
 async function renderTrailsHome() {
   const home = await skillerr.invoke('trails-home');
   const box = $('trailsHome');
-  box.hidden = !home.enabled || (!home.trails.length && !home.session && !home.intro);
+  box.hidden = !home.enabled || (!home.trails.length && !home.session && !home.intro && !home.learn && !home.learned && !home.learning);
   if (box.hidden) return;
   const intro = $('trailsIntro');
   intro.hidden = !home.intro;
@@ -513,6 +513,7 @@ async function renderTrailsHome() {
     intro.appendChild(acts);
   }
   renderWenloLine($('wenloLine'), home.wenlo);
+  renderLearnCard(home);
   const row = $('sessionRow');
   row.hidden = !home.session;
   if (home.session) {
@@ -539,6 +540,67 @@ function renderWenloLine(box, line) {
   const go = btn('Continue', 'ghost', () => skillerr.invoke('trails-continue', line.trailId));
   box.appendChild(go);
 }
+// ----- Wenlo learning from the user's trails -----
+function learnResultText(r) {
+  if (!r) return '';
+  if (r.error) return 'Wenlo couldn\'t learn this time. It will try again later.';
+  const rep = r.report || {};
+  if (r.accepted) {
+    const pct = (x) => Math.round((x || 0) * 100);
+    return `Wenlo learned your words from ${rep.items} pages and searches in ${rep.trails} trails. It now files your pages right ${pct(rep.after)}% of the time, up from ${pct(rep.before)}%.`;
+  }
+  if (rep.reason === 'not-enough') return 'Not enough browsing yet for Wenlo to learn from. It will offer again later.';
+  return 'Wenlo checked your latest browsing: it already files your pages well, so nothing changed.';
+}
+let learnProgress = null;
+function renderLearnCard(home) {
+  const card = $('learnCard');
+  const show = home.learning || learnProgress != null || home.learn || home.learned;
+  card.hidden = !show;
+  if (!show) return;
+  card.innerHTML = '';
+  const ic = h('div', 'ti-ic', icon('sparkle', 16));
+  const text = h('div', 'ti-text');
+  const acts = h('div', 'ti-acts');
+  card.append(ic, text, acts);
+  if (home.learning || learnProgress != null) {
+    text.innerHTML = `<b>Wenlo is learning your words…</b><div class="learn-bar"><i style="width:${Math.round((learnProgress || 0) * 100)}%"></i></div>`;
+    return;
+  }
+  if (home.learned) {
+    text.innerHTML = `<b>Wenlo learned.</b> ${esc(learnResultText(home.learned))}`;
+    acts.append(btn('OK', 'ghost', async () => {
+      await skillerr.invoke('wenlo-learned-seen');
+      renderTrailsHome();
+    }));
+    return;
+  }
+  text.innerHTML = `<b>Wenlo can learn from your browsing.</b> ${home.learn.newPages} new pages since last time. It learns your own words (the places, products and jargon you look up) so new pages join the right trail. A few seconds, on this computer.`;
+  acts.append(
+    btn('Learn now', 'primary', () => skillerr.invoke('wenlo-learn')),
+    btn('Always, automatically', 'ghost', async () => {
+      await saveSettings({ wenloLearn: 'auto' });
+      skillerr.invoke('wenlo-learn');
+    }),
+    btn('Not now', 'ghost', async () => {
+      await skillerr.invoke('wenlo-learn-snooze');
+      renderTrailsHome();
+    }),
+  );
+}
+skillerr.on('wenlo-learning', ({ progress }) => {
+  const first = learnProgress == null;
+  learnProgress = progress;
+  const bar = document.querySelector('#learnCard .learn-bar i');
+  if (bar) bar.style.width = `${Math.round(progress * 100)}%`;
+  else if (first && !$('start').hidden) renderTrailsHome();
+  window.trailsView?.learning?.(progress);
+});
+skillerr.on('wenlo-learned', (r) => {
+  learnProgress = null;
+  if (!$('start').hidden) renderTrailsHome();
+  window.trailsView?.learned?.(r);
+});
 $('allTrails').onclick = () => skillerr.send('open-trails');
 $('manageTrails').onclick = (e) => {
   e.preventDefault();

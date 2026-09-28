@@ -27,11 +27,14 @@ const freshData = !fs.existsSync(path.join(store.DIR, 'settings.json'));
 let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
 // Wenlo: Skillerr's own small AI (src/wenlo), built in. It knows trails and research by meaning. Loaded on first use.
-const wenlo = new Wenlo({ dir: path.join(__dirname, '..', 'assets', 'wenlo') }); // src/ and out/src/ alike
+const WENLO_DIR = path.join(__dirname, '..', 'assets', 'wenlo'); // src/ and out/src/ alike
+const WENLO_PERSONAL = path.join(store.DIR, 'wenlo', 'personal.bin'); // what Wenlo learned from this user's trails
+const wenlo = new Wenlo({ dir: WENLO_DIR, personalFile: WENLO_PERSONAL });
 const wenloOn = () => store.getSettings().wenlo !== false;
 const embedder = new Embedder({
   memory, dir: path.join(store.DIR, 'memory'),
   builtin: () => wenlo.embedder,
+  builtinId: () => wenlo.embedder.id,
   getConfig: () => { const s = store.getSettings(); return { on: s.semanticRecall !== false && remembering(), baseUrl: s.embedBaseUrl, model: s.embedModel, builtin: s.wenlo !== false }; },
 });
 // Semantic matches for a recall; null (keyword-only) if no local embedding model answers in time.
@@ -997,6 +1000,10 @@ function trailsHome() {
     total: all.length,
     // Wenlo's one line about where you were, built from the facts of the top trail.
     wenlo: s.wenlo !== false && all[0] ? wenloLine(all[0]) : null,
+    // Wenlo offering to learn (setting "suggest"), or what it just learned.
+    learn: s.wenloLearn === 'suggest' ? learnDue() : null,
+    learning: !!learning,
+    learned: s.wenloLastLearn && Date.now() - s.wenloLastLearn.at < 864e5 && !s.wenloLastLearn.seen ? s.wenloLastLearn : null,
   };
 }
 
@@ -1015,6 +1022,93 @@ function askWenlo(query) {
   const summaries = db.list({ limit: 300 });
   return wenlo.answer(String(query || ''), summaries, shown);
 }
+
+// ---------- Wenlo learns from the user's trails (src/wenlo/train.js) ----------
+// Weekly by default, Wenlo offers to learn the user's own words from their trails (or does it on its own when the
+// computer is idle, if they chose that). Training runs in a worker thread with a hard memory cap, so it never touches
+// browsing and fits 4 GB machines; the trail texts live only in that thread and are gone when it ends.
+const LEARN_EVERY = { daily: 1, weekly: 7, monthly: 30 };
+const LEARN_MIN_NEW_PAGES = 20;
+let learning = null;
+
+// Is it time to learn? Returns { newPages } or null.
+function learnDue() {
+  const s = store.getSettings();
+  if (s.wenlo === false || s.trails === false || s.wenloLearn === 'off' || learning) return null;
+  const now = Date.now();
+  if (now < (s.wenloSnoozedUntil || 0) || now - (s.wenloLearnedAt || 0) < (LEARN_EVERY[s.wenloLearnEvery] || 7) * 864e5) return null;
+  const db = trailsDb();
+  const newPages = db.newPagesSince(s.wenloLearnedAt || 0);
+  if (newPages < LEARN_MIN_NEW_PAGES) return null;
+  if (db.trainingSet().filter((t) => t.texts.length >= 4).length < 3) return null; // too little to learn from yet
+  return { newPages };
+}
+
+function wenloLearn({ auto = false } = {}) {
+  if (learning) return learning;
+  const trails = trailsDb().trainingSet();
+  learning = new Promise((resolve) => {
+    const { Worker } = require('worker_threads');
+    let done = false;
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      const s = store.getSettings();
+      const saved = { at: Date.now(), auto, accepted: !!result.accepted, report: result.report || null, error: result.error || null };
+      store.saveSettings({ ...s, wenloLearnedAt: result.error ? s.wenloLearnedAt : Date.now(), wenloLastLearn: saved });
+      ui('wenlo-learned', saved);
+      trailsChanged();
+      resolve(saved);
+    };
+    let w;
+    try {
+      w = new Worker(path.join(__dirname, 'wenlo', 'train-worker.js'), {
+        workerData: { dir: WENLO_DIR, trails },
+        resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32 },
+      });
+    } catch (err) {
+      return finish({ error: err.message });
+    }
+    w.on('message', (m) => {
+      if (m.progress != null) ui('wenlo-learning', { progress: m.progress });
+      if (!m.done) return;
+      if (m.accepted && m.file) {
+        try {
+          fs.mkdirSync(path.dirname(WENLO_PERSONAL), { recursive: true, mode: 0o700 });
+          fs.writeFileSync(WENLO_PERSONAL + '.tmp', Buffer.from(m.file), { mode: 0o600 });
+          fs.renameSync(WENLO_PERSONAL + '.tmp', WENLO_PERSONAL);
+          wenlo.reload();
+        } catch (err) {
+          m.error = err.message;
+          m.accepted = false;
+        }
+      }
+      finish(m);
+      w.terminate();
+    });
+    w.on('error', (err) => finish({ error: err.message }));
+    w.on('exit', (code) => finish({ error: `stopped (${code})` }));
+  }).finally(() => (learning = null));
+  ui('wenlo-learning', { progress: 0 });
+  return learning;
+}
+
+function wenloForget() {
+  fs.rmSync(WENLO_PERSONAL, { force: true });
+  wenlo.reload();
+  store.saveSettings({ ...store.getSettings(), wenloLastLearn: null });
+  trailsChanged();
+}
+
+// Every half hour: learn on its own if the user chose that and the computer is idle, or let the start page offer it.
+setInterval(() => {
+  try {
+    if (!learnDue()) return;
+    const { powerMonitor } = require('electron');
+    if (store.getSettings().wenloLearn === 'auto' && powerMonitor.getSystemIdleTime() >= 120) wenloLearn({ auto: true });
+    else trailsChanged();
+  } catch {}
+}, 30 * 60 * 1000);
 
 // For AI apps (my_trails), in plain words.
 function trailsText({ query = '', trail_id: id = '' } = {}) {
@@ -2051,6 +2145,20 @@ function wireIpc() {
   ipcMain.on('open-trails', () => openInternal('trails'));
   ipcMain.handle('trails-home', () => trailsHome());
   ipcMain.handle('trails-ask', (_e, q) => (wenloOn() ? askWenlo(q) : null));
+  ipcMain.handle('wenlo-learn', () => wenloLearn());
+  ipcMain.handle('wenlo-learn-snooze', () => {
+    store.saveSettings({ ...store.getSettings(), wenloSnoozedUntil: Date.now() + 3 * 864e5 });
+    trailsChanged();
+  });
+  ipcMain.handle('wenlo-learned-seen', () => {
+    const s = store.getSettings();
+    if (s.wenloLastLearn) store.saveSettings({ ...s, wenloLastLearn: { ...s.wenloLastLearn, seen: true } });
+  });
+  ipcMain.handle('wenlo-forget', () => wenloForget());
+  ipcMain.handle('wenlo-info', () => {
+    const s = store.getSettings();
+    return { learn: s.wenloLearn, every: s.wenloLearnEvery, last: s.wenloLastLearn, personal: wenlo.personal, learning: !!learning };
+  });
   ipcMain.handle('trails-list', (_e, { state = 'active', query = '' } = {}) => trailsDb().list({ state, query: String(query) }));
   ipcMain.handle('trails-detail', (_e, id) => trailsDb().detail(String(id)));
   ipcMain.handle('trails-continue', (_e, id) => continueTrail(String(id)));

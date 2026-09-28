@@ -28,9 +28,10 @@ function cosine(a, b) {
 class Embedder {
   // memory: the Memory instance; dir: where vectors.jsonl lives (next to the graph).
   // builtin: () => an object with embed(text) → unit vector (Wenlo). Used when no endpoint is set.
-  constructor({ memory, dir, getConfig = () => ({}), fetchImpl = fetch, builtin = null }) {
+  constructor({ memory, dir, getConfig = () => ({}), fetchImpl = fetch, builtin = null, builtinId = null }) {
     this.memory = memory;
     this.builtin = builtin;
+    this.builtinId = builtinId;
     this.file = path.join(dir, 'vectors.jsonl');
     this.getConfig = getConfig;
     this.fetch = fetchImpl;
@@ -47,7 +48,8 @@ class Embedder {
   config() {
     const c = this.getConfig() || {};
     const baseUrl = String(c.baseUrl || '').replace(/\/+$/, '');
-    if (!baseUrl && this.builtin && c.builtin !== false) return { on: c.on !== false, builtin: true, baseUrl: '', model: WENLO_MODEL };
+    // The model id changes when Wenlo is retrained, so vectors made with the old one are re-made.
+    if (!baseUrl && this.builtin && c.builtin !== false) return { on: c.on !== false, builtin: true, baseUrl: '', model: (c.on !== false && this.builtinId?.()) || WENLO_MODEL };
     return { on: c.on !== false, builtin: false, baseUrl: baseUrl || 'http://127.0.0.1:11434/v1', model: c.model || DEFAULT_MODEL };
   }
 

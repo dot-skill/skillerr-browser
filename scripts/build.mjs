@@ -19,6 +19,8 @@ await build({ ...node, entryPoints: [path.join(root, 'src/main.js')], outfile: p
 // boot.js stays a separate, unbundled file: it must turn on the compile cache before main.js is compiled.
 await build({ entryPoints: [path.join(root, 'src/boot.js')], outfile: path.join(out, 'src/boot.js'), platform: 'node', format: 'cjs', target: 'node22', minify: true, logLevel: 'warning' });
 await build({ ...node, entryPoints: [path.join(root, 'src/preload.js')], outfile: path.join(out, 'src/preload.js') });
+// Wenlo's personal retraining runs in a worker thread; it loads this file by path (next to main.js, as in src/).
+await build({ ...node, entryPoints: [path.join(root, 'src/wenlo/train-worker.js')], outfile: path.join(out, 'src/wenlo/train-worker.js') });
 await build({ ...node, entryPoints: [path.join(root, 'mcp/bridge.js')], outfile: path.join(out, 'mcp/bridge.js') });
 await build({ ...node, entryPoints: [path.join(root, 'mcp/setup.js')], outfile: path.join(out, 'mcp/setup.js') });
 

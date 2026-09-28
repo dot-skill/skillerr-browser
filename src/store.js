@@ -31,6 +31,11 @@ const DEFAULTS = {
   popupsAllowed: {}, // host → true
   sleepTabs: true, // unload tabs nobody is using, to stay light
   wenlo: true, // Skillerr's own small AI (src/wenlo): trails and recall by meaning, on this computer
+  wenloLearn: 'suggest', // retraining on the user's own trails: 'suggest' (ask when due) | 'auto' (when the computer is idle) | 'off'
+  wenloLearnEvery: 'weekly', // 'daily' | 'weekly' | 'monthly'
+  wenloLearnedAt: 0,
+  wenloSnoozedUntil: 0,
+  wenloLastLearn: null, // { at, accepted, report, auto }
   trails: true, // learn the user's ongoing work from their own browsing (src/trails.js)
   trailsTuck: true, // tuck tabs unused for half a day into their trail (the 5 most recent always stay)
   trailsIntroSeen: false,

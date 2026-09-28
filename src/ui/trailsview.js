@@ -1,4 +1,4 @@
-/* global skillerr, esc, trunc, icon, btn, h, trailCard, agoText, UNFINISHED, saveSettings, renderWenloLine */
+/* global skillerr, esc, trunc, icon, btn, h, trailCard, agoText, UNFINISHED, saveSettings, renderWenloLine, learnResultText */
 // Trails page: every ongoing trail, what's in it, and the user's controls (rename, merge, done, forget, never learn
 // from a site), plus the Trails settings.
 (() => {
@@ -171,6 +171,7 @@
     $('tvLearn').checked = info.enabled;
     $('tvTuck').checked = info.tuck;
     $('tvWenlo').checked = info.wenlo;
+    renderLearn();
     const hosts = (box, items, empty, action) => {
       box.innerHTML = items.length ? '' : `<span class="muted small">${empty}</span>`;
       for (const it of items) {
@@ -207,6 +208,22 @@
   }
 
   $('tvLearn').onchange = () => saveSettings({ trails: $('tvLearn').checked });
+  $('tvLearnMode').onchange = () => saveSettings({ wenloLearn: $('tvLearnMode').value });
+  $('tvLearnEvery').onchange = () => saveSettings({ wenloLearnEvery: $('tvLearnEvery').value });
+  $('tvLearnNow').onclick = () => skillerr.invoke('wenlo-learn');
+  $('tvLearnForget').onclick = async () => {
+    await skillerr.invoke('wenlo-forget');
+    renderLearn();
+  };
+  async function renderLearn() {
+    const w = await skillerr.invoke('wenlo-info');
+    $('tvLearnMode').value = w.learn || 'suggest';
+    $('tvLearnEvery').value = w.every || 'weekly';
+    $('tvLearnEvery').disabled = w.learn === 'off';
+    $('tvLearnNow').disabled = w.learning;
+    $('tvLearnForget').hidden = !w.personal;
+    $('tvLearnStatus').textContent = w.learning ? 'Learning…' : w.last ? `${new Date(w.last.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}: ${learnResultText(w.last)}` : 'Wenlo hasn\'t learned from your trails yet.';
+  }
   $('tvTuck').onchange = () => saveSettings({ trailsTuck: $('tvTuck').checked });
   $('tvWenlo').onchange = () => saveSettings({ wenlo: $('tvWenlo').checked });
   $('tvIgnoreForm').onsubmit = async (e) => {
@@ -253,5 +270,12 @@
     else renderList();
   }
 
-  window.trailsView = { show: refresh, refresh };
+  window.trailsView = {
+    show: refresh,
+    refresh,
+    learning: (p) => {
+      if (tab === 'settings') $('tvLearnStatus').textContent = `Learning… ${Math.round(p * 100)}%`;
+    },
+    learned: () => tab === 'settings' && renderLearn(),
+  };
 })();

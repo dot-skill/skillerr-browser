@@ -86,3 +86,47 @@ test('recall by meaning uses Wenlo when no endpoint is set, with nothing written
   assert.ok(!(await e.similar('sourdough starter recipe'))?.get(sid), 'and not for something unrelated');
   assert.ok(!fs.existsSync(path.join(dir, 'vectors.jsonl')));
 });
+
+test('personal retraining: learns the user\'s jargon, proves it on held-back items, and is kept only if it helps', () => {
+  const { trainPersonal } = require('../src/wenlo/train');
+  const { WEEK1, WEEK2 } = require('../scripts/wenlo/personal-data');
+  const { encodePersonal, decodePersonal, centroid } = require('../src/wenlo/embed');
+  const base = WenloEmbed.load();
+  const trails = Object.entries(WEEK1).map(([id, texts]) => ({ id, texts }));
+  const r = trainPersonal(trails, base);
+  assert.ok(r.accepted, JSON.stringify(r.report));
+  assert.ok(r.report.after > r.report.before);
+  // Saved and loaded again, it still makes next week's unseen pages closer to their own trails.
+  const { rows } = decodePersonal(encodePersonal(r.rows, base.D));
+  const personal = base.withRows(rows);
+  const closeness = (emb) => {
+    let s = 0, n = 0;
+    for (const [t, texts] of Object.entries(WEEK2)) {
+      const c = centroid(WEEK1[t].map((x) => emb.embed(x)));
+      for (const x of texts) { s += cosine(emb.embed(x), c); n++; }
+    }
+    return s / n;
+  };
+  assert.ok(closeness(personal) > closeness(base) + 0.1, `${closeness(base).toFixed(2)} → ${closeness(personal).toFixed(2)}`);
+  assert.notStrictEqual(personal.id, base.id); // recall re-makes its vectors
+  // Too little to learn from: nothing changes.
+  const few = trainPersonal([{ id: 'a', texts: ['one', 'two'] }], base);
+  assert.ok(!few.accepted);
+  assert.strictEqual(few.report.reason, 'not-enough');
+});
+
+test('personal retraining runs in a worker thread under a memory cap', async () => {
+  const { Worker } = require('worker_threads');
+  const { WEEK1 } = require('../scripts/wenlo/personal-data');
+  const trails = Object.entries(WEEK1).map(([id, texts]) => ({ id, texts }));
+  const result = await new Promise((resolve, reject) => {
+    const w = new Worker(path.join(__dirname, '..', 'src', 'wenlo', 'train-worker.js'), {
+      workerData: { dir: path.join(__dirname, '..', 'assets', 'wenlo'), trails },
+      resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32 },
+    });
+    w.on('message', (m) => m.done && (resolve(m), w.terminate()));
+    w.on('error', reject);
+  });
+  assert.ok(result.accepted, JSON.stringify(result));
+  assert.ok(result.file && result.file.length > 12);
+});

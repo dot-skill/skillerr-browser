@@ -3,7 +3,7 @@
 // Wenlo doesn't generate text. It embeds (src/wenlo/embed.js: distilled static embeddings, microseconds per text) and
 // then chooses: the trail a page belongs to, the trails a search means, the trail a question is about. What it says is
 // built from the facts of the user's own trails, so it can't make things up.
-const { WenloEmbed, cosine, centroid } = require('./embed');
+const { WenloEmbed, cosine, centroid, decodePersonal } = require('./embed');
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -11,16 +11,45 @@ const DAY = 24 * HOUR;
 const { LOW, HIGH, TOPIC_LOW, TOPIC_HIGH } = require('./calibration');
 
 class Wenlo {
-  constructor({ embedder = null, dir } = {}) {
-    this._embedder = embedder;
+  // personalFile: where the user's personal vectors live (src/wenlo/train.js); applied on top of the base model.
+  constructor({ embedder = null, dir, personalFile = null } = {}) {
+    this._base = embedder;
+    this._embedder = null;
     this.dir = dir;
+    this.personalFile = personalFile;
     this.cache = new Map(); // text → vector
     this.trailCache = new Map(); // trail id → { key, vec }
   }
 
+  // The model as shipped. Personal retraining always starts from this.
+  get base() {
+    if (!this._base) this._base = WenloEmbed.load(this.dir);
+    return this._base;
+  }
+
+  // The model in use: the base, with the user's personal vectors if they have any.
   get embedder() {
-    if (!this._embedder) this._embedder = WenloEmbed.load(this.dir);
+    if (!this._embedder) {
+      this._embedder = this.base;
+      if (this.personalFile) {
+        try {
+          const { rows, D } = decodePersonal(require('fs').readFileSync(this.personalFile));
+          if (D === this.base.D) this._embedder = this.base.withRows(rows, `personal-${require('fs').statSync(this.personalFile).mtimeMs | 0}`);
+        } catch {} // none yet, or unreadable: the base model
+      }
+    }
     return this._embedder;
+  }
+
+  // After retraining or forgetting: use what's on disk now, and drop everything computed with the old vectors.
+  reload() {
+    this._embedder = null;
+    this.cache.clear();
+    this.trailCache.clear();
+  }
+
+  get personal() {
+    return this.embedder !== this.base;
   }
 
   get ready() {
