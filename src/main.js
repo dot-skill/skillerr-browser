@@ -819,7 +819,19 @@ function trailReport(tab, msg) {
 }
 
 let trailsTimer = null;
+let lastShelf = '';
+// The trail shelf in the tab strip: tucked tabs stay visible by their icons, grouped by trail.
+function pushShelf() {
+  const shelf = learningTrails() ? trailsDb().shelf() : { trails: [], more: 0 };
+  const json = JSON.stringify(shelf);
+  if (json === lastShelf) return;
+  lastShelf = json;
+  ui('trails-shelf', shelf);
+}
 function trailsChanged() {
+  try {
+    pushShelf();
+  } catch {}
   if (trailsTimer) return;
   trailsTimer = setTimeout(() => {
     trailsTimer = null;
@@ -912,6 +924,12 @@ function undoTuck() {
   for (const { trailId, url } of lastTuck) back.push(...db.untuck(trailId, (x) => x.url === url).map((e) => ({ ...e, trailId })));
   lastTuck = null;
   return reopenTucked(back);
+}
+
+// One tucked tab back, from the shelf or a trail card.
+function reopenTuckedTab(id, url) {
+  const back = trailsDb().untuck(id, (x) => x.url === url);
+  return back.length ? reopenTucked(back, id) : 0;
 }
 
 // "Continue": the trail's tucked tabs come back; with none, the page the user stopped at (scrolled where they were).
@@ -2007,6 +2025,11 @@ function wireIpc() {
   ipcMain.handle('trails-list', (_e, { state = 'active', query = '' } = {}) => trailsDb().list({ state, query: String(query) }));
   ipcMain.handle('trails-detail', (_e, id) => trailsDb().detail(String(id)));
   ipcMain.handle('trails-continue', (_e, id) => continueTrail(String(id)));
+  ipcMain.handle('trails-reopen-tab', (_e, { id, url }) => reopenTuckedTab(String(id), String(url)));
+  ipcMain.handle('trails-shelf', () => {
+    lastShelf = '';
+    pushShelf();
+  });
   ipcMain.handle('trails-restore-session', () => restoreLastSession());
   ipcMain.handle('trails-dismiss-session', () => changed(trailsDb().markQuit(0)));
   ipcMain.handle('trails-state', (_e, { id, state }) => changed(trailsDb().setState(String(id), state)));
@@ -2261,6 +2284,7 @@ function wireIpc() {
     store.saveSettings({ ...store.getSettings(), ...s });
     if (s.shareSkillsWithClaudeCode === true) skills.shareWithClaudeCode();
     if (s.theme) applyTheme(s.theme);
+    if ('trails' in s) trailsChanged(); // the shelf shows or hides
     if (s.searchEngine) setSearchTemplate(searchTemplateFor(s.searchEngine));
     if ('searchApi' in s || 'searchApiKey' in s) applySearchApi();
     status.requireApproval = !!store.getSettings().requireApproval;
@@ -2348,6 +2372,8 @@ function wireIpc() {
   ipcMain.on('ui-ready', () => {
     traceStartup('browser UI interactive');
     pushTabs();
+    lastShelf = '';
+    setTimeout(() => { try { pushShelf(); } catch {} }, 300); // after the first paint: it reads the trails file
     pushStatus();
     ui('panel', panelOpen);
   });

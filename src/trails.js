@@ -337,6 +337,17 @@ class Trails {
     return out;
   }
 
+  // The shelf in the tab strip: trails holding tucked tabs, most recently tucked first, each with its tabs' icons.
+  shelf(limit = 6) {
+    const newest = (t) => Math.max(0, ...t.tucked.map((x) => x.at));
+    const all = this.trails.filter((t) => t.state === 'active' && t.tucked.length).sort((a, b) => newest(b) - newest(a));
+    return {
+      trails: all.slice(0, limit).map((t) => ({ id: t.id, title: t.title || 'Untitled trail', loose: !!t.loose,
+        tabs: t.tucked.slice(0, 24).map((x) => ({ url: x.url, title: x.title || x.url, favicon: x.favicon || null })), count: t.tucked.length })),
+      more: Math.max(0, all.length - limit),
+    };
+  }
+
   // The tabs that were open when Skillerr last quit, by trail.
   lastSession() {
     const at = this.data.quitAt;
@@ -385,6 +396,9 @@ class Trails {
       stoppedAt: last && { url: last.url, title: last.title, favicon: last.favicon, at: last.lastAt, scrollY: last.scrollY || 0 },
       unfinished: this.unfinished(t).slice(0, 5),
       tucked: t.tucked.length,
+      // What the trail looks like as tabs: its tucked tabs, or else its latest pages. People know their tabs by their icons.
+      tabs: (t.tucked.length ? t.tucked : [...t.pages].sort((a, b) => b.lastAt - a.lastAt)).slice(0, 8)
+        .map((x) => ({ url: x.url, title: x.title || x.url, favicon: x.favicon || null, tucked: t.tucked.includes(x) })),
       seeded: !!t.seeded,
       loose: !!t.loose,
       returning: t.pages.filter((p) => p.days.length >= 3).map((p) => ({ url: p.url, title: p.title, days: p.days.length })).slice(0, 3),

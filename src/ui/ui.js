@@ -287,6 +287,76 @@ skillerr.on('tabs', (list) => {
 });
 
 $('newtab').onclick = () => skillerr.send('new-tab');
+
+// ================= the trail shelf: tucked tabs, still there by their icons =================
+// Tabs tucked into trails don't vanish from where the user looks for them: each trail is a chip at the start of the
+// tab strip with its tabs' icons. Click it and its tabs unfold in place, as icons; click one to bring it back.
+let shelfData = { trails: [], more: 0 };
+let shelfOpen = null; // the trail unfolded in the strip
+const favImg = (f, size) => (f ? `<img src="${esc(f)}" width="${size}" height="${size}">` : icon('globe', size - 1));
+function iconFallback(el, size) {
+  el.querySelectorAll('img').forEach((img) => (img.onerror = () => (img.outerHTML = icon('globe', size - 1))));
+}
+function renderShelf() {
+  const box = $('shelf');
+  const { trails, more } = shelfData;
+  box.hidden = !trails.length || settings.trails === false;
+  box.innerHTML = '';
+  if (box.hidden) return;
+  if (shelfOpen && !trails.some((t) => t.id === shelfOpen)) shelfOpen = null;
+  for (const t of trails) {
+    const open = shelfOpen === t.id;
+    const icons = [...new Map(t.tabs.map((x) => [x.favicon || x.url, x])).values()].slice(0, 3);
+    const chip = h('button', 'shelf-trail' + (open ? ' open' : ''));
+    chip.type = 'button';
+    chip.title = `${t.title}\n${t.count} tucked tab${t.count === 1 ? '' : 's'}: ${t.tabs.slice(0, 6).map((x) => x.title).join(', ')}${t.count > 6 ? '…' : ''}\n\nClick to ${open ? 'fold them away' : 'show them'}.`;
+    chip.innerHTML = `<span class="st-icons">${icons.map((x) => `<span class="st-fav">${favImg(x.favicon, 14)}</span>`).join('')}</span>` +
+      (open ? `<span class="st-title">${esc(trunc(t.title, 22))}</span>` : '') + `<span class="st-n">${t.count}</span>`;
+    chip.onclick = () => {
+      shelfOpen = open ? null : t.id;
+      renderShelf();
+    };
+    iconFallback(chip, 14);
+    box.appendChild(chip);
+    if (!open) continue;
+    const group = h('div', 'shelf-tabs');
+    for (const x of t.tabs.slice(0, 12)) {
+      const g = h('button', 'ghost-tab', favImg(x.favicon, 16));
+      g.type = 'button';
+      g.title = `${x.title}\n${x.url}\n\nClick to open it again.`;
+      g.onclick = () => skillerr.invoke('trails-reopen-tab', { id: t.id, url: x.url });
+      iconFallback(g, 16);
+      group.appendChild(g);
+    }
+    if (t.count > 12) {
+      const rest = h('button', 'ghost-tab rest', `+${t.count - 12}`);
+      rest.type = 'button';
+      rest.title = `${t.count - 12} more tabs in “${t.title}”`;
+      rest.onclick = () => skillerr.send('open-trails');
+      group.appendChild(rest);
+    }
+    const all = h('button', 'ghost-tab all', icon('arrowUp', 13));
+    all.type = 'button';
+    all.title = `Open all ${t.count} tabs of “${t.title}”`;
+    all.onclick = () => {
+      shelfOpen = null;
+      skillerr.invoke('trails-continue', t.id);
+    };
+    group.appendChild(all);
+    box.appendChild(group);
+  }
+  if (more) {
+    const m = h('button', 'shelf-trail more', `+${more}`);
+    m.type = 'button';
+    m.title = `${more} more trail${more === 1 ? '' : 's'} with tucked tabs`;
+    m.onclick = () => skillerr.send('open-trails');
+    box.appendChild(m);
+  }
+}
+skillerr.on('trails-shelf', (data) => {
+  shelfData = data || { trails: [], more: 0 };
+  renderShelf();
+});
 $('tidyBtn').onclick = () => skillerr.invoke('trails-tidy');
 $('back').onclick = () => skillerr.send('back');
 $('forward').onclick = () => skillerr.send('forward');
@@ -387,6 +457,25 @@ function trailCard(t, { onChange } = {}) {
   card.innerHTML = `<div class="tc-ic">${favStack(t.favicons)}</div>
     <div class="tc-meta"><div class="tc-title">${esc(t.title)}</div><div class="tc-sub">${stop}</div>${badges ? `<div class="tc-badges">${badges}</div>` : ''}</div>
     <div class="tc-acts"></div>`;
+  // The trail as the tabs the user remembers: icon and title, like the tab strip. Click one to open just that tab.
+  if (t.tabs?.length) {
+    const row = h('div', 'tc-tabs');
+    for (const x of t.tabs.slice(0, 5)) {
+      const m = h('button', 'mini-tab' + (x.tucked ? ' tucked' : ''), `${favImg(x.favicon, 13)}<span>${esc(x.title)}</span>`);
+      m.type = 'button';
+      m.title = `${x.title}\n${x.url}`;
+      m.onclick = (e) => {
+        e.stopPropagation();
+        if (x.tucked) skillerr.invoke('trails-reopen-tab', { id: t.id, url: x.url });
+        else skillerr.send('open-url', x.url);
+      };
+      iconFallback(m, 13);
+      row.appendChild(m);
+    }
+    const extra = (t.tucked || t.pageCount) - 5;
+    if (extra > 0) row.appendChild(h('span', 'mini-more', `+${extra}`));
+    card.querySelector('.tc-meta').appendChild(row);
+  }
   const cont = btn(`${icon('play', 11)}Continue`, 'primary', () => skillerr.invoke('trails-continue', t.id));
   const done = btn(icon('check', 13), 'ghost icon-only', async () => {
     await skillerr.invoke('trails-state', { id: t.id, state: 'done' });

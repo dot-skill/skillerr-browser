@@ -75,6 +75,14 @@ What was typed is never read or stored, only that something was.
   sleeping tabs (Settings → Sleep inactive tabs) keep their scroll position too.
 - Sites the user excluded are never tucked, since trails keep nothing from them.
 
+## The trail shelf
+
+Tucked tabs don't disappear from where people look for them. At the start of the tab strip, each trail holding tucked
+tabs is a chip with its tabs' site icons stacked and a count (the 6 most recently tucked trails, then **+N**). Hover for
+the trail's name and tabs. Click a chip and its tabs unfold in place as icon-only tabs (up to 12). Click one to open
+just that tab, or **↑** to open them all. Trail cards on the start page and the Trails page also show a trail's tabs as
+mini tabs, with icon and title.
+
 ## The Trails page
 
 ⋮ → Trails, **All trails** on the start page, or an AI's `open_view` with `trails`:
@@ -103,7 +111,7 @@ don't get these tools.
 | `src/trails.js` | `Trails`: filing, unfinished work, tucking, ranking, the user's controls, pruning, Chrome seeding. `chooseTabsToTuck`. No Electron, fully unit-tested. |
 | `src/main.js` | Capture (`trailNavigated`, `trailObserve`, `trailLeave`), the watcher (`TRAIL_WATCH_JS`, isolated world 7701), tidy and tuck, reopening, the quit snapshot, IPC, `my_trails` / `continue_trail` and their consent. |
 | `src/tools.js` | Tool definitions; `trails` in `open_view`. |
-| `src/ui/index.html`, `ui.js`, `ui.css` | "Pick up where you left off" on the start page, the Tidy button, the "Tucked N tabs" chip with Undo, settings and onboarding switches. |
+| `src/ui/index.html`, `ui.js`, `ui.css` | The trail shelf in the tab strip, "Pick up where you left off" on the start page, the Tidy button, the "Tucked N tabs" chip with Undo, settings and onboarding switches. |
 | `src/ui/trailsview.js` | The Trails page. |
 | `src/store.js` | Settings: `trails`, `trailsTuck`, `trailsIntroSeen`, `trailsAllowedClients`. |
 | `test/trails.test.js` | Filing, new threads, routine sites, unfinished work, sensitive pages, tucking, choosing tabs, controls, persistence, seeding. |

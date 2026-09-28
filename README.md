@@ -143,7 +143,8 @@ flowchart LR
   check out, a long video you stopped halfway.
 - **Tabs, tidied.** Tabs you haven't used for 12 hours are tucked into their trail once you have 9 or more open, and
   **Tidy** in the tab strip does it now. Your 5 most recent tabs, forms you're typing, audio and pages you keep
-  coming back to always stay. Undo brings them all back.
+  coming back to always stay. Undo brings them all back. Tucked tabs stay in sight: each trail sits at the start of
+  the tab strip with its tabs' icons, and unfolds into them with a click.
 - **Pick up where you left off.** The start page shows your most relevant trails. **Continue** reopens a trail's tabs
   (asleep until clicked) or the page you stopped at, scrolled to where you were. Quitting no longer loses your tabs.
 - **Yours to control:** rename, merge, mark done, forget, never learn from a site. Chrome history can seed the first

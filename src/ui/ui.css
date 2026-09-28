@@ -785,3 +785,39 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .tv-add { display: flex; gap: 8px; }
 .tv-add input, .tv-profile { flex: 1; max-width: 260px; height: 30px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--surface-2); padding: 0 10px; outline: none; font-size: 12.5px; }
 .tv-settings > .switch-row { padding: 8px 0; }
+
+/* the trail shelf: tucked tabs at the start of the tab strip, by their icons */
+.shelf { -webkit-app-region: no-drag; display: flex; align-items: center; gap: 4px; flex: none; height: 32px; padding-right: 8px; margin-right: 4px;
+  border-right: 1px solid var(--line-2); animation: rise .25s both; }
+.shelf[hidden] { display: none; }
+.shelf-trail { display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 7px 0 5px; border-radius: 13px; flex: none;
+  background: color-mix(in srgb, var(--surface-3) 70%, transparent); border: 1px solid var(--line); color: var(--text-2); transition: all .15s; }
+.shelf-trail:hover { background: var(--surface-3); border-color: var(--line-2); color: var(--text); }
+.shelf-trail.open { background: var(--chrome-2); border-color: color-mix(in srgb, var(--teal) 45%, var(--line-2)); color: var(--text); }
+.shelf-trail.more { padding: 0 9px; font-size: 11.5px; font-weight: 600; }
+.st-icons { display: flex; }
+.st-fav { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5px; background: var(--surface); box-shadow: 0 0 0 1.5px var(--chrome); color: var(--text-3); }
+.st-fav + .st-fav { margin-left: -6px; }
+.st-fav img { border-radius: 3px; }
+.st-title { font-size: 11.5px; font-weight: 600; white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.st-n { font-size: 11px; font-weight: 700; color: var(--text-3); }
+.shelf-trail.open .st-n { color: var(--teal); }
+.shelf-tabs { display: flex; align-items: center; gap: 2px; animation: rise .2s both; }
+.ghost-tab { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; flex: none; color: var(--text-3);
+  border: 1px dashed var(--line-2); opacity: .75; transition: all .12s; }
+.ghost-tab:hover { opacity: 1; border-style: solid; background: var(--chrome-2); color: var(--text); transform: translateY(-1px); }
+.ghost-tab img { border-radius: 3px; }
+.ghost-tab.all { border-style: solid; color: var(--teal); opacity: 1; }
+.ghost-tab.all:hover { background: color-mix(in srgb, var(--teal) 14%, var(--surface)); }
+
+/* a trail as its tabs, on trail cards */
+.tc-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; }
+.mini-tab { display: flex; align-items: center; gap: 6px; height: 24px; max-width: 170px; padding: 0 8px 0 6px; border-radius: 7px 7px 3px 3px; font-size: 11.5px;
+  color: var(--text-2); background: var(--surface); border: 1px solid var(--line); transition: all .12s; }
+.mini-tab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-tab img { border-radius: 3px; flex: none; }
+.mini-tab svg { flex: none; }
+.mini-tab.tucked { border-style: dashed; }
+.mini-tab:hover { color: var(--text); border-color: var(--line-2); border-style: solid; background: var(--surface-3); }
+.mini-more { font-size: 11.5px; font-weight: 600; color: var(--text-3); padding: 0 4px; }
+.ghost-tab.rest { width: auto; padding: 0 7px; font-size: 11px; font-weight: 600; }

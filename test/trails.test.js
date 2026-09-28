@@ -118,6 +118,10 @@ test('tucked tabs, the last session, and reopening', () => {
   tr.get(id).tucked[0].at = quitAt; // tucked at the moment of quitting
   assert.strictEqual(tr.lastSession()[0].tabs.length, 1);
   assert.strictEqual(tr.list()[0].tucked, 2);
+  const shelf = tr.shelf();
+  assert.strictEqual(shelf.trails[0].id, id);
+  assert.deepStrictEqual(shelf.trails[0].tabs.map((x) => x.url), ['https://tokio.example/select', 'https://tokio.example/tutorial']);
+  assert.ok(tr.list()[0].tabs.every((x) => x.tucked));
   const back = tr.untuck(id, (x) => x.why === 'quit');
   assert.deepStrictEqual(back.map((x) => x.url), ['https://tokio.example/select']);
   assert.strictEqual(tr.untuck(id)[0].scrollY, 900);
