@@ -225,25 +225,41 @@ skillerr.on('tabs', (list) => {
   box.innerHTML = '';
   let lastGroup = null;
   for (const t of list) {
-    // A chip starts each group of tabs one AI opened for one research task.
-    if (t.group && t.group.id !== lastGroup) {
-      const members = list.filter((x) => x.group?.id === t.group.id);
-      const g = h('div', 'tab-group' + (collapsedGroups.has(t.group.id) ? ' collapsed' : '') + (members.some((x) => x.ai) ? ' live' : ''));
-      g.style.setProperty('--g', t.group.color);
-      g.title = `${t.group.title} · ${members.length} tab${members.length === 1 ? '' : 's'} opened by ${t.group.controller}. Click to ${collapsedGroups.has(t.group.id) ? 'expand' : 'collapse'}.`;
-      g.innerHTML = `<span class="gdot"></span><span class="gtitle">${esc(trunc(t.group.title, 22))}</span><span class="gn">${members.length}</span><button class="x" title="Close all ${members.length} tabs">${icon('x', 11)}</button>`;
+    // A chip starts each group: the tabs one AI opened for one research task, or the open tabs of one trail.
+    const grp = t.group || t.trailGroup;
+    if (grp && grp.id !== lastGroup) {
+      const members = list.filter((x) => (x.group || x.trailGroup)?.id === grp.id);
+      const folded = collapsedGroups.has(grp.id);
+      const g = h('div', 'tab-group' + (folded ? ' collapsed' : '') + (members.some((x) => x.ai) ? ' live' : '') + (t.trailGroup ? ' trail' : ''));
+      g.style.setProperty('--g', grp.color);
+      if (t.trailGroup) {
+        g.title = `${grp.title} · ${members.length} tabs of this trail. Click to ${folded ? 'unfold' : 'fold'} them. Focus folds every other trail; × puts them away in the trail.`;
+        g.innerHTML = `<span class="gdot"></span><span class="gtitle">${esc(trunc(grp.title, 22))}</span><span class="gn">${members.length}</span>` +
+          `<button class="focus" title="Focus on this trail: fold the others">${icon('eye', 11)}</button><button class="x" title="Put these ${members.length} tabs away in the trail">${icon('x', 11)}</button>`;
+      } else {
+        g.title = `${grp.title} · ${members.length} tab${members.length === 1 ? '' : 's'} opened by ${grp.controller}. Click to ${folded ? 'expand' : 'collapse'}.`;
+        g.innerHTML = `<span class="gdot"></span><span class="gtitle">${esc(trunc(grp.title, 22))}</span><span class="gn">${members.length}</span><button class="x" title="Close all ${members.length} tabs">${icon('x', 11)}</button>`;
+      }
       g.onclick = (e) => {
-        if (e.target.closest('.x')) return skillerr.send('group-close', t.group.id);
-        if (collapsedGroups.has(t.group.id)) collapsedGroups.delete(t.group.id);
-        else collapsedGroups.add(t.group.id);
+        if (e.target.closest('.x')) return t.trailGroup ? skillerr.send('trail-group-tuck', grp.trailId) : skillerr.send('group-close', grp.id);
+        if (e.target.closest('.focus')) {
+          for (const x of list) {
+            const o = x.trailGroup;
+            if (o && o.id !== grp.id) collapsedGroups.add(o.id);
+          }
+          collapsedGroups.delete(grp.id);
+          return skillerr.invoke('tabs-refresh');
+        }
+        if (collapsedGroups.has(grp.id)) collapsedGroups.delete(grp.id);
+        else collapsedGroups.add(grp.id);
         skillerr.invoke('tabs-refresh');
       };
       box.appendChild(g);
     }
-    lastGroup = t.group?.id ?? null;
-    if (t.group && collapsedGroups.has(t.group.id) && !t.active) continue;
-    const el = h('div', 'tab' + (t.active ? ' on' : '') + (t.loading ? ' loading' : '') + (t.ai ? ' ai' : '') + (t.group ? ' grouped' : '') + (t.asleep ? ' asleep' : ''));
-    if (t.group) el.style.setProperty('--g', t.group.color);
+    lastGroup = grp?.id ?? null;
+    if (grp && collapsedGroups.has(grp.id) && !t.active) continue;
+    const el = h('div', 'tab' + (t.active ? ' on' : '') + (t.loading ? ' loading' : '') + (t.ai ? ' ai' : '') + (grp ? ' grouped' : '') + (t.asleep ? ' asleep' : ''));
+    if (grp) el.style.setProperty('--g', grp.color);
     el.title = t.asleep ? `${t.title}\nSleeping to keep Skillerr light. Click to wake it.` : t.title;
     const fav = t.favicon ? `<img src="${esc(t.favicon)}">` : icon(t.isStart ? 'sparkle' : 'globe', 13);
     el.innerHTML = `<span class="fav">${fav}</span><span class="title">${esc(t.title)}</span><button class="x" title="Close  ⌘W">${icon('x', 12)}</button>`;
@@ -613,10 +629,14 @@ skillerr.on('trails-changed', () => {
 });
 
 // "Tucked 12 tabs into 4 trails": in the toolbar, where it can be seen over any page. Undo brings them all back.
-skillerr.on('trails-tucked', ({ count, trails: k, auto }) => {
+skillerr.on('trails-tucked', ({ count, trails: k, dupes = 0, auto }) => {
   const chip = $('trailsChip');
   chip.hidden = false;
-  chip.innerHTML = `${icon('layers', 12)}<span>${auto ? 'Tucked away' : 'Tucked'} ${count} tab${count === 1 ? '' : 's'} into ${k} trail${k === 1 ? '' : 's'}</span>`;
+  const parts = [];
+  if (count) parts.push(`${auto ? 'Tucked away' : 'Tucked'} ${count} tab${count === 1 ? '' : 's'} into ${k} trail${k === 1 ? '' : 's'}`);
+  if (dupes) parts.push(`closed ${dupes} duplicate${dupes === 1 ? '' : 's'}`);
+  const text = parts.join(', ');
+  chip.innerHTML = `${icon('layers', 12)}<span>${text[0].toUpperCase() + text.slice(1)}</span>`;
   chip.append(btn('Undo', 'ghost', () => {
     skillerr.invoke('trails-undo-tuck');
     chip.hidden = true;
@@ -680,6 +700,91 @@ function intentInput({ input, badge, form, hint, idleIcon, onValue, idleWhenBlur
   render();
   return { render, clearManual: () => (manual = null) };
 }
+
+// ================= find anything by meaning =================
+// Typing in the address bar (or the start page's box) shows matching tabs, tucked tabs and trail pages, by words and by
+// Wenlo's sense of meaning. ↑/↓ choose, ↵ opens the chosen one (or does what the bar would do if none is chosen).
+const jump = { input: null, items: [], sel: -1, seq: 0 };
+const JUMP_KIND = { tab: 'Open tab', tucked: 'Tucked away', page: 'Visited' };
+function jumpHide() {
+  $('jump').hidden = true;
+  $('jump').innerHTML = '';
+  jump.items = [];
+  jump.sel = -1;
+  skillerr.send('chrome-on-top', false);
+}
+function jumpRender() {
+  const box = $('jump');
+  if (!jump.items.length || !jump.input || document.activeElement !== jump.input) return jumpHide();
+  const r = (jump.input.closest('form') || jump.input).getBoundingClientRect();
+  Object.assign(box.style, { left: `${r.left}px`, top: `${r.bottom + 6}px`, width: `${r.width}px` });
+  box.innerHTML = `<div class="jump-head">${icon('sparkle', 11)} Wenlo found</div>`;
+  jump.items.forEach((c, i) => {
+    const el = h('button', 'jump-item' + (i === jump.sel ? ' on' : ''));
+    el.type = 'button';
+    const fav = c.favicon ? `<img src="${esc(c.favicon)}" width="16" height="16">` : icon('globe', 15);
+    let host = '';
+    try {
+      host = new URL(c.url).hostname.replace(/^www\./, '');
+    } catch {}
+    el.innerHTML = `<span class="ji-fav">${fav}</span><span class="ji-text"><b>${esc(c.title || c.url)}</b><span>${esc(host)}${c.trail ? ` · ${esc(c.trail)}` : ''}${c.why === 'meaning' ? ' · similar in meaning' : ''}</span></span><span class="ji-kind k-${c.kind}">${JUMP_KIND[c.kind]}</span>`;
+    el.querySelectorAll('img').forEach((img) => (img.onerror = () => (img.outerHTML = icon('globe', 15))));
+    el.onmousedown = (e) => e.preventDefault(); // keep focus in the input
+    el.onclick = () => jumpChoose(i);
+    box.appendChild(el);
+  });
+  box.hidden = false;
+  if (jump.input === $('url')) skillerr.send('chrome-on-top', true); // over the page, or it would be hidden behind it
+}
+function jumpChoose(i) {
+  const c = jump.items[i];
+  if (!c) return;
+  const input = jump.input;
+  jumpHide();
+  skillerr.send('jump-open', c);
+  input.value = '';
+  input.dispatchEvent(new Event('input'));
+  input.blur();
+}
+function wireJump(input) {
+  let timer = null;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    // An address being typed or edited is navigation, not a search of what the user remembers.
+    if (q.length < 2 || settings.trails === false || looksLikeUrl(q) || /^[a-z]+:\/\//i.test(q)) return jumpHide();
+    timer = setTimeout(async () => {
+      const seq = ++jump.seq;
+      const items = await skillerr.invoke('jump-search', q);
+      if (seq !== jump.seq || input.value.trim() !== q) return;
+      jump.input = input;
+      jump.items = items;
+      jump.sel = -1;
+      jumpRender();
+    }, 60);
+  });
+  // Capture phase: before the bar's own Tab/Enter handling.
+  input.addEventListener('keydown', (e) => {
+    if ($('jump').hidden || jump.input !== input) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const n = jump.items.length;
+      jump.sel = e.key === 'ArrowDown' ? (jump.sel + 1) % n : (jump.sel - 1 + n) % n;
+      jumpRender();
+    } else if (e.key === 'Enter' && jump.sel >= 0) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      jumpChoose(jump.sel);
+    } else if (e.key === 'Escape') {
+      e.stopImmediatePropagation();
+      jumpHide();
+    }
+  }, true);
+  input.addEventListener('blur', () => setTimeout(() => document.activeElement !== input && jump.input === input && jumpHide(), 120));
+}
+wireJump($('url'));
+wireJump($('hero'));
+window.addEventListener('resize', () => !$('jump').hidden && jumpRender());
 
 function go(intent, value) {
   if (intent === 'ask') startTask(value);

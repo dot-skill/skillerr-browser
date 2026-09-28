@@ -16,6 +16,7 @@ const { Memory, recallText, tokens } = require('./memory');
 const chrome_ = require('./chrome-import');
 const { Trails, chooseTabsToTuck, pageKey } = require('./trails');
 const { Wenlo } = require('./wenlo');
+const { cosine: wenloCosine } = require('./wenlo/embed');
 
 traceStartup('modules loaded');
 // Read on first use (or in the background once the window is up), never before the window: a big memory
@@ -273,7 +274,27 @@ function previewAction(client, { action, tabId } = {}) {
 
 // ---------------- tabs ----------------
 
-function tabInfo(t) {
+// Tabs sort themselves: open tabs of the same trail show as one named group in the tab strip (2 or more tabs).
+const TRAIL_COLORS = ['#3de0c0', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#34d399', '#fb923c', '#38bdf8'];
+const trailColor = (id) => TRAIL_COLORS[[...String(id)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % TRAIL_COLORS.length];
+function trailGroupCounts() {
+  const counts = new Map();
+  if (!trailStore) return counts;
+  for (const t of tabs) if (t.trailId && !t.groupId && !t.isStart && !t.internal) counts.set(t.trailId, (counts.get(t.trailId) || 0) + 1);
+  for (const id of [...counts.keys()]) {
+    const tr = trailStore.get(id);
+    if (!tr || tr.loose || counts.get(id) < 2) counts.delete(id);
+  }
+  return counts;
+}
+function tabInfo(t, counts = null) {
+  const info = baseTabInfo(t);
+  if (counts && counts.has(t.trailId) && !info.group) {
+    info.trailGroup = { id: `trail:${t.trailId}`, trailId: t.trailId, title: trailStore.get(t.trailId)?.title || 'Trail', color: trailColor(t.trailId), count: counts.get(t.trailId) };
+  }
+  return info;
+}
+function baseTabInfo(t) {
   if (t.sleeping) {
     return { id: t.id, title: t.sleeping.title, url: t.sleeping.url, internal: null, isStart: false, loading: false, favicon: t.sleeping.favicon,
       canGoBack: false, canGoForward: false, active: t.id === activeTabId, tiled: false, ai: false, asleep: true,
@@ -329,7 +350,21 @@ function pruneGroups() {
   for (const id of groups.keys()) if (!groupTabs(id).length) groups.delete(id);
 }
 
-const pushTabs = () => ui('tabs', tabs.map(tabInfo));
+const pushTabs = () => {
+  const counts = trailGroupCounts();
+  ui('tabs', tabs.map((t) => tabInfo(t, counts)));
+};
+
+// A tab that just joined a trail moves next to that trail's other tabs, so the strip stays sorted by trail.
+function moveNextToTrail(tab) {
+  if (!tab.trailId || tab.groupId) return;
+  const i = tabs.indexOf(tab);
+  let last = -1;
+  tabs.forEach((t, j) => t !== tab && t.trailId === tab.trailId && !t.groupId && (last = j));
+  if (last < 0 || last === i - 1 || (i > 0 && tabs[i - 1].trailId === tab.trailId)) return;
+  tabs.splice(i, 1);
+  tabs.splice(last < i ? last + 1 : last, 0, tab);
+}
 
 // A tab's web view, with everything wired. Also used to wake a sleeping tab (its old view was closed to free memory).
 function attachView(tab) {
@@ -421,11 +456,13 @@ function newTab(url, { background = false, opener = null } = {}) {
 // rendered at full size underneath (a hidden view collapses to 0×0), so fleet work
 // in them sees a real viewport.
 const isShown = (t) => (mosaic ? mosaic.includes(t.id) : t.id === activeTabId && !t.isStart);
+let chromeOnTop = false; // the browser UI lifted over the page while it shows a dropdown (find by meaning)
 function applyVisibility() {
   const shown = tabs.filter(isShown);
   for (const t of tabs) if (t.view && !shown.includes(t)) win.contentView.addChildView(t.view);
   if (chrome) win.contentView.addChildView(chrome);
   for (const t of shown) win.contentView.addChildView(t.view);
+  if (chrome && chromeOnTop) win.contentView.addChildView(chrome);
   if (hud) win.contentView.addChildView(hud);
   if (captionView) win.contentView.addChildView(captionView);
   layout();
@@ -807,6 +844,8 @@ async function trailObserve(tab) {
     if (id) {
       tab.trailId = id;
       tab.trailAt = Date.now();
+      moveNextToTrail(tab);
+      pushTabs();
     }
     trailsChanged();
   } catch {} // trails must never break browsing
@@ -873,7 +912,7 @@ function tabProtected(t) {
 }
 
 let lastTuck = null; // [{ trailId, url }] for undo
-function tuckTabs(list, why) {
+function tuckTabs(list, why, { dupes = 0 } = {}) {
   const db = trailsDb();
   const done = [];
   for (const t of list) {
@@ -888,7 +927,7 @@ function tuckTabs(list, why) {
   if (!done.length) return null;
   lastTuck = done;
   const trailCount = new Set(done.map((d) => d.trailId)).size;
-  ui('trails-tucked', { count: done.length, trails: trailCount, auto: why === 'idle' });
+  ui('trails-tucked', { count: done.length, trails: trailCount, dupes, auto: why === 'idle' });
   trailsChanged();
   return { count: done.length, trails: trailCount };
 }
@@ -896,11 +935,26 @@ function tuckTabs(list, why) {
 // "Tidy tabs": keep the tabs you're working in, tuck the rest into their trails.
 function tidyTabs({ force = false } = {}) {
   if (!learningTrails()) return null;
+  // The same page open twice: the older copies close (a tidy the user asked for only); the one used last stays.
+  let dupes = 0;
+  if (force) {
+    const byPage = new Map();
+    for (const t of [...userTabs()].sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0))) {
+      const k = pageKey(tabUrl(t));
+      if (!byPage.has(k)) byPage.set(k, t);
+      else if (!tabProtected(t) && !t.groupId) {
+        closeTab(t.id);
+        dupes++;
+      }
+    }
+  }
   const list = userTabs();
   if (!force && list.length < TUCK_MIN_TABS) return null;
   const ids = chooseTabsToTuck(list.map((t) => ({ id: t.id, lastUsed: t.lastUsed, protected: tabProtected(t) })),
     { keep: TUCK_KEEP, idleMs: TUCK_IDLE_MS, force });
-  return tuckTabs(ids.map(getTab).filter(Boolean), force ? 'tidy' : 'idle');
+  const r = tuckTabs(ids.map(getTab).filter(Boolean), force ? 'tidy' : 'idle', { dupes });
+  if (!r && dupes) ui('trails-tucked', { count: 0, trails: 0, dupes, auto: false });
+  return r || (dupes ? { count: 0, trails: 0, dupes } : null);
 }
 setInterval(() => store.getSettings().trailsTuck !== false && tidyTabs(), 10 * 60 * 1000);
 
@@ -1109,6 +1163,73 @@ setInterval(() => {
     else trailsChanged();
   } catch {}
 }, 30 * 60 * 1000);
+
+// ---------- find anything by meaning (the address bar) ----------
+// What the user remembers ("that chair review", "the visa form"), matched by words and by Wenlo's sense of meaning
+// against open tabs, tabs tucked into trails, and pages in trails. A few milliseconds; nothing leaves the computer.
+// Words of 3+ letters, matched where a word starts ("tok" finds "Tokyo", "re" finds nothing inside "middleware").
+const jumpWords = (q) => String(q || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3);
+const startsWord = (hay, w) => new RegExp(`(^|[^\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'u').test(hay);
+function jumpSearch(query) {
+  const q = String(query || '').trim();
+  if (q.length < 2 || !learningTrails()) return [];
+  const words = jumpWords(q);
+  const useMeaning = wenloOn() && q.split(/\s+/).length <= 12;
+  const db = trailsDb();
+  const seen = new Set();
+  const cands = [];
+  const add = (c) => {
+    const key = pageKey(c.url);
+    if (!/^https?:/.test(c.url) || seen.has(key)) return;
+    seen.add(key);
+    cands.push(c);
+  };
+  for (const t of userTabs()) {
+    add({ kind: 'tab', tabId: t.id, url: tabUrl(t), title: t.sleeping ? t.sleeping.title : t.view.webContents.getTitle(), favicon: t.favicon,
+      trailId: t.trailId || null, at: t.lastUsed || 0 });
+  }
+  const cutoff = Date.now() - 90 * 864e5;
+  for (const tr of db.trails) {
+    if (tr.state !== 'active' && tr.state !== 'done') continue;
+    for (const x of tr.tucked) add({ kind: 'tucked', url: x.url, title: x.title, favicon: x.favicon, trailId: tr.id, at: x.at });
+    for (const p of tr.pages) if (p.lastAt > cutoff) add({ kind: 'page', url: p.url, title: p.title, favicon: p.favicon, trailId: tr.id, at: p.lastAt, scrollY: p.scrollY || 0 });
+  }
+  const qv = useMeaning ? wenlo.vec(q) : null;
+  const scored = [];
+  for (const c of cands) {
+    const hay = `${c.title} ${c.url}`.toLowerCase();
+    const hit = words.filter((w) => startsWord(hay, w)).length;
+    const wordScore = words.length ? (hit === words.length ? 0.9 : 0.55 * (hit / words.length)) : 0;
+    let meaning = 0;
+    if (qv) {
+      const cos = wenloCosine(qv, wenlo.vec(c.title));
+      meaning = cos >= 0.45 ? Math.min(0.85, 0.35 + cos) : 0; // single titles are noisy: only clear matches count
+    }
+    const score = Math.max(wordScore, meaning) + (c.kind === 'tab' ? 0.08 : c.kind === 'tucked' ? 0.05 : 0) + 0.04 * Math.pow(0.5, (Date.now() - c.at) / (7 * 864e5));
+    if (Math.max(wordScore, meaning) >= 0.5) scored.push({ ...c, score, why: wordScore >= meaning ? 'words' : 'meaning' });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, 6).map((c) => ({ ...c, trail: c.trailId ? db.get(c.trailId)?.title || null : null }));
+}
+
+function jumpOpen(c) {
+  if (c.kind === 'tab' && getTab(c.tabId)) return switchTab(c.tabId);
+  const open = userTabs().find((t) => pageKey(tabUrl(t)) === pageKey(c.url));
+  if (open) return switchTab(open.id);
+  if (c.kind === 'tucked' && reopenTuckedTab(c.trailId, c.url)) return;
+  const t = activeTab();
+  if (t?.isStart) {
+    t.trailId = c.trailId || t.trailId;
+    t.trailAt = Date.now();
+    t.restoreScrollY = c.scrollY || 0;
+    t.view.webContents.loadURL(c.url).catch(() => {});
+  } else {
+    const nt = newTab(c.url);
+    nt.trailId = c.trailId || null;
+    nt.trailAt = Date.now();
+    nt.restoreScrollY = c.scrollY || 0;
+  }
+}
 
 // For AI apps (my_trails), in plain words.
 function trailsText({ query = '', trail_id: id = '' } = {}) {
@@ -2146,6 +2267,24 @@ function wireIpc() {
   ipcMain.handle('trails-home', () => trailsHome());
   ipcMain.handle('trails-ask', (_e, q) => (wenloOn() ? askWenlo(q) : null));
   ipcMain.handle('wenlo-learn', () => wenloLearn());
+  ipcMain.handle('jump-search', (_e, q) => {
+    try {
+      return jumpSearch(q);
+    } catch {
+      return [];
+    }
+  });
+  ipcMain.on('jump-open', (_e, c) => c && jumpOpen(c));
+  // A trail's group in the tab strip: × puts all its tabs away in the trail (they stay one click away).
+  ipcMain.on('trail-group-tuck', (_e, trailId) => {
+    const list = userTabs().filter((t) => t.trailId === trailId && !t.groupId && t.trailState?.form !== true); // a form being typed stays
+    if (list.length) tuckTabs(list, 'tidy');
+  });
+  ipcMain.on('chrome-on-top', (_e, on) => {
+    if (chromeOnTop === !!on) return;
+    chromeOnTop = !!on;
+    applyVisibility();
+  });
   ipcMain.handle('wenlo-learn-snooze', () => {
     store.saveSettings({ ...store.getSettings(), wenloSnoozedUntil: Date.now() + 3 * 864e5 });
     trailsChanged();
