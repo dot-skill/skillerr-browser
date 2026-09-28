@@ -21,7 +21,7 @@ nothing to install and nothing to download, and nothing leaves the computer.
 |---|---|
 | **Tabs sort themselves** | Open tabs of the same trail show as one named group in the tab strip, and a tab that joins a trail moves next to its trail's other tabs. Click folds a group, **Focus** folds the other trails, **×** puts the trail's tabs away. |
 | **Find anything by meaning** | Type what you remember in the address bar ("newborn feeding", "train from tokyo to kyoto"): open tabs, tucked tabs and trail pages appear above web search. ↵ switches to the tab, or brings a tucked or visited page back where you were. |
-| **Learns your words** | Weekly (by default it asks first), Kilr retrains on your own trails so your jargon joins the right trail. Below. |
+| **Learns your words, and your AI's** | Weekly (by default it asks first), Kilr retrains on your trails and your AIs' research so your jargon joins the right trail. Below. |
 | **Trails: filing pages** | A page joins a trail by meaning as well as by shared words. "hotels in japan for october" joins a trail of "cheap flights to tokyo". |
 | **Trails: search** | The Trails page search box is "Ask Kilr": "plane tickets to Japan" finds the Tokyo flights trail. |
 | **Start page** | One line above the trail cards: the latest trail, where you stopped and what's unfinished, with **Continue**. |
@@ -52,10 +52,13 @@ The table is made by **distilling** a transformer (the *teacher*, `all-MiniLM-L6
 Kilr's cosines are calibrated on held-back data (`src/kilr/calibration.js`): sentence pairs people scored (STS-B dev)
 for recall, and pages against the centre of real threads of work for Trails.
 
-## Learning from your trails
+## Learning from your trails and your AI's research
 
-Pages you keep in one trail (clicked through, opened from each other, merged by hand) belong together, so Kilr moves
-the vectors of the word pieces in your own pages toward the rest of each trail. It's the same kind of closed-form least
+Pages kept in one trail belong together: the ones you clicked through, opened from each other or merged by hand, and
+the ones your AI app read for one research task ("Research by Claude Desktop"). So Kilr moves the vectors of the word
+pieces in those pages toward the rest of each trail. It learns from **your browsing** and **your AIs' research**; each
+can be switched off in Trails → Settings, and every result says how much came from each ("from 312 of yours and 140
+from your AIs' research"). It's the same kind of closed-form least
 squares as its distillation (`src/kilr/train.js`):
 
 `minimise Σᵢ ‖ mean(E + Δ)[pieces of item i] − yᵢ ‖² + λ‖Δ‖²`,  `yᵢ` = the centre of the rest of item i's trail

@@ -567,7 +567,8 @@ function learnResultText(r) {
     const pct = (x) => Math.round((x || 0) * 100);
     const gain = rep.after > rep.before ? `It now files your pages right ${pct(rep.after)}% of the time, up from ${pct(rep.before)}%.`
       : `It now tells your trails apart ${Math.max(1, Math.round(((rep.marginAfter - rep.marginBefore) / Math.max(0.05, Math.abs(rep.marginBefore))) * 100))}% more clearly, so new pages join the right one more often.`;
-    return `Kilr learned your words from ${rep.items} pages and searches in ${rep.trails} trails. ${gain}`;
+    const src = r.sources ? [r.sources.you && `${r.sources.you} of yours`, r.sources.ai && `${r.sources.ai} from your AIs' research`].filter(Boolean).join(' and ') : `${rep.items}`;
+    return `Kilr learned your words from ${src} pages and searches, in ${rep.trails} trails. ${gain}`;
   }
   if (rep.reason === 'not-enough') return 'Not enough browsing yet for Kilr to learn from. It will offer again later.';
   return 'Kilr checked your latest browsing: it already files your pages well, so nothing changed.';
@@ -595,7 +596,8 @@ function renderLearnCard(home) {
     }));
     return;
   }
-  text.innerHTML = `<b>Kilr can learn from your browsing.</b> ${home.learn.newPages} new pages since last time. It learns your own words (the places, products and jargon you look up) so new pages join the right trail. A few seconds, on this computer.`;
+  const parts = [home.learn.you && `${home.learn.you} of yours`, home.learn.ai && `${home.learn.ai} your AIs researched`].filter(Boolean).join(', ');
+  text.innerHTML = `<b>Kilr can learn from your browsing.</b> ${home.learn.newPages} new pages since last time (${esc(parts)}). It learns the words you and your AIs use (the places, products and jargon) so new pages join the right trail. A few seconds, on this computer.`;
   acts.append(
     btn('Learn now', 'primary', () => skillerr.invoke('kilr-learn')),
     btn('Always, automatically', 'ghost', async () => {

@@ -252,8 +252,12 @@ test('research an AI did: its own trail, titled from the best source, kept apart
   assert.notStrictEqual(mine, r);
   // …but do when the user carries on from it.
   assert.strictEqual(tr.observe({ url: 'https://shop.example/sony-xm6', title: 'Sony WH-1000XM6 headphones' }, { tabTrail: r, tabAt: clock.t }), r);
-  // Kilr learns the user, not the AI.
-  assert.ok(!tr.trainingSet().some((x) => x.id === r));
+  // Kilr learns from the AI's research too, unless the user turns that off; and the list can show either.
+  assert.strictEqual(tr.trainingSet().find((x) => x.id === r).source, 'ai');
+  assert.ok(!tr.trainingSet({ ai: false }).some((x) => x.id === r));
+  assert.ok(tr.trainingSet({ you: false }).every((x) => x.source === 'ai'));
+  assert.ok(tr.list({ who: 'ai' }).every((x) => x.by));
+  assert.ok(tr.list({ who: 'you' }).every((x) => !x.by));
   // A user's page that was also in the research isn't filed back into it.
   assert.notStrictEqual(tr.trailOfUrl('https://audio.example/best-anc'), r);
 });

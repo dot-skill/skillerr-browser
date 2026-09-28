@@ -167,8 +167,11 @@ See [docs/trails.md](docs/trails.md).
   unfinished.
 - **Your tabs sort themselves** into named trail groups as you browse, and **the address bar finds anything by
   meaning**: type "newborn feeding" and the tucked "How often to feed a newborn" comes back, scrolled where you were.
-- **Learns your words.** Every week (it asks first, or runs on its own when you're away), Kilr retrains on your own
-  trails in under a second, on this computer, and keeps the result only if it files your pages better.
+- **Learns your words, and your AI's.** Every week (it asks first, or runs on its own when you're away), Kilr retrains
+  on your trails and your AIs' research in about a second, on this computer, and keeps the result only if it files
+  pages better. Each source can be switched off.
+- **Your AI's research is kept too.** What Claude Desktop or Cursor researches in Skillerr becomes its own trail, named
+  after what it was looking into, that you can see, search and continue.
 - **Recall by meaning, out of the box.** No Ollama needed any more.
 - **It doesn't make things up.** Kilr chooses from the facts of your own trails; it never generates text.
 - **Ours.** Distilled from an open model (Apache-2.0) with a closed-form fit anyone can rerun on a laptop. See

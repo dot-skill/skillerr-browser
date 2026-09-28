@@ -864,3 +864,5 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .tab-group.trail { animation: rise .25s both; }
 .tb.by { display: inline-flex; align-items: center; gap: 4px; color: var(--violet); background: color-mix(in srgb, var(--violet) 12%, transparent); }
 .tb.by svg, .tb.by img { flex: none; }
+#tvWho { margin: 0; flex: none; }
+.tv-learn-row .check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }

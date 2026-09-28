@@ -6,6 +6,7 @@
   let tab = 'active';
   let open = null; // the trail whose pages are shown
   let list = [];
+  let who = 'all'; // All / Yours / Your AIs'
 
   function showTab(name) {
     tab = name;
@@ -20,7 +21,7 @@
     // A question gets Kilr's answer on top; the list below is the trails it matches, by meaning.
     const answer = tab === 'active' && q.split(/\s+/).length >= 2 ? await skillerr.invoke('trails-ask', q) : null;
     renderKilrLine($('tvAnswer'), answer);
-    list = await skillerr.invoke('trails-list', { state: tab, query: q });
+    list = await skillerr.invoke('trails-list', { state: tab, query: q, who });
     box.innerHTML = '';
     if (!list.length) {
       box.innerHTML = `<div class="tv-empty muted">${$('tvQ').value ? 'No trails match.' : tab === 'done'
@@ -211,6 +212,14 @@
   $('tvLearnMode').onchange = () => saveSettings({ kilrLearn: $('tvLearnMode').value });
   $('tvLearnEvery').onchange = () => saveSettings({ kilrLearnEvery: $('tvLearnEvery').value });
   $('tvLearnNow').onclick = () => skillerr.invoke('kilr-learn');
+  $('tvLearnYou').onchange = () => saveSettings({ kilrLearnFromYou: $('tvLearnYou').checked });
+  $('tvLearnAi').onchange = () => saveSettings({ kilrLearnFromAi: $('tvLearnAi').checked });
+  $('tvResearch').onchange = () => saveSettings({ trailsResearch: $('tvResearch').checked });
+  document.querySelectorAll('#tvWho button').forEach((b) => (b.onclick = () => {
+    who = b.dataset.who;
+    document.querySelectorAll('#tvWho button').forEach((x) => x.classList.toggle('on', x === b));
+    renderList();
+  }));
   $('tvLearnForget').onclick = async () => {
     await skillerr.invoke('kilr-forget');
     renderLearn();
@@ -222,6 +231,9 @@
     $('tvLearnEvery').disabled = w.learn === 'off';
     $('tvLearnNow').disabled = w.learning;
     $('tvLearnForget').hidden = !w.personal;
+    $('tvLearnYou').checked = w.fromYou;
+    $('tvLearnAi').checked = w.fromAi;
+    $('tvResearch').checked = w.research;
     $('tvLearnStatus').textContent = w.learning ? 'Learning…' : w.last ? `${new Date(w.last.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}: ${learnResultText(w.last)}` : 'Kilr hasn\'t learned from your trails yet.';
   }
   $('tvTuck').onchange = () => saveSettings({ trailsTuck: $('tvTuck').checked });

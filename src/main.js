@@ -356,7 +356,7 @@ function assignGroup(controller, tabIds) {
 // The tabs an AI app opens for one research task are one trail, "by Claude Desktop", kept apart from the user's own:
 // it can be continued from the start page, its tabs tucked, and it's found from the address bar.
 function researchTrailOf(g) {
-  if (!g || !learningTrails()) return null;
+  if (!g || !learningTrails() || store.getSettings().trailsResearch === false) return null;
   try {
     if (!g.trailId || !trailsDb().get(g.trailId)) g.trailId = trailsDb().research({ key: g.key, by: g.controller, sessionId: g.sessionId });
     const goal = g.sessionId && memory.nodes.get(g.sessionId)?.goal;
@@ -1205,21 +1205,27 @@ const LEARN_MIN_NEW_PAGES = 20;
 let learning = null;
 
 // Is it time to learn? Returns { newPages } or null.
+// Where Kilr learns from: the user's own browsing, their AI apps' research, or both (Trails > Settings).
+const learnSources = (s = store.getSettings()) => ({ you: s.kilrLearnFromYou !== false, ai: s.kilrLearnFromAi !== false });
 function learnDue() {
   const s = store.getSettings();
-  if (s.kilr === false || s.trails === false || s.kilrLearn === 'off' || learning) return null;
+  const from = learnSources(s);
+  if (s.kilr === false || s.trails === false || s.kilrLearn === 'off' || learning || (!from.you && !from.ai)) return null;
   const now = Date.now();
   if (now < (s.kilrSnoozedUntil || 0) || now - (s.kilrLearnedAt || 0) < (LEARN_EVERY[s.kilrLearnEvery] || 7) * 864e5) return null;
   const db = trailsDb();
-  const newPages = db.newPagesSince(s.kilrLearnedAt || 0);
+  const newPages = db.newPagesSince(s.kilrLearnedAt || 0, from);
   if (newPages < LEARN_MIN_NEW_PAGES) return null;
-  if (db.trainingSet().filter((t) => t.texts.length >= 4).length < 3) return null; // too little to learn from yet
-  return { newPages };
+  if (db.trainingSet(from).filter((t) => t.texts.length >= 4).length < 3) return null; // too little to learn from yet
+  return { newPages, you: db.newPagesSince(s.kilrLearnedAt || 0, { you: from.you, ai: false }), ai: db.newPagesSince(s.kilrLearnedAt || 0, { you: false, ai: from.ai }) };
 }
 
 function kilrLearn({ auto = false } = {}) {
   if (learning) return learning;
-  const trails = trailsDb().trainingSet();
+  const trails = trailsDb().trainingSet(learnSources());
+  // What it learned from, for the user to see: pages and searches of their own, and of their AI apps' research.
+  const sources = { you: 0, ai: 0 };
+  for (const t of trails) sources[t.source] += t.texts.length;
   learning = new Promise((resolve) => {
     const { Worker } = require('worker_threads');
     let done = false;
@@ -1227,7 +1233,7 @@ function kilrLearn({ auto = false } = {}) {
       if (done) return;
       done = true;
       const s = store.getSettings();
-      const saved = { at: Date.now(), auto, accepted: !!result.accepted, report: result.report || null, error: result.error || null };
+      const saved = { at: Date.now(), auto, accepted: !!result.accepted, report: result.report || null, error: result.error || null, sources };
       store.saveSettings({ ...s, kilrLearnedAt: result.error ? s.kilrLearnedAt : Date.now(), kilrLastLearn: saved });
       ui('kilr-learned', saved);
       trailsChanged();
@@ -2423,9 +2429,10 @@ function wireIpc() {
   ipcMain.handle('kilr-forget', () => kilrForget());
   ipcMain.handle('kilr-info', () => {
     const s = store.getSettings();
-    return { learn: s.kilrLearn, every: s.kilrLearnEvery, last: s.kilrLastLearn, personal: kilr.personal, learning: !!learning };
+    return { learn: s.kilrLearn, every: s.kilrLearnEvery, last: s.kilrLastLearn, personal: kilr.personal, learning: !!learning,
+      fromYou: s.kilrLearnFromYou !== false, fromAi: s.kilrLearnFromAi !== false, research: s.trailsResearch !== false };
   });
-  ipcMain.handle('trails-list', (_e, { state = 'active', query = '' } = {}) => trailsDb().list({ state, query: String(query) }));
+  ipcMain.handle('trails-list', (_e, { state = 'active', query = '', who = 'all' } = {}) => trailsDb().list({ state, query: String(query), who }));
   ipcMain.handle('trails-detail', (_e, id) => trailsDb().detail(String(id)));
   ipcMain.handle('trails-continue', (_e, id) => continueTrail(String(id)));
   ipcMain.handle('trails-reopen-tab', (_e, { id, url }) => reopenTuckedTab(String(id), String(url)));

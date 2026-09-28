@@ -515,14 +515,15 @@ class Trails {
   }
 
   // Trails worth showing, most relevant first: recent, returned to, unfinished work and tucked tabs rank higher.
-  list({ state = 'active', query = '', limit = 100 } = {}) {
+  // who: 'all', 'you' (the user's own trails) or 'ai' (research their AI apps did).
+  list({ state = 'active', query = '', limit = 100, who = 'all' } = {}) {
     const now = this.now();
     const q = keywords(query, 8);
     const rank = (t) => {
       const age = (now - t.lastAt) / DAY;
       return Math.pow(0.5, age / 3) * (1 + 0.4 * Math.min(t.sessions, 6) + 0.8 * Math.min(this.unfinished(t).length, 3) + (t.tucked.length ? 0.6 : 0));
     };
-    const shown = this.trails.filter((t) => (state === 'all' || t.state === state) && this.worth(t));
+    const shown = this.trails.filter((t) => (state === 'all' || t.state === state) && this.worth(t) && (who === 'all' || (who === 'ai') === !!t.research));
     // With Kilr, a search finds trails by meaning ("where to stay" finds "ryokan near Gion"), best match first.
     if (query && this.meaning) {
       const hits = this.meaningOf(() => this.meaning.rank(query, shown), null);
@@ -547,22 +548,24 @@ class Trails {
   }
 
   // What Kilr learns from when it retrains (src/kilr/train.js): each trail's searches and page titles, newest trails
-  // first. Never pages with password or payment fields, never "Other tabs", never an AI's research (it learns the user).
-  trainingSet() {
+  // first, from the user's own browsing (you) and research their AI apps did (ai), as the user chooses. Never pages with
+  // password or payment fields, never "Other tabs".
+  trainingSet({ you = true, ai = true } = {}) {
     return this.trails
-      .filter((t) => !t.loose && !t.research)
+      .filter((t) => !t.loose && (t.research ? ai : you))
       .sort((a, b) => b.lastAt - a.lastAt)
       .map((t) => ({
         id: t.id,
+        source: t.research ? 'ai' : 'you',
         texts: [...t.searches, ...[...t.pages].filter((p) => !p.sensitive).sort((a, b) => b.lastAt - a.lastAt).map((p) => p.title)].filter(Boolean),
       }))
       .filter((t) => t.texts.length);
   }
 
   // Pages first visited since a time: what's new for Kilr to learn from.
-  newPagesSince(at) {
+  newPagesSince(at, { you = true, ai = true } = {}) {
     let n = 0;
-    for (const t of this.trails) if (!t.loose && !t.research) for (const p of t.pages) if (p.firstAt > at && !p.sensitive) n++;
+    for (const t of this.trails) if (!t.loose && (t.research ? ai : you)) for (const p of t.pages) if (p.firstAt > at && !p.sensitive) n++;
     return n;
   }
 

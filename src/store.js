@@ -33,6 +33,9 @@ const DEFAULTS = {
   kilr: true, // Skillerr's own small AI (src/kilr): trails and recall by meaning, on this computer
   kilrLearn: 'suggest', // retraining on the user's own trails: 'suggest' (ask when due) | 'auto' (when the computer is idle) | 'off'
   kilrLearnEvery: 'weekly', // 'daily' | 'weekly' | 'monthly'
+  kilrLearnFromYou: true, // learn from the user's own browsing
+  kilrLearnFromAi: true, // learn from research the user's AI apps did in Skillerr
+  trailsResearch: true, // keep research an AI app did as a trail of its own ("Research by Claude Desktop")
   kilrLearnedAt: 0,
   kilrSnoozedUntil: 0,
   kilrLastLearn: null, // { at, accepted, report, auto }
