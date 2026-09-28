@@ -862,3 +862,5 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .tab-group:hover .focus { opacity: .9; }
 .tab-group .focus:hover { background: color-mix(in srgb, var(--g) 25%, transparent); }
 .tab-group.trail { animation: rise .25s both; }
+.tb.by { display: inline-flex; align-items: center; gap: 4px; color: var(--violet); background: color-mix(in srgb, var(--violet) 12%, transparent); }
+.tb.by svg, .tb.by img { flex: none; }

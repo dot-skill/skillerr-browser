@@ -1057,6 +1057,9 @@ async function runPageTool(browser, name, args, found) {
     }
 
     case 'fetch_page': {
+      // A tab opened for this fetch is still loading its blank page: let that finish first, or it can land after the real
+      // page and leave the tab blank (the fetch then reads about:blank).
+      if (wc.isLoading()) await waitForLoad(wc);
       await wc.loadURL(toUrl(args.url || '')).catch(() => {});
       await settle(wc);
       const page = await inWorld(wc, READ_JS).catch(() => ({ text: '', hidden: '' }));

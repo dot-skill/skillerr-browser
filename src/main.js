@@ -324,7 +324,8 @@ const GROUP_COLORS = ['#8b6cff', '#3de0c0', '#ff7ac6', '#fbbf24', '#60a5fa', '#3
 let groupSeq = 0;
 function groupInfo(g) {
   const goal = g.sessionId && memory.nodes.get(g.sessionId)?.goal;
-  return { id: g.id, title: goal || g.controller, controller: g.controller, color: g.color };
+  const trailTitle = g.trailId && trailStore?.get(g.trailId)?.title;
+  return { id: g.id, title: goal || trailTitle || g.controller, controller: g.controller, color: g.color, trailId: g.trailId || null };
 }
 function groupFor(controller) {
   const sessionId = remembering() ? memory.active.get(controller.name)?.id : null;
@@ -339,7 +340,62 @@ function assignGroup(controller, tabIds) {
   if (!list.length) return;
   const g = groupFor(controller);
   for (const t of list) t.groupId = g.id;
+  researchTrailOf(g);
+  for (const t of list) researchVisit(t);
   pushTabs();
+}
+
+// ---------- research an AI did: its own trail (src/trails.js research*) ----------
+// The tabs an AI app opens for one research task are one trail, "by Claude Desktop", kept apart from the user's own:
+// it can be continued from the start page, its tabs tucked, and it's found from the address bar.
+function researchTrailOf(g) {
+  if (!g || !learningTrails()) return null;
+  try {
+    if (!g.trailId || !trailsDb().get(g.trailId)) g.trailId = trailsDb().research({ key: g.key, by: g.controller, sessionId: g.sessionId });
+    const goal = g.sessionId && memory.nodes.get(g.sessionId)?.goal;
+    if (goal) trailsDb().researchTitle(g.trailId, goal, 'goal'); // the AI's own question names its research best
+    return g.trailId;
+  } catch {
+    return null;
+  }
+}
+
+// A page an AI's tab finished loading goes into the research trail. Until the AI has asked a question or searched,
+// the research is named by its clearest page: the title closest in meaning to all the others (Wenlo).
+function researchVisit(tab) {
+  const g = tab?.groupId && groups.get(tab.groupId);
+  const id = g && researchTrailOf(g);
+  if (!id || !tab.view || tab.view.webContents.isDestroyed()) return;
+  const wc = tab.view.webContents;
+  const db = trailsDb();
+  if (!db.researchPage(id, { url: wc.getURL(), title: wc.getTitle(), favicon: tab.favicon })) return;
+  tab.trailId = id;
+  tab.trailAt = Date.now();
+  const t = db.get(id);
+  if (['', 'page'].includes(t.research.titleFrom || '') && wenloOn()) {
+    try {
+      const titles = t.pages.slice(-12).map((p) => p.title).filter(Boolean);
+      const centre = require('./wenlo/embed').centroid(titles.map((x) => wenlo.vec(x)));
+      const best = titles.map((x) => [x, wenloCosine(wenlo.vec(x), centre)]).sort((a, b) => b[1] - a[1])[0];
+      if (best) db.researchTitle(id, best[0], 'page');
+    } catch {}
+  }
+  trailsChanged();
+}
+
+// What the AI tells Skillerr about its research: its web searches and, at the end, its conclusion.
+function researchNote(controller, name, args, tab) {
+  if (!['web_search', 'tag_session', 'recall'].includes(name)) return;
+  const g = (tab?.groupId && groups.get(tab.groupId)) || [...groups.values()].reverse().find((x) => x.controller === controller.name);
+  const id = g && researchTrailOf(g);
+  if (!id) return;
+  const db = trailsDb();
+  if (name === 'web_search' && args.query) {
+    db.researchSearch(id, args.query);
+    db.researchTitle(id, args.query, 'search');
+  }
+  if (name === 'tag_session' && args.summary) db.researchSummary(id, args.summary);
+  trailsChanged();
 }
 const groupTabs = (id) => tabs.filter((t) => t.groupId === id);
 function closeGroup(id) {
@@ -423,6 +479,7 @@ function attachView(tab) {
   wc.on('did-navigate-in-page', (_e, u, isMain) => isMain && trailNavigated(tab, u, true));
   wc.on('did-stop-loading', () => {
     if (tab.trailPage?.pending) trailObserve(tab);
+    if (tab.groupId) researchVisit(tab); // an AI's research tab: its page goes into the research trail
     if (tab.restoreScrollY) {
       const y = tab.restoreScrollY;
       tab.restoreScrollY = 0;
@@ -895,6 +952,8 @@ function trailsChanged() {
 function trailForTab(t) {
   const url = t.sleeping ? t.sleeping.url : t.view.webContents.getURL();
   const db = trailsDb();
+  const research = t.groupId && researchTrailOf(groups.get(t.groupId)); // an AI's tab belongs to its research, never to the user's trails
+  if (research) return research;
   if (t.trailId && db.get(t.trailId)) return t.trailId;
   return db.trailOfUrl(url) || db.observe({ url, title: t.sleeping ? t.sleeping.title : t.view.webContents.getTitle(), favicon: t.favicon }) || db.loose();
 }
@@ -904,9 +963,11 @@ const userTabs = () => tabs.filter((t) => !t.isStart && !t.internal && /^https?:
 
 // Never tucked: what's on screen, what an AI is using, a form being typed, sound playing, a page the user keeps coming
 // back to, a recording, and sites the user told trails to ignore.
+// An AI's tab is protected while it's working there (the last half hour); after that it can be tucked into its research.
+const aiWorking = (t) => (t.aiUntil || 0) > Date.now() - 30 * 60 * 1000;
 function tabProtected(t) {
   const wc = t.view?.webContents;
-  return t.id === activeTabId || aiTab(t) || !!(mosaic && mosaic.includes(t.id)) || !!(recorder && recorder.isRecording(t)) ||
+  return t.id === activeTabId || aiWorking(t) || !!(mosaic && mosaic.includes(t.id)) || !!(recorder && recorder.isRecording(t)) ||
     t.trailState?.form === true || !!(wc && !wc.isDestroyed() && wc.isCurrentlyAudible()) || trailsDb().isReference(tabUrl(t)) ||
     !trailsDb().tuckable(tabUrl(t));
 }
@@ -1250,7 +1311,7 @@ function trailsText({ query = '', trail_id: id = '' } = {}) {
   const list = db.list({ query: String(query || ''), limit: 12 });
   if (!list.length) return query ? `No trails match “${query}”.` : 'No trails yet: the user hasn\'t browsed enough in Skillerr for any to form.';
   return ['The user\'s trails: their own ongoing work in Skillerr, most relevant first. Pass trail_id to my_trails for a trail\'s pages; continue_trail reopens one for the user.', '',
-    ...list.map((t, i) => [`${i + 1}. ${t.title} (trail_id ${t.id}) — last active ${ago(t.lastAt)}, ${t.pageCount} pages${t.sessions > 1 ? `, came back ${t.sessions - 1} time${t.sessions === 2 ? '' : 's'}` : ''}${t.tucked ? `, ${t.tucked} tucked tabs` : ''}`,
+    ...list.map((t, i) => [`${i + 1}. ${t.title} (trail_id ${t.id})${t.by ? ` — research by ${t.by}${t.researchSummary ? `: ${t.researchSummary}` : ''}` : ''} — last active ${ago(t.lastAt)}, ${t.pageCount} pages${t.sessions > 1 ? `, came back ${t.sessions - 1} time${t.sessions === 2 ? '' : 's'}` : ''}${t.tucked ? `, ${t.tucked} tucked tabs` : ''}`,
       t.stoppedAt ? `   Stopped at: ${t.stoppedAt.title} — ${t.stoppedAt.url}` : '',
       ...t.unfinished.slice(0, 3).map((u) => `   Unfinished: ${unfinished(u)}`),
       t.searches.length ? `   Searched: ${t.searches.slice(0, 3).join(' · ')}` : '',
@@ -1793,6 +1854,9 @@ async function execute(controller, name, args) {
     const opened = tabs.filter((t) => !before.tabIds.includes(t.id)).map((t) => t.id);
     if (opened.length) assignGroup(controller, opened);
     if ((name === 'navigate' && tab && before.wasStart) || name === 'fetch_page') assignGroup(controller, [tab.id]);
+    try {
+      researchNote(controller, name, args, getTab(opened[0]) || tab);
+    } catch {} // research trails must never break a tool call
     if (['navigate', 'click', 'snapshot', 'new_tab', 'type', 'press_key'].includes(name) && (await humanCheck(controller, name === 'new_tab' ? activeTab() : tab))) {
       result.text = `${result.text || ''}\n\nThis page is showing a robot check. Skillerr has asked the user to complete it. Don't try to solve or click it. Carry on with your other tabs meanwhile, then come back to this one and take a new snapshot.`;
     }

@@ -464,12 +464,14 @@ const favStack = (icons) => icons.length
 function trailCard(t, { onChange } = {}) {
   const card = h('div', 'trail-card');
   const badges = [
+    t.by ? `<span class="tb by">${brandIcon(t.by, 11) || icon('sparkle', 10)}Research by ${esc(t.by)}</span>` : '',
     ...t.unfinished.slice(0, 2).map((u) => `<span class="tb warn" title="${esc(u.title)}">${esc((UNFINISHED[u.kind] || (() => u.kind))(u))}</span>`),
     t.tucked ? `<span class="tb">${t.tucked} tab${t.tucked === 1 ? '' : 's'} tucked</span>` : '',
     t.sessions > 1 ? `<span class="tb">Back ${t.sessions} times</span>` : '',
     t.seeded ? '<span class="tb">From Chrome</span>' : '',
   ].filter(Boolean).join('');
-  const stop = t.stoppedAt ? `Stopped at <b>${esc(trunc(t.stoppedAt.title, 60))}</b> · ${agoText(t.lastAt)}` : `${t.tucked} tabs · ${agoText(t.lastAt)}`;
+  const stop = t.researchSummary ? `<b>${esc(trunc(t.researchSummary, 90))}</b> · ${agoText(t.lastAt)}`
+    : t.stoppedAt ? `${t.by ? 'Last read' : 'Stopped at'} <b>${esc(trunc(t.stoppedAt.title, 60))}</b> · ${agoText(t.lastAt)}` : `${t.tucked} tabs · ${agoText(t.lastAt)}`;
   card.innerHTML = `<div class="tc-ic">${favStack(t.favicons)}</div>
     <div class="tc-meta"><div class="tc-title">${esc(t.title)}</div><div class="tc-sub">${stop}</div>${badges ? `<div class="tc-badges">${badges}</div>` : ''}</div>
     <div class="tc-acts"></div>`;

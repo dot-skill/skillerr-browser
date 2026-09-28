@@ -221,6 +221,8 @@ class Trails {
     let bestScore = 0;
     for (const t of this.trails) {
       if (t.state !== 'active' || t.loose || at - t.lastAt > MATCH_DAYS * DAY) continue;
+      // An AI's research trail takes the user's pages only when they carry on from it (same tab, or opened from it).
+      if (t.research && ctx.tabTrail !== t.id && ctx.openerTrail !== t.id) continue;
       let score = similarity(words, t);
       if (this.meaning && !sensitive) score = Math.max(score, MEANING_WEIGHT * this.meaningOf(() => this.meaning.affinity({ title, h1, query }, t)));
       if (ctx.tabTrail === t.id && at - (ctx.tabAt || 0) < CONTINUE_MS) score += typed ? 0.15 : 0.6;
@@ -263,7 +265,7 @@ class Trails {
     trail.words = Object.fromEntries(kept);
     if (query) {
       trail.searches = [query, ...trail.searches.filter((q) => q.toLowerCase() !== query.toLowerCase())].slice(0, 12);
-      if (!trail.titleByUser && !trail.title) trail.title = capitalize(query).slice(0, 80);
+      if (!trail.titleByUser && !trail.title && !trail.research) trail.title = capitalize(query).slice(0, 80); // research: researchTitle names it
       return;
     }
     trail.hosts[host] = (trail.hosts[host] || 0) + 1;
@@ -281,7 +283,7 @@ class Trails {
     if (p.days[p.days.length - 1] !== dayOf(at)) p.days = [...p.days, dayOf(at)].slice(-10);
     if (CART.test(url) || CART.test(title)) p.unfinished.cart = { at };
     if (ORDERED.test(url) || ORDERED.test(title)) this.ordered(host);
-    if (!trail.titleByUser && !trail.title) trail.title = cleanTitle(title).slice(0, 80) || host;
+    if (!trail.titleByUser && !trail.title && !trail.research) trail.title = cleanTitle(title).slice(0, 80) || host;
     if (trail.pages.length > MAX_PAGES) {
       trail.pages.sort((a, b) => b.lastAt - a.lastAt);
       trail.pages.length = MAX_PAGES;
@@ -329,6 +331,64 @@ class Trails {
 
   tuckable(url) {
     return /^https?:/i.test(url || '') && !this.ignored(url);
+  }
+
+  // ---------- research an AI did in Skillerr ----------
+  // The tabs an AI app (Claude Desktop, Cursor…) opens for one piece of research make a trail of their own, marked with
+  // who did it. key: the research session (or app and day) it belongs to.
+  research({ key, by, sessionId = null, at = this.now() }) {
+    let t = this.trails.find((x) => x.research?.key === key);
+    if (!t) {
+      t = { id: newId(), title: '', titleByUser: false, state: 'active', createdAt: at, lastAt: at, sessions: 1, days: [dayOf(at)],
+        words: {}, hosts: {}, searches: [], pages: [], tucked: [], research: { key, by, sessionId, titleFrom: '' } };
+      this.trails.push(t);
+      this.saveSoon();
+    }
+    if (t.state !== 'active') t.state = 'active';
+    return t.id;
+  }
+
+  // A page the AI read or opened for the research.
+  researchPage(id, { url, title = '', favicon = null, at = this.now() }) {
+    const t = this.get(id);
+    if (!t?.research || !/^https?:/i.test(url || '') || this.ignored(url) || searchQuery(url)) return false;
+    this.addTo(t, { url, title, favicon, host: hostOf(url), query: null, words: pageWords({ url, title }), sensitive: false, at });
+    this.saveSoon();
+    return true;
+  }
+
+  // A web search the AI ran for it.
+  researchSearch(id, query, at = this.now()) {
+    const t = this.get(id);
+    const q = String(query || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (!t?.research || !q) return false;
+    this.addTo(t, { url: '', title: '', favicon: null, host: '', query: q, words: pageWords({ query: q }), sensitive: false, at });
+    this.saveSoon();
+    return true;
+  }
+
+  // The research's name, from the best source there is: the AI's own question (goal), else its first web search, else
+  // the clearest page title. A better source replaces a weaker one; a name the user gave is never replaced.
+  researchTitle(id, text, from) {
+    const t = this.get(id);
+    const rank = { '': 0, page: 1, search: 2, goal: 3 };
+    const title = capitalize(String(text || '').replace(/\s+/g, ' ').trim()).slice(0, 80);
+    if (!t?.research || !title || t.titleByUser) return false;
+    const cur = t.research.titleFrom || '';
+    if (rank[from] < rank[cur] || (from === 'search' && cur === 'search')) return false; // the first search names it
+    t.title = title;
+    t.research.titleFrom = from;
+    this.saveSoon();
+    return true;
+  }
+
+  // What the AI concluded (its tag_session summary), shown with the trail.
+  researchSummary(id, summary) {
+    const t = this.get(id);
+    if (!t?.research || !summary) return false;
+    t.research.summary = String(summary).slice(0, 300);
+    this.saveSoon();
+    return true;
   }
 
   // Where tabs go that belong to no trail (a routine site, a page that said too little to file): "Other tabs".
@@ -390,6 +450,7 @@ class Trails {
   // A thread of work, or just a page that was looked at once?
   worth(t) {
     if (t.loose) return t.tucked.length > 0;
+    if (t.research) return t.pages.length + t.searches.length >= 2 || t.tucked.length > 0;
     return t.titleByUser || t.seeded || t.tucked.length > 0 || this.unfinished(t).length > 0 || t.pages.length >= 3 ||
       (t.pages.length >= 2 && (t.searches.length > 0 || t.sessions >= 2)) || (t.pages.length >= 1 && t.searches.length > 0 && t.sessions >= 2);
   }
@@ -418,6 +479,8 @@ class Trails {
         .map((x) => ({ url: x.url, title: x.title || x.url, favicon: x.favicon || null, tucked: t.tucked.includes(x) })),
       seeded: !!t.seeded,
       loose: !!t.loose,
+      by: t.research?.by || null, // research an AI app did, and which
+      researchSummary: t.research?.summary || null,
       returning: t.pages.filter((p) => p.days.length >= 3).map((p) => ({ url: p.url, title: p.title, days: p.days.length })).slice(0, 3),
     };
   }
@@ -456,15 +519,15 @@ class Trails {
   trailOfUrl(url) {
     const key = pageKey(url);
     let hit = null;
-    for (const t of this.trails) if (t.state === 'active' && t.pages.some((p) => p.url === key) && (!hit || t.lastAt > hit.lastAt)) hit = t;
+    for (const t of this.trails) if (t.state === 'active' && !t.research && t.pages.some((p) => p.url === key) && (!hit || t.lastAt > hit.lastAt)) hit = t;
     return hit?.id || null;
   }
 
   // What Wenlo learns from when it retrains (src/wenlo/train.js): each trail's searches and page titles, newest trails
-  // first. Never pages with password or payment fields, never "Other tabs".
+  // first. Never pages with password or payment fields, never "Other tabs", never an AI's research (it learns the user).
   trainingSet() {
     return this.trails
-      .filter((t) => !t.loose)
+      .filter((t) => !t.loose && !t.research)
       .sort((a, b) => b.lastAt - a.lastAt)
       .map((t) => ({
         id: t.id,
@@ -476,7 +539,7 @@ class Trails {
   // Pages first visited since a time: what's new for Wenlo to learn from.
   newPagesSince(at) {
     let n = 0;
-    for (const t of this.trails) if (!t.loose) for (const p of t.pages) if (p.firstAt > at && !p.sensitive) n++;
+    for (const t of this.trails) if (!t.loose && !t.research) for (const p of t.pages) if (p.firstAt > at && !p.sensitive) n++;
     return n;
   }
 

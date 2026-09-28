@@ -226,3 +226,34 @@ test('with Wenlo, pages join trails by meaning and search finds by meaning', () 
   assert.ok(broken.observe({ url: 'https://www.google.com/search?q=espresso' }, { typed: true }));
   assert.deepStrictEqual(broken.list({ query: 'espresso' }).length, 0);
 });
+
+test('research an AI did: its own trail, titled from the best source, kept apart from the user\'s trails', () => {
+  const { tr, clock } = make();
+  const r = tr.research({ key: 'session:abc', by: 'Claude Desktop', sessionId: 'session:abc' });
+  assert.strictEqual(tr.research({ key: 'session:abc', by: 'Claude Desktop' }), r); // one per research
+  tr.researchPage(r, { url: 'https://audio.example/best-anc', title: 'The best noise-cancelling headphones - Audio Mag' });
+  assert.strictEqual(tr.get(r).title, ''); // not named by the first page it happened to open
+  tr.researchTitle(r, 'Sony WH-1000XM6 vs Bose QC Ultra', 'page');
+  tr.researchSearch(r, 'best noise cancelling headphones under 200');
+  tr.researchTitle(r, 'best noise cancelling headphones under 200', 'search');
+  assert.strictEqual(tr.get(r).title, 'Best noise cancelling headphones under 200'); // a search beats a page title
+  tr.researchSearch(r, 'sony vs bose');
+  tr.researchTitle(r, 'sony vs bose', 'search');
+  assert.strictEqual(tr.get(r).title, 'Best noise cancelling headphones under 200'); // the first search names it
+  tr.researchTitle(r, 'headphones for flights under $200', 'goal');
+  assert.strictEqual(tr.get(r).title, 'Headphones for flights under $200'); // the AI's own question beats all
+  tr.researchSummary(r, 'Sony WH-1000XM6 on sale is the pick');
+  const s = tr.list().find((x) => x.id === r);
+  assert.strictEqual(s.by, 'Claude Desktop');
+  assert.strictEqual(s.researchSummary, 'Sony WH-1000XM6 on sale is the pick');
+  // The user's own pages don't join it by topic…
+  clock.t += MIN;
+  const mine = tr.observe({ url: 'https://www.google.com/search?q=noise+cancelling+headphones+under+200' }, { typed: true });
+  assert.notStrictEqual(mine, r);
+  // …but do when the user carries on from it.
+  assert.strictEqual(tr.observe({ url: 'https://shop.example/sony-xm6', title: 'Sony WH-1000XM6 headphones' }, { tabTrail: r, tabAt: clock.t }), r);
+  // Wenlo learns the user, not the AI.
+  assert.ok(!tr.trainingSet().some((x) => x.id === r));
+  // A user's page that was also in the research isn't filed back into it.
+  assert.notStrictEqual(tr.trailOfUrl('https://audio.example/best-anc'), r);
+});

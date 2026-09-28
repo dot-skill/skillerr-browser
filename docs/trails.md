@@ -76,6 +76,19 @@ What was typed is never read or stored, only that something was.
   sleeping tabs (Settings → Sleep inactive tabs) keep their scroll position too.
 - Sites the user excluded are never tucked, since trails keep nothing from them.
 
+## Research an AI did
+
+When an AI app (Claude Desktop, Cursor…) uses Skillerr, the tabs it opens for one research task make a trail of their
+own, marked **Research by Claude Desktop**, kept apart from the user's own trails:
+
+- **Named from the best source there is:** the AI's own question (its `recall`), else its first web search, else the
+  clearest page title (the one closest in meaning to the rest, chosen by Wenlo). The tab-strip group uses the same name.
+- **Its conclusion** (the AI's `tag_session` summary) shows on the trail's card.
+- **Continue it later** from the start page like any trail; pages the user opens from it join it. The user's other
+  pages never join it by topic, and Wenlo doesn't learn from it (it learns the user).
+- When Skillerr quits, or the AI hasn't touched a tab for half an hour and Tidy runs, its tabs are tucked into its
+  research trail, never into the user's.
+
 ## Tabs sort themselves
 
 Open tabs of the same trail (two or more) show as one named, coloured group in the tab strip. When a page joins a
