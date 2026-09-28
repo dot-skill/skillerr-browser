@@ -1,4 +1,4 @@
-# Scout's training texts, from sources whose licences allow shipping what's learned from them:
+# Wenlo's training texts, from sources whose licences allow shipping what's learned from them:
 #   - Project Gutenberg books (public domain), via NLTK's gutenberg corpus
 #   - README prose of MIT / ISC / Apache-2.0 / BSD npm packages in ../../node_modules (modern, technical words)
 #   - documentation prose and page titles, cloned into ./open (git clone --depth 1 --sparse):
@@ -6,7 +6,7 @@
 #       GSA/digitalgov.gov content (CC0), 18F/guides content (US government, public domain)
 #   - word bags drawn from the vocabulary (so modern words like hotel, laptop or visa are covered too)
 #   - short spans cut from the sentences (page titles and searches are 2-8 words, not sentences)
-# The texts only need to be varied: what Scout learns comes from the teacher's embedding of each one.
+# The texts only need to be varied: what Wenlo learns comes from the teacher's embedding of each one.
 # Usage (in a work folder holding gutenberg.zip and vocab.txt): python3 corpus.py  → corpus-clean.txt
 import zipfile, re, random, json, os, glob
 
@@ -46,7 +46,7 @@ for pj in glob.glob(os.path.join(ROOT, 'node_modules', '**', 'package.json'), re
 
 books_and_readmes = list(dict.fromkeys(sents))
 
-# Documentation prose, and page titles (front matter "title:"), which read like the tabs Scout sees.
+# Documentation prose, and page titles (front matter "title:"), which read like the tabs Wenlo sees.
 docs, doc_titles = [], []
 for f in glob.glob(os.path.join('open', '*', '**', '*.md'), recursive=True):
     t = open(f, errors='ignore').read()
@@ -83,7 +83,7 @@ random.shuffle(corpus)
 open('corpus-clean.txt', 'w').write('\n'.join(corpus))
 print('book sentences', books, 'README sentences', len(books_and_readmes) - books, 'from', readmes, 'READMEs; docs', len(docs), 'doc titles', len(doc_titles), 'total', len(corpus))
 
-# The texts Scout is scored on (never fitted to): STS-B test and SICK test pairs, in order.
+# The texts Wenlo is scored on (never fitted to): STS-B test and SICK test pairs, in order.
 import csv
 evtexts = []
 for r in csv.reader(open('stsb-test.csv')):

@@ -21,7 +21,7 @@ const CONTINUE_MS = 30 * 60 * 1000; // the same tab, used again within this long
 const SESSION_GAP_MS = 2 * HOUR; // coming back to a trail after this long counts as returning to it
 const MATCH_DAYS = 14; // a page can join a trail touched in the last two weeks
 const JOIN = 0.34; // how alike a page and a trail must be for the page to join it on topic alone
-const MEANING_WEIGHT = 0.8; // Scout's "same topic" (1.0) counts as a strong word match; a loose one stays under JOIN
+const MEANING_WEIGHT = 0.8; // Wenlo's "same topic" (1.0) counts as a strong word match; a loose one stays under JOIN
 const PAGE_WORDS = 12;
 const TRAIL_WORDS = 60;
 const MAX_TRAILS = 300;
@@ -137,7 +137,7 @@ function chooseTabsToTuck(list, { now = Date.now(), keep = 5, idleMs = 12 * HOUR
 }
 
 class Trails {
-  // meaning: optional, Scout (src/scout): { affinity(page, trail) → 0…1, rank(query, trails) → trails }.
+  // meaning: optional, Wenlo (src/wenlo): { affinity(page, trail) → 0…1, rank(query, trails) → trails }.
   // Without it, trails match by shared words only.
   constructor(dir, { now = Date.now, meaning = null } = {}) {
     this.meaning = meaning;
@@ -242,7 +242,7 @@ class Trails {
     return trail.id;
   }
 
-  // Scout must never break learning: any failure counts as "no opinion".
+  // Wenlo must never break learning: any failure counts as "no opinion".
   meaningOf(fn, fallback = 0) {
     try {
       const v = fn();
@@ -437,7 +437,7 @@ class Trails {
       return Math.pow(0.5, age / 3) * (1 + 0.4 * Math.min(t.sessions, 6) + 0.8 * Math.min(this.unfinished(t).length, 3) + (t.tucked.length ? 0.6 : 0));
     };
     const shown = this.trails.filter((t) => (state === 'all' || t.state === state) && this.worth(t));
-    // With Scout, a search finds trails by meaning ("where to stay" finds "ryokan near Gion"), best match first.
+    // With Wenlo, a search finds trails by meaning ("where to stay" finds "ryokan near Gion"), best match first.
     if (query && this.meaning) {
       const hits = this.meaningOf(() => this.meaning.rank(query, shown), null);
       if (hits) {

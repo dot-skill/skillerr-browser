@@ -1,7 +1,7 @@
-# Scout embeddings (scout-embed-1)
+# Wenlo embeddings (wenlo-embed-1)
 
-`scout-embed.bin` and `vocab.txt` are Scout's model: one 256-number vector (int8, with a scale per row) for each of
-the 30,522 word pieces in `vocab.txt`. Built with `scripts/scout/` (see its README).
+`wenlo-embed.bin` and `vocab.txt` are Wenlo's model: one 256-number vector (int8, with a scale per row) for each of
+the 30,522 word pieces in `vocab.txt`. Built with `scripts/wenlo/` (see its README).
 
 - **Distilled from** [`sentence-transformers/all-MiniLM-L6-v2`](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
   (revision `c9745ed1d9f207416be6d2e6f8de32d1f16199bf`), licensed Apache-2.0. `vocab.txt` is that model's vocabulary.

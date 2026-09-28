@@ -30,7 +30,7 @@ const DEFAULTS = {
   sitePermissions: {}, // origin → { permission: 'allow' | 'block' }
   popupsAllowed: {}, // host → true
   sleepTabs: true, // unload tabs nobody is using, to stay light
-  scout: true, // Skillerr's own small AI (src/scout): trails and recall by meaning, on this computer
+  wenlo: true, // Skillerr's own small AI (src/wenlo): trails and recall by meaning, on this computer
   trails: true, // learn the user's ongoing work from their own browsing (src/trails.js)
   trailsTuck: true, // tuck tabs unused for half a day into their trail (the 5 most recent always stay)
   trailsIntroSeen: false,

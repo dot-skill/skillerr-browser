@@ -1,4 +1,4 @@
-/* global skillerr, esc, trunc, icon, btn, h, trailCard, agoText, UNFINISHED, saveSettings, renderScoutLine */
+/* global skillerr, esc, trunc, icon, btn, h, trailCard, agoText, UNFINISHED, saveSettings, renderWenloLine */
 // Trails page: every ongoing trail, what's in it, and the user's controls (rename, merge, done, forget, never learn
 // from a site), plus the Trails settings.
 (() => {
@@ -17,9 +17,9 @@
   async function renderList() {
     const box = $('tvList');
     const q = $('tvQ').value.trim();
-    // A question gets Scout's answer on top; the list below is the trails it matches, by meaning.
+    // A question gets Wenlo's answer on top; the list below is the trails it matches, by meaning.
     const answer = tab === 'active' && q.split(/\s+/).length >= 2 ? await skillerr.invoke('trails-ask', q) : null;
-    renderScoutLine($('tvAnswer'), answer);
+    renderWenloLine($('tvAnswer'), answer);
     list = await skillerr.invoke('trails-list', { state: tab, query: q });
     box.innerHTML = '';
     if (!list.length) {
@@ -170,7 +170,7 @@
     const info = await skillerr.invoke('trails-info');
     $('tvLearn').checked = info.enabled;
     $('tvTuck').checked = info.tuck;
-    $('tvScout').checked = info.scout;
+    $('tvWenlo').checked = info.wenlo;
     const hosts = (box, items, empty, action) => {
       box.innerHTML = items.length ? '' : `<span class="muted small">${empty}</span>`;
       for (const it of items) {
@@ -208,7 +208,7 @@
 
   $('tvLearn').onchange = () => saveSettings({ trails: $('tvLearn').checked });
   $('tvTuck').onchange = () => saveSettings({ trailsTuck: $('tvTuck').checked });
-  $('tvScout').onchange = () => saveSettings({ scout: $('tvScout').checked });
+  $('tvWenlo').onchange = () => saveSettings({ wenlo: $('tvWenlo').checked });
   $('tvIgnoreForm').onsubmit = async (e) => {
     e.preventDefault();
     const v = $('tvIgnoreHost').value.trim().replace(/^https?:\/\//, '').split('/')[0];

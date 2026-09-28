@@ -1,19 +1,19 @@
-// Scout's embeddings: one small vector per word piece, distilled from all-MiniLM-L6-v2 (see scripts/scout/).
+// Wenlo's embeddings: one small vector per word piece, distilled from all-MiniLM-L6-v2 (see scripts/wenlo/).
 // A text's embedding is the average of its pieces' vectors: no neural network runs, so it takes microseconds, in plain
 // JavaScript, with no native code and nothing to download. The table is int8 with a scale per row (about 8 MB).
 //
-// File format (scout-embed.bin, little-endian):
-//   "SCT1" | uint32 vocab size V | uint32 dims D | float32 scale[V] | int8 vector[V * D]
+// File format (wenlo-embed.bin, little-endian):
+//   "WNL1" | uint32 vocab size V | uint32 dims D | float32 scale[V] | int8 vector[V * D]
 // Vocabulary: vocab.txt, one word piece per line, line number = id.
 const fs = require('fs');
 const path = require('path');
 const { WordPiece } = require('./tokenizer');
 
-const DIR = path.join(__dirname, '..', '..', 'assets', 'scout');
+const DIR = path.join(__dirname, '..', '..', 'assets', 'wenlo');
 
-class ScoutEmbed {
+class WenloEmbed {
   constructor(buf, vocab) {
-    if (buf.toString('latin1', 0, 4) !== 'SCT1') throw new Error('Not a Scout embedding file');
+    if (buf.toString('latin1', 0, 4) !== 'WNL1') throw new Error('Not a Wenlo embedding file');
     this.V = buf.readUInt32LE(4);
     this.D = buf.readUInt32LE(8);
     const scalesAt = 12;
@@ -23,11 +23,11 @@ class ScoutEmbed {
     for (let i = 0; i < this.V; i++) this.scale[i] = buf.readFloatLE(scalesAt + i * 4);
     this.vec = new Int8Array(buf.buffer.slice(buf.byteOffset + vecsAt, buf.byteOffset + vecsAt + this.V * this.D));
     this.tok = new WordPiece(vocab);
-    if (vocab.length !== this.V) throw new Error('Scout vocabulary and vectors disagree');
+    if (vocab.length !== this.V) throw new Error('Wenlo vocabulary and vectors disagree');
   }
 
   static load(dir = DIR) {
-    return new ScoutEmbed(fs.readFileSync(path.join(dir, 'scout-embed.bin')), fs.readFileSync(path.join(dir, 'vocab.txt'), 'utf8').split(/\r?\n/)); // CRLF-safe
+    return new WenloEmbed(fs.readFileSync(path.join(dir, 'wenlo-embed.bin')), fs.readFileSync(path.join(dir, 'vocab.txt'), 'utf8').split(/\r?\n/)); // CRLF-safe
   }
 
   // Unit-length Float32Array, or null for a text with no known pieces.
@@ -70,4 +70,4 @@ function centroid(vs) {
   return out;
 }
 
-module.exports = { ScoutEmbed, cosine, centroid, DIR };
+module.exports = { WenloEmbed, cosine, centroid, DIR };

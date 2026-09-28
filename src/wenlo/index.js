@@ -1,16 +1,16 @@
-// Scout: Skillerr's own small AI, running inside the browser. It knows the user's work (trails) by meaning.
+// Wenlo: Skillerr's own small AI, running inside the browser. It knows the user's work (trails) by meaning.
 //
-// Scout doesn't generate text. It embeds (src/scout/embed.js: distilled static embeddings, microseconds per text) and
+// Wenlo doesn't generate text. It embeds (src/wenlo/embed.js: distilled static embeddings, microseconds per text) and
 // then chooses: the trail a page belongs to, the trails a search means, the trail a question is about. What it says is
 // built from the facts of the user's own trails, so it can't make things up.
-const { ScoutEmbed, cosine, centroid } = require('./embed');
+const { WenloEmbed, cosine, centroid } = require('./embed');
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
 
 const { LOW, HIGH, TOPIC_LOW, TOPIC_HIGH } = require('./calibration');
 
-class Scout {
+class Wenlo {
   constructor({ embedder = null, dir } = {}) {
     this._embedder = embedder;
     this.dir = dir;
@@ -19,7 +19,7 @@ class Scout {
   }
 
   get embedder() {
-    if (!this._embedder) this._embedder = ScoutEmbed.load(this.dir);
+    if (!this._embedder) this._embedder = WenloEmbed.load(this.dir);
     return this._embedder;
   }
 
@@ -128,4 +128,4 @@ function describe(s, now = Date.now()) {
   return parts.join(' ');
 }
 
-module.exports = { Scout, describe, LOW, HIGH };
+module.exports = { Wenlo, describe, LOW, HIGH };

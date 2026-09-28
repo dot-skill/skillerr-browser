@@ -15,7 +15,7 @@ const store = require('./store');
 const { Memory, recallText, tokens } = require('./memory');
 const chrome_ = require('./chrome-import');
 const { Trails, chooseTabsToTuck, pageKey } = require('./trails');
-const { Scout } = require('./scout');
+const { Wenlo } = require('./wenlo');
 
 traceStartup('modules loaded');
 // Read on first use (or in the background once the window is up), never before the window: a big memory
@@ -26,13 +26,13 @@ const memory = new Memory(path.join(store.DIR, 'memory'), { lazy: true });
 const freshData = !fs.existsSync(path.join(store.DIR, 'settings.json'));
 let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
-// Scout: Skillerr's own small AI (src/scout), built in. It knows trails and research by meaning. Loaded on first use.
-const scout = new Scout({ dir: path.join(__dirname, '..', 'assets', 'scout') }); // src/ and out/src/ alike
-const scoutOn = () => store.getSettings().scout !== false;
+// Wenlo: Skillerr's own small AI (src/wenlo), built in. It knows trails and research by meaning. Loaded on first use.
+const wenlo = new Wenlo({ dir: path.join(__dirname, '..', 'assets', 'wenlo') }); // src/ and out/src/ alike
+const wenloOn = () => store.getSettings().wenlo !== false;
 const embedder = new Embedder({
   memory, dir: path.join(store.DIR, 'memory'),
-  builtin: () => scout.embedder,
-  getConfig: () => { const s = store.getSettings(); return { on: s.semanticRecall !== false && remembering(), baseUrl: s.embedBaseUrl, model: s.embedModel, builtin: s.scout !== false }; },
+  builtin: () => wenlo.embedder,
+  getConfig: () => { const s = store.getSettings(); return { on: s.semanticRecall !== false && remembering(), baseUrl: s.embedBaseUrl, model: s.embedModel, builtin: s.wenlo !== false }; },
 });
 // Semantic matches for a recall; null (keyword-only) if no local embedding model answers in time.
 const similarTo = (q) => Promise.race([embedder.similar(q).catch(() => null), new Promise((r) => setTimeout(() => r(null), 3000))]);
@@ -721,11 +721,11 @@ setInterval(sleepIdleTabs, 20000);
 // with where they were), and come back with one click from the start page or the Trails view. Only what the user does:
 // pages an AI opens or drives are research memory's, not trails'.
 let trailStore = null;
-const trailsDb = () => trailStore || (trailStore = new Trails(path.join(store.DIR, 'trails'), { meaning: scoutOn() ? scoutMeaning : null }));
-// What Trails asks Scout: how close a page is to a trail, and which trails a search means.
-const scoutMeaning = {
-  affinity: (page, t) => scout.pageAffinity(page, t),
-  rank: (q, list) => scout.rankTrails(q, list).map((x) => x.trail),
+const trailsDb = () => trailStore || (trailStore = new Trails(path.join(store.DIR, 'trails'), { meaning: wenloOn() ? wenloMeaning : null }));
+// What Trails asks Wenlo: how close a page is to a trail, and which trails a search means.
+const wenloMeaning = {
+  affinity: (page, t) => wenlo.pageAffinity(page, t),
+  rank: (q, list) => wenlo.rankTrails(q, list).map((x) => x.trail),
 };
 const learningTrails = () => store.getSettings().trails !== false;
 const TRAIL_WORLD = 7701; // the page's own scripts can't see or fake-silence the watcher in this isolated world
@@ -995,25 +995,25 @@ function trailsHome() {
     session: session.length ? { tabs: session.reduce((n, x) => n + x.tabs.length, 0), trails: session.length, at: db.data.quitAt } : null,
     trails: all.slice(0, 3),
     total: all.length,
-    // Scout's one line about where you were, built from the facts of the top trail.
-    scout: s.scout !== false && all[0] ? scoutLine(all[0]) : null,
+    // Wenlo's one line about where you were, built from the facts of the top trail.
+    wenlo: s.wenlo !== false && all[0] ? wenloLine(all[0]) : null,
   };
 }
 
-function scoutLine(summary) {
+function wenloLine(summary) {
   try {
-    return { text: require('./scout').describe(summary), trailId: summary.id };
+    return { text: require('./wenlo').describe(summary), trailId: summary.id };
   } catch {
     return null;
   }
 }
 
 // "What was I doing about the visa?": the trail it's about, and the facts of it.
-function askScout(query) {
+function askWenlo(query) {
   const db = trailsDb();
   const shown = db.trails.filter((t) => t.state === 'active' && db.worth(t));
   const summaries = db.list({ limit: 300 });
-  return scout.answer(String(query || ''), summaries, shown);
+  return wenlo.answer(String(query || ''), summaries, shown);
 }
 
 // For AI apps (my_trails), in plain words.
@@ -2050,7 +2050,7 @@ function wireIpc() {
   const changed = (r) => (trailsChanged(), r);
   ipcMain.on('open-trails', () => openInternal('trails'));
   ipcMain.handle('trails-home', () => trailsHome());
-  ipcMain.handle('trails-ask', (_e, q) => (scoutOn() ? askScout(q) : null));
+  ipcMain.handle('trails-ask', (_e, q) => (wenloOn() ? askWenlo(q) : null));
   ipcMain.handle('trails-list', (_e, { state = 'active', query = '' } = {}) => trailsDb().list({ state, query: String(query) }));
   ipcMain.handle('trails-detail', (_e, id) => trailsDb().detail(String(id)));
   ipcMain.handle('trails-continue', (_e, id) => continueTrail(String(id)));
@@ -2073,7 +2073,7 @@ function wireIpc() {
   ipcMain.handle('trails-undo-tuck', () => undoTuck());
   ipcMain.handle('trails-info', () => {
     const s = store.getSettings();
-    return { enabled: s.trails !== false, tuck: s.trailsTuck !== false, scout: s.scout !== false, ignored: trailsDb().data.ignoredHosts, everyday: trailsDb().everydaySites(),
+    return { enabled: s.trails !== false, tuck: s.trailsTuck !== false, wenlo: s.wenlo !== false, ignored: trailsDb().data.ignoredHosts, everyday: trailsDb().everydaySites(),
       clients: s.trailsAllowedClients || [], chrome: chrome_.available() ? chrome_.profiles() : [] };
   });
   ipcMain.handle('trails-revoke-client', (_e, name) => {
@@ -2314,7 +2314,7 @@ function wireIpc() {
     if (s.shareSkillsWithClaudeCode === true) skills.shareWithClaudeCode();
     if (s.theme) applyTheme(s.theme);
     if ('trails' in s) trailsChanged(); // the shelf shows or hides
-    if ('scout' in s && trailStore) trailStore.meaning = s.scout !== false ? scoutMeaning : null;
+    if ('wenlo' in s && trailStore) trailStore.meaning = s.wenlo !== false ? wenloMeaning : null;
     if (s.searchEngine) setSearchTemplate(searchTemplateFor(s.searchEngine));
     if ('searchApi' in s || 'searchApiKey' in s) applySearchApi();
     status.requireApproval = !!store.getSettings().requireApproval;

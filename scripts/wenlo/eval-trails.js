@@ -1,12 +1,12 @@
-// Does Scout make Trails better? Replays realistic browsing (searches and page titles from 8 threads of work, worded
+// Does Wenlo make Trails better? Replays realistic browsing (searches and page titles from 8 threads of work, worded
 // differently on purpose), shuffled over three days, with no tab or opener hints: the hardest case, where only the
-// words themselves say what belongs together. Scores how well trails match the real threads, words only vs with Scout.
-// Usage: node scripts/scout/eval-trails.js
+// words themselves say what belongs together. Scores how well trails match the real threads, words only vs with Wenlo.
+// Usage: node scripts/wenlo/eval-trails.js
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { Trails } = require('../../src/trails');
-const { Scout } = require('../../src/scout');
+const { Wenlo } = require('../../src/wenlo');
 
 const THREADS = {
   japan: ['q:cheap flights to tokyo in october', 'Tokyo Narita flights from London - compare airfares', 'q:best area to stay in kyoto',
@@ -28,7 +28,7 @@ const THREADS = {
     'Dell XPS 13 review: a great Windows ultrabook', 'q:laptop battery life comparison', 'Thin and light laptops with the longest battery life'],
 };
 
-// Held out: never used to set Scout's thresholds, only to score them.
+// Held out: never used to set Wenlo's thresholds, only to score them.
 const HELD_OUT = {
   wedding: ['q:wedding venues near lake como', 'Lake Como Wedding Venues: Villas and Prices', 'q:wedding photographer italy cost',
     'How much does a destination wedding photographer cost?', 'q:save the date card ideas', 'Save-the-date etiquette: when to send them'],
@@ -52,7 +52,7 @@ function run(meaning, seed = 1, threads = THREADS) {
   items.sort(() => rnd() - 0.5);
   const T0 = Date.parse('2026-09-01T09:00:00Z');
   const clock = { t: T0 };
-  const tr = new Trails(fs.mkdtempSync(path.join(os.tmpdir(), 'scout-eval-')), { now: () => clock.t, meaning });
+  const tr = new Trails(fs.mkdtempSync(path.join(os.tmpdir(), 'wenlo-eval-')), { now: () => clock.t, meaning });
   const got = [];
   items.forEach((it, i) => {
     clock.t = T0 + i * 40 * 60 * 1000; // one every 40 minutes, over about three days
@@ -76,8 +76,8 @@ function run(meaning, seed = 1, threads = THREADS) {
   return { trails: new Set(got.map((g) => g.trail).filter(Boolean)).size, precision, recall, f1: (2 * precision * recall) / (precision + recall || 1) };
 }
 
-const scout = new Scout();
-const meaning = { affinity: (p, t) => scout.pageAffinity(p, t), rank: (q, l) => scout.rankTrails(q, l).map((x) => x.trail) };
+const wenlo = new Wenlo();
+const meaning = { affinity: (p, t) => wenlo.pageAffinity(p, t), rank: (q, l) => wenlo.rankTrails(q, l).map((x) => x.trail) };
 const avg = (m, threads) => {
   const rs = [1, 2, 3, 4, 5].map((seed) => run(m, seed, threads));
   const mean = (k) => rs.reduce((a, r) => a + r[k], 0) / rs.length;
@@ -88,6 +88,6 @@ if (require.main === module) {
   for (const [name, threads] of [['tuning set', THREADS], ['held-out set', HELD_OUT]]) {
     console.log(`${name}: ${Object.keys(threads).length} threads, ${Object.values(threads).flat().length} visits, 5 shuffles, no tab hints`);
     console.log('  words only  ', avg(null, threads));
-    console.log('  with Scout  ', avg(meaning, threads));
+    console.log('  with Wenlo  ', avg(meaning, threads));
   }
 }

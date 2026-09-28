@@ -512,7 +512,7 @@ async function renderTrailsHome() {
     }));
     intro.appendChild(acts);
   }
-  renderScoutLine($('scoutLine'), home.scout);
+  renderWenloLine($('wenloLine'), home.wenlo);
   const row = $('sessionRow');
   row.hidden = !home.session;
   if (home.session) {
@@ -531,11 +531,11 @@ async function renderTrailsHome() {
   $('allTrails').textContent = home.total > home.trails.length ? `All ${home.total} trails` : 'All trails';
   box.querySelector('.section-row').hidden = !home.trails.length;
 }
-// Scout's line: one or two sentences built from a trail's facts, with Continue.
-function renderScoutLine(box, line) {
+// Wenlo's line: one or two sentences built from a trail's facts, with Continue.
+function renderWenloLine(box, line) {
   box.hidden = !line;
   if (!line) return;
-  box.innerHTML = `<span class="orb xs"></span><span class="sl-text"><b>Scout</b> ${esc(line.text)}</span>`;
+  box.innerHTML = `<span class="orb xs"></span><span class="sl-text"><b>Wenlo</b> ${esc(line.text)}</span>`;
   const go = btn('Continue', 'ghost', () => skillerr.invoke('trails-continue', line.trailId));
   box.appendChild(go);
 }

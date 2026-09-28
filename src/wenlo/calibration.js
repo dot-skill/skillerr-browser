@@ -1,4 +1,4 @@
-// Where Scout's cosines fall, measured on held-back data (scripts/scout/):
+// Where Wenlo's cosines fall, measured on held-back data (scripts/wenlo/):
 // - sentence: STS-B dev pairs (calibrate.py). Below LOW, people call a pair unrelated; around HIGH, roughly equivalent.
 //   Used to put recall-by-meaning matches on the same scale as other embedding models.
 // - topic: a page against the centre of a thread of work (eval-trails.js, tuning set). Below LOW is another thread

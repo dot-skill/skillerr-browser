@@ -1,4 +1,4 @@
-// WordPiece tokenizer (BERT uncased), in plain JavaScript: Scout's embeddings use the same vocabulary as the
+// WordPiece tokenizer (BERT uncased), in plain JavaScript: Wenlo's embeddings use the same vocabulary as the
 // all-MiniLM-L6-v2 model they were distilled from. Matches Hugging Face's BertNormalizer + BertPreTokenizer + WordPiece
 // (lowercase, accents stripped, Chinese characters split, punctuation split, greedy longest match with ## pieces).
 

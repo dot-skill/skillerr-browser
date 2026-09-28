@@ -1,4 +1,4 @@
-# Scout embeddings: distil all-MiniLM-L6-v2 into one static vector per WordPiece token.
+# Wenlo embeddings: distil all-MiniLM-L6-v2 into one static vector per WordPiece token.
 #   1. token vectors: the teacher's embedding of each vocabulary token alone, reduced with PCA   (E0)
 #   2. closed-form fit: find E minimising ||A E - Y||^2 + lam ||E - E0||^2, where A averages each corpus text's
 #      tokens and Y is the teacher's (PCA-reduced) embedding of that text. Solved per dimension with conjugate gradients.
@@ -89,7 +89,7 @@ for d in [int(x) for x in sys.argv[1:]] or [256]:
 best = max(results, key=lambda k: results[k][0])
 print('best', best)
 _, E, P, mu = results[best]
-np.save(f'scout-E{SFX}.npy', E); np.save(f'scout-P{SFX}.npy', P); np.save(f'scout-mu{SFX}.npy', mu)
+np.save(f'wenlo-E{SFX}.npy', E); np.save(f'wenlo-P{SFX}.npy', P); np.save(f'wenlo-mu{SFX}.npy', mu)
 # int8 per-row quantisation check
 scale = np.abs(E).max(1, keepdims=True) / 127; scale[scale == 0] = 1
 Eq = np.round(E / scale).astype(np.int8)
