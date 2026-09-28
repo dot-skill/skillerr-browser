@@ -4,7 +4,27 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 
+const store = require('./store');
+const { setPrefer, isPreferred } = require('./prefer');
+
 const home = os.homedir();
+
+// Which AI apps this copy of Skillerr connected, kept with Skillerr's own data (~/.skillerr/browser/connections.json).
+// Connections belong to that data: if it's deleted (or it's a new computer), a later install finds entries it has no
+// record of and removes them as leftovers (reconcile), instead of looking connected out of the box.
+// The record is written before an app's config and read after it, so a check running at the same moment as the
+// installer's setup can't mistake a new connection for a leftover.
+const RECORD = 'connections.json';
+const readRecord = () => store.readJson(RECORD, { apps: {}, prefer: false });
+function recordApp(id, on) {
+  const r = readRecord();
+  if (on) r.apps[id] = { connectedAt: new Date().toISOString() };
+  else delete r.apps[id];
+  store.writeJson(RECORD, r);
+}
+function recordPrefer(on) {
+  store.writeJson(RECORD, { ...readRecord(), prefer: !!on });
+}
 
 function claudeDesktopConfigPath() {
   if (process.platform === 'darwin') return path.join(home, 'Library/Application Support/Claude/claude_desktop_config.json');
@@ -93,6 +113,7 @@ async function connect(id, entry) {
     } catch {
       throw new Error(`${target.name}'s config file isn't valid JSON, so Skillerr left it alone. Fix it or add Skillerr manually.`);
     }
+    recordApp(id, true);
     fs.mkdirSync(path.dirname(target.file), { recursive: true });
     if (fs.existsSync(target.file)) fs.copyFileSync(target.file, target.file + '.skillerr-backup');
     const servers = { ...(config.mcpServers || {}) };
@@ -103,6 +124,7 @@ async function connect(id, entry) {
   if (id === 'claude-code') {
     const bin = await findClaudeCli();
     if (!bin) throw new Error('Claude Code CLI not found.');
+    recordApp(id, true);
     // Replace, don't keep: an existing entry may point at another copy of Skillerr (an old install or a dev build).
     await run(bin, ['mcp', 'remove', 'skillerr', '--scope', 'user']);
     const r = await run(bin, ['mcp', 'add', 'skillerr', '--scope', 'user', '-e', 'ELECTRON_RUN_AS_NODE=1', '--', entry.command, ...entry.args]);
@@ -134,7 +156,8 @@ async function disconnect(id) {
   const target = FILE_TARGETS.find((t) => t.id === id);
   if (target) {
     const config = readJson(target.file);
-    if (!config.mcpServers) return `${target.name} wasn't connected.`;
+    recordApp(id, false);
+    if (!config.mcpServers?.skillerr) return `${target.name} wasn't connected.`;
     fs.copyFileSync(target.file, target.file + '.skillerr-backup');
     delete config.mcpServers.skillerr;
     fs.writeFileSync(target.file, JSON.stringify(config, null, 2));
@@ -143,10 +166,54 @@ async function disconnect(id) {
   if (id === 'claude-code') {
     const bin = await findClaudeCli();
     if (!bin) throw new Error('Claude Code CLI not found.');
+    recordApp(id, false);
     for (const name of ['skillerr']) await run(bin, ['mcp', 'remove', name, '--scope', 'user']);
     return 'Disconnected. New Claude Code sessions won\'t see Skillerr.';
   }
   throw new Error(`Unknown app: ${id}`);
 }
 
-module.exports = { listTargets, connect, disconnect, restartClaudeDesktop, detectLocalModels };
+// Apps whose config has a Skillerr entry right now (working or pointing at a missing copy).
+async function withEntries() {
+  const found = [];
+  for (const t of FILE_TARGETS) {
+    try {
+      if (readJson(t.file).mcpServers?.skillerr) found.push(t.id);
+    } catch {}
+  }
+  try {
+    if (readJson(path.join(home, '.claude.json')).mcpServers?.skillerr) found.push('claude-code');
+  } catch {}
+  return found;
+}
+
+// Leftover connections: entries Skillerr's data has no record of. With fresh data (deleted, or a new computer) they're
+// from an earlier install and are removed; with existing data from before the record existed, they're adopted.
+// Returns the names of the apps it disconnected.
+async function reconcile({ freshData }) {
+  const entries = await withEntries(); // entries first, record second: see RECORD above
+  const preferred = isPreferred();
+  const record = readRecord();
+  const unknown = entries.filter((id) => !record.apps[id]);
+  const strayPrefer = preferred && !record.prefer; // Claude Code's web tools still off from an earlier install
+  if (!freshData) {
+    for (const id of unknown) recordApp(id, true);
+    if (strayPrefer) recordPrefer(true);
+    return [];
+  }
+  if (strayPrefer) {
+    try {
+      setPrefer(false);
+    } catch {}
+  }
+  const removed = [];
+  for (const id of unknown) {
+    try {
+      await disconnect(id);
+      removed.push(({ 'claude-code': 'Claude Code', 'claude-desktop': 'Claude Desktop', cursor: 'Cursor' })[id] || id);
+    } catch {}
+  }
+  return removed;
+}
+
+module.exports = { listTargets, connect, disconnect, restartClaudeDesktop, detectLocalModels, reconcile, withEntries, readRecord, recordPrefer };

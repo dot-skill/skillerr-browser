@@ -76,7 +76,8 @@
       "runAfterFinish": true,
       "shortcutName": "Skillerr",
       "artifactName": "Skillerr-Setup-${version}-${arch}.${ext}",
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
     },
     "linux": {
       "target": [

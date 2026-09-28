@@ -19,6 +19,10 @@ traceStartup('modules loaded');
 // Read on first use (or in the background once the window is up), never before the window: a big memory
 // (a Chrome history import is thousands of pages) would otherwise hold up every start.
 const memory = new Memory(path.join(store.DIR, 'memory'), { lazy: true });
+// No settings yet means Skillerr's data is new (first install, or it was deleted): AI-app connections left behind by an
+// earlier install don't belong to it (connectors.reconcile). Checked before anything can write settings.
+const freshData = !fs.existsSync(path.join(store.DIR, 'settings.json'));
+let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
 const embedder = new Embedder({
   memory, dir: path.join(store.DIR, 'memory'),
@@ -1529,6 +1533,10 @@ const agent = new Agent({
 });
 
 async function runAgent(task) {
+  if (!agentReady()) {
+    ui('agent', { type: 'error', text: proLocked(store.getSettings()) ? 'Skillerr Pro is coming soon. Choose a local model or your own API key in Settings.' : 'Choose an AI to power Skillerr in Settings.' });
+    return;
+  }
   status.agentRunning = true;
   markActive({ name: agentLabel(), via: 'builtin' });
   if (remembering()) memSession({ name: agentLabel(), via: 'builtin' }, { goal: task.replace(/^Use the "[^"]+" skill[\s\S]*?Task: /, ''), fresh: true });
@@ -1540,9 +1548,14 @@ async function runAgent(task) {
   }
 }
 
+// Settings saved while testing Skillerr Pro (a Pro key, the Pro endpoint) don't count until Pro opens.
+const PRO_ENDPOINTS = new Set([PRO_API, 'https://ai-gateway.vercel.sh/v1']);
+const proLocked = (s) => !PRO_OPEN && PRO_ENDPOINTS.has(s.baseUrl);
+
 function agentReady() {
   const s = store.getSettings();
   if (s.builtinOff) return false; // switched off on the start page; its settings are kept for switching back on
+  if (proLocked(s)) return false;
   return s.provider === 'anthropic' ? !!s.apiKey : !!(s.baseUrl && s.model);
 }
 
@@ -1852,6 +1865,7 @@ function wireIpc() {
       { type: 'separator' },
       { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: sheet('settings') },
       { label: 'About Skillerr', click: () => newTab('https://skillerr.com') },
+      { label: 'Uninstall Skillerr…', click: () => uninstallSkillerr() },
     ]).popup({ window: win, x: Math.round(x), y: Math.round(y) });
   });
   ipcMain.handle('mem-forget-session', (_e, id) => memory.forgetSession(String(id)));
@@ -1879,7 +1893,10 @@ function wireIpc() {
     return store.getSettings();
   });
   ipcMain.handle('mcp-config', () => JSON.stringify({ mcpServers: { skillerr: mcpEntry() } }, null, 2));
-  ipcMain.handle('connect-targets', () => connectors.listTargets());
+  ipcMain.handle('connect-targets', async () => {
+    await reconciling; // never show a leftover connection as connected
+    return connectors.listTargets();
+  });
   ipcMain.handle('restart-claude-desktop', async () => {
     try {
       return { ok: true, message: await connectors.restartClaudeDesktop() };
@@ -2042,6 +2059,48 @@ async function checkForUpdates(manual = false) {
   }
 }
 
+// ---------------- uninstall ----------------
+// Deleting the app alone leaves Skillerr connected in Claude Desktop, Claude Code and Cursor (and Claude Code's own
+// web tools off, with --prefer). This undoes all of that, then removes the app the way the platform expects.
+async function uninstallSkillerr() {
+  const { response, checkboxChecked: purge } = await dialog.showMessageBox(win, {
+    type: 'warning', buttons: ['Uninstall', 'Cancel'], defaultId: 1, cancelId: 1,
+    message: 'Uninstall Skillerr?',
+    detail: 'Skillerr disconnects itself from Claude Desktop, Claude Code and Cursor, gives Claude Code its own web tools back, ' +
+      'and then removes itself. Your notes and research folders in ~/Skillerr stay.',
+    checkboxLabel: 'Also delete my settings, research memory, skills and browsing data',
+  });
+  if (response !== 0) return;
+  for (const id of await connectors.withEntries()) await connectors.disconnect(id).catch(() => {});
+  try {
+    if (require('./prefer').isPreferred()) require('./prefer').setPrefer(false);
+  } catch {}
+  const userData = app.getPath('userData'); // cookies, cache and site data: removed after Skillerr has quit
+  if (purge) fs.rmSync(store.DIR, { recursive: true, force: true });
+  const later = (cmd) => require('child_process').spawn('/bin/sh', ['-c', `sleep 2; ${cmd}`], { detached: true, stdio: 'ignore' }).unref();
+  const q = (p) => `'${String(p).replace(/'/g, "'\\''")}'`;
+  if (!app.isPackaged) {
+    await dialog.showMessageBox(win, { type: 'info', message: 'Skillerr is disconnected from your AI apps.', detail: 'It runs from source here, so delete its folder yourself.' });
+  } else if (process.platform === 'darwin') {
+    const bundle = path.resolve(process.execPath, '..', '..', '..'); // …/Skillerr.app
+    if (bundle.endsWith('.app')) await shell.trashItem(bundle).catch(() => {});
+    if (purge) later(`rm -rf ${q(userData)}`);
+  } else if (process.platform === 'win32') {
+    // The NSIS uninstaller removes the app (and runs setup.js --uninstall again, harmlessly).
+    const uninstaller = path.join(path.dirname(process.execPath), 'Uninstall Skillerr.exe');
+    if (fs.existsSync(uninstaller)) require('child_process').spawn(uninstaller, purge ? ['/S', '--delete-app-data'] : ['/S'], { detached: true, stdio: 'ignore' }).unref();
+  } else if (process.env.APPIMAGE) {
+    await dialog.showMessageBox(win, { type: 'info', message: 'Skillerr is disconnected from your AI apps.', detail: `Delete the AppImage to finish:\n${process.env.APPIMAGE}` });
+    if (purge) later(`rm -rf ${q(userData)}`);
+  } else {
+    // Installed by install.sh into ~/.local/share/skillerr.
+    const dir = path.join(app.getPath('home'), '.local', 'share', 'skillerr');
+    const rm = [path.join(dir, 'app'), path.join(app.getPath('home'), '.local', 'bin', 'skillerr'), path.join(app.getPath('home'), '.local', 'share', 'applications', 'skillerr.desktop')];
+    if (process.execPath.startsWith(dir)) later(`rm -rf ${rm.map(q).join(' ')}${purge ? ` ${q(userData)}` : ''}`);
+  }
+  app.quit();
+}
+
 // ---------------- app lifecycle ----------------
 
 function buildMenu() {
@@ -2050,6 +2109,7 @@ function buildMenu() {
     ...(process.platform === 'darwin' ? [{ label: 'Skillerr', submenu: [
       { role: 'about' },
       { label: 'Check for Updates…', click: () => checkForUpdates(true) },
+      { label: 'Uninstall Skillerr…', click: () => uninstallSkillerr() },
       { type: 'separator' }, { role: 'services' },
       { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
       { type: 'separator' }, { role: 'quit' },
@@ -2118,7 +2178,7 @@ function buildMenu() {
       ],
     },
     { role: 'windowMenu' },
-    ...(process.platform === 'darwin' ? [] : [{ label: 'Help', submenu: [{ label: 'Check for Updates…', click: () => checkForUpdates(true) }] }]),
+    ...(process.platform === 'darwin' ? [] : [{ label: 'Help', submenu: [{ label: 'Check for Updates…', click: () => checkForUpdates(true) }, { label: 'Uninstall Skillerr…', click: () => uninstallSkillerr() }] }]),
   ]));
 }
 
@@ -2224,6 +2284,8 @@ app.whenReady().then(async () => {
   setInterval(checkForUpdates, 12 * 3600 * 1000);
   layout();
   traceStartup('window created');
+  // Separate profiles (SKILLERR_PROFILE, for demos and tests) never touch the AI apps' real connections.
+  if (!store.PROFILE) reconciling = connectors.reconcile({ freshData }).catch(() => []);
   // AI apps can connect while the UI is still loading: the local API starts now, and calls wait until the browser is ready.
   let markReady;
   const ready = new Promise((resolve) => (markReady = resolve));
@@ -2268,6 +2330,7 @@ app.whenReady().then(async () => {
   newTab();
   traceStartup('first tab open');
   markReady();
+  reconciling.then((removed) => removed.length && ui('connections-reset', removed));
   createStatusBar(); // not awaited: it only matters once an AI connects, and catches up on the state when loaded
   await apiStarting;
   // Warm research memory and the embedding index in the background, after the window is usable.
