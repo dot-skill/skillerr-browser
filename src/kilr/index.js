@@ -19,11 +19,16 @@ class Kilr {
     this.personalFile = personalFile;
     this.cache = new Map(); // text → vector
     this.trailCache = new Map(); // trail id → { key, vec }
+    this.stats = { texts: 0, micros: 0, loadMs: 0 }; // for the Kilr screen: texts understood, time spent on them
   }
 
   // The model as shipped. Personal retraining always starts from this.
   get base() {
-    if (!this._base) this._base = KilrEmbed.load(this.dir);
+    if (!this._base) {
+      const t = performance.now();
+      this._base = KilrEmbed.load(this.dir);
+      this.stats.loadMs = Math.round(performance.now() - t);
+    }
     return this._base;
   }
 
@@ -65,7 +70,10 @@ class Kilr {
     if (!t) return null;
     let v = this.cache.get(t);
     if (v === undefined) {
+      const t0 = performance.now();
       v = this.embedder.embed(t);
+      this.stats.texts++;
+      this.stats.micros += (performance.now() - t0) * 1000;
       if (this.cache.size > 5000) this.cache.clear();
       this.cache.set(t, v);
     }

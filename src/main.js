@@ -15,6 +15,7 @@ const store = require('./store');
 const { Memory, recallText, tokens } = require('./memory');
 const chrome_ = require('./chrome-import');
 const { Trails, chooseTabsToTuck, pageKey } = require('./trails');
+const { buildHistoryGraph } = require('./history-graph');
 const { Kilr } = require('./kilr');
 const { cosine: kilrCosine } = require('./kilr/embed');
 
@@ -38,6 +39,12 @@ try { // staging builds called it Wenlo
   }
 } catch {}
 const kilr = new Kilr({ dir: KILR_DIR, personalFile: KILR_PERSONAL });
+// What Kilr has been doing lately, for its screen: [{ at, what }], newest first.
+const kilrLog = [];
+function kilrDid(what) {
+  kilrLog.unshift({ at: Date.now(), what: String(what).slice(0, 200) });
+  if (kilrLog.length > 60) kilrLog.length = 60;
+}
 const kilrOn = () => store.getSettings().kilr !== false;
 const embedder = new Embedder({
   memory, dir: path.join(store.DIR, 'memory'),
@@ -310,7 +317,7 @@ function baseTabInfo(t) {
   const wc = t.view.webContents;
   return {
     id: t.id,
-    title: t.internal === 'memory' ? 'Research memory' : t.internal === 'data' ? 'History & Bookmarks' : t.internal === 'trails' ? 'Trails' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
+    title: t.internal === 'memory' ? 'History' : t.internal === 'data' ? 'Bookmarks & Data' : t.internal === 'trails' ? 'Trails' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
     url: t.isStart ? '' : wc.getURL(),
     internal: t.internal || null,
     isStart: t.isStart,
@@ -905,6 +912,7 @@ async function trailObserve(tab) {
     const id = trailsDb().observe({ url: page.url, title: wc.getTitle(), favicon: tab.favicon, ...facts },
       { tabTrail: tab.trailId, tabAt: tab.trailAt, openerTrail: opener, typed: page.typed });
     page.trailId = id;
+    if (id && kilrOn()) kilrDid(`Filed “${trunc(wc.getTitle() || page.url, 60)}” into “${trunc(trailsDb().get(id)?.title || 'a trail', 40)}”`);
     if (id) {
       tab.trailId = id;
       tab.trailAt = Date.now();
@@ -1115,6 +1123,7 @@ function importChromeTabs(profile) {
   pushTabs();
   trailsChanged();
   const trailIds = new Set([...tucked.keys(), ...open.map((x) => x.trailId)]);
+  kilrDid(`Sorted ${list.length} tabs from Chrome into ${trailIds.size} trails`);
   return { count: list.length, open: open.length, trails: trailIds.size };
 }
 
@@ -1236,6 +1245,8 @@ function kilrLearn({ auto = false } = {}) {
       const saved = { at: Date.now(), auto, accepted: !!result.accepted, report: result.report || null, error: result.error || null, sources };
       store.saveSettings({ ...s, kilrLearnedAt: result.error ? s.kilrLearnedAt : Date.now(), kilrLastLearn: saved });
       ui('kilr-learned', saved);
+      kilrDid(saved.error ? 'Couldn\'t learn this time' : saved.accepted ? `Learned ${saved.report?.pieces || 0} words from ${saved.sources.you} of your pages and ${saved.sources.ai} from your AIs' research`
+        : `Checked ${(saved.sources.you || 0) + (saved.sources.ai || 0)} pages: nothing better to learn yet`);
       trailsChanged();
       resolve(saved);
     };
@@ -1334,6 +1345,11 @@ function jumpSearch(query) {
     if (Math.max(wordScore, meaning) >= 0.5) scored.push({ ...c, score, why: wordScore >= meaning ? 'words' : 'meaning' });
   }
   scored.sort((a, b) => b.score - a.score);
+  if (q.length >= 3) {
+    const what = `Searched ${cands.length} pages for “${trunc(q, 40)}”: ${Math.min(6, scored.length)} found`;
+    if (kilrLog[0]?.what.startsWith('Searched ') && Date.now() - kilrLog[0].at < 4000) kilrLog[0] = { at: Date.now(), what }; // one entry per search, not per keystroke
+    else kilrDid(what);
+  }
   return scored.slice(0, 6).map((c) => ({ ...c, trail: c.trailId ? db.get(c.trailId)?.title || null : null }));
 }
 
@@ -1354,6 +1370,41 @@ function jumpOpen(c) {
     nt.trailAt = Date.now();
     nt.restoreScrollY = c.scrollY || 0;
   }
+}
+
+// ---------- Kilr's status, for its screen ----------
+function kilrStatus() {
+  const s = store.getSettings();
+  const base = kilr._base || null; // loaded only once something needed it
+  const modelFile = path.join(KILR_DIR, 'kilr-embed.bin');
+  let personal = { exists: false, sizeKB: 0, words: 0 };
+  try {
+    const st = fs.statSync(KILR_PERSONAL);
+    const fd = fs.openSync(KILR_PERSONAL, 'r');
+    const head = Buffer.alloc(8);
+    fs.readSync(fd, head, 0, 8, 0);
+    fs.closeSync(fd);
+    personal = { exists: true, sizeKB: Math.round(st.size / 1024), words: head.readUInt32LE(4), updatedAt: st.mtimeMs };
+  } catch {}
+  const D = base?.D || 256;
+  const V = base?.V || 30522;
+  const tableMB = (V * D + V * 4) / 1e6;
+  const recallVectors = embedder._vectors?.size || 0;
+  const memoryMB = base ? tableMB * (kilr.personal ? 2 : 1) + (kilr.cache.size * D * 4) / 1e6 + (recallVectors * D * 4) / 1e6 : 0;
+  const db = trailStore;
+  return {
+    on: s.kilr !== false,
+    model: { file: 'kilr-embed.bin', sizeMB: +(fs.statSync(modelFile).size / 1e6).toFixed(1), words: V, dims: D, loaded: !!base, loadMs: kilr.stats.loadMs },
+    personal: { ...personal, last: s.kilrLastLearn || null },
+    memoryMB: +memoryMB.toFixed(1),
+    texts: kilr.stats.texts,
+    avgMicros: kilr.stats.texts ? Math.round(kilr.stats.micros / kilr.stats.texts) : null,
+    recallVectors,
+    trails: db ? { you: db.trails.filter((t) => !t.loose && !t.research && db.worth(t)).length, ai: db.trails.filter((t) => t.research && db.worth(t)).length } : { you: 0, ai: 0 },
+    learning: { mode: s.kilrLearn, every: s.kilrLearnEvery, fromYou: s.kilrLearnFromYou !== false, fromAi: s.kilrLearnFromAi !== false, running: !!learning, due: learnDue() },
+    runsOn: { gpu: false, network: false, where: 'this computer' },
+    log: kilrLog.slice(0, 30),
+  };
 }
 
 // For AI apps (my_trails), in plain words.
@@ -1994,7 +2045,7 @@ const BROWSER_TOOLS = {
       '',
       `Research folders (one folder per topic, with an index and the notes): ${RESEARCH_DIR}`,
       `Research memory: ${st.session} sessions, ${st.page} pages, ${st.topic} topics, stored on this computer in ${path.join(store.DIR, 'memory')}. ` +
-        'Use recall to search it. The user can browse it in Skillerr → ⋮ → Research Memory.',
+        'Use recall to search it. The user can browse it in Skillerr → ⋮ → History.',
     ].join('\n') };
   },
   my_trails: async (args) => {
@@ -2400,6 +2451,17 @@ function wireIpc() {
   ipcMain.handle('trails-home', () => trailsHome());
   ipcMain.handle('trails-ask', (_e, q) => (kilrOn() ? askKilr(q) : null));
   ipcMain.handle('kilr-learn', () => kilrLearn());
+  // History: research memory and trails as one graph, each node marked as the user's or their AI's (src/history-graph.js).
+  ipcMain.handle('history-graph', () => {
+    const db = trailsDb();
+    const trails = db.trails.filter((t) => !t.loose && t.state !== 'hidden' && db.worth(t)).map((t) => {
+      const d = db.detail(t.id);
+      return { summary: d, pages: d.pages };
+    });
+    return buildHistoryGraph({ memoryGraph: remembering() ? memory.graph({ pages: true, max: 5000 }) : null, trails, pageId: (u) => memory.pageId(u), maxNodes: 3000 });
+  });
+  // Kilr's own screen: what it is, what it's doing, what it costs this computer.
+  ipcMain.handle('kilr-status', () => kilrStatus());
   ipcMain.handle('jump-search', (_e, q) => {
     try {
       return jumpSearch(q);
@@ -2644,9 +2706,9 @@ function wireIpc() {
       { label: 'New Tab', accelerator: 'CmdOrCtrl+T', click: () => newTab() },
       { label: 'Fleet View', accelerator: 'CmdOrCtrl+Shift+F', type: 'checkbox', checked: !!mosaic, click: () => (mosaic ? exitMosaic() : enterMosaic(tabs.map((t) => t.id))) },
       { type: 'separator' },
-      { label: 'Research Memory', click: () => openInternal('memory') },
+      { label: 'History', accelerator: 'CmdOrCtrl+Y', click: () => openInternal('memory') },
       { label: 'Trails', click: () => openInternal('trails') },
-      { label: 'History & Bookmarks', accelerator: 'CmdOrCtrl+Y', click: () => openInternal('data') },
+      { label: 'Bookmarks & Data', click: () => openInternal('data') },
       { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: () => bookmarkActive() },
       { label: 'Skills…', click: sheet('skills') },
       { label: 'Connected AI Apps…', click: sheet('connect') },
@@ -2939,7 +3001,8 @@ function buildMenu() {
         { label: 'Open Location…', accelerator: 'CmdOrCtrl+L', click: guard(() => ui('focus-url')) },
         { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', click: guard(() => closedTabs.length && newTab(closedTabs.pop())) },
         { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: guard(() => activeTab()?.view.webContents.print()) },
-        { label: 'History & Bookmarks', accelerator: 'CmdOrCtrl+Y', click: guard(() => openInternal('data')) },
+        { label: 'History', accelerator: 'CmdOrCtrl+Y', click: guard(() => openInternal('memory')) },
+        { label: 'Bookmarks & Data', click: guard(() => openInternal('data')) },
         { label: 'Trails', accelerator: 'CmdOrCtrl+Shift+L', click: guard(() => openInternal('trails')) },
         { label: 'Tidy Tabs into Trails', click: guard(() => tidyTabs({ force: true })) },
         { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: guard(() => bookmarkActive()) },
