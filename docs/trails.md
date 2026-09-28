@@ -76,6 +76,18 @@ What was typed is never read or stored, only that something was.
   sleeping tabs (Settings → Sleep inactive tabs) keep their scroll position too.
 - Sites the user excluded are never tucked, since trails keep nothing from them.
 
+## Moving over from Chrome
+
+Settings → Bring your Chrome data → **Open tabs** (and the first-launch import) brings the tabs open in Chrome now. They're
+read from Chrome's session file on this computer (`<profile>/Sessions/Session_*`, the "SNSS" format; `parseSession` in
+`src/chrome-import.js`), at each tab's current page, closed tabs left out, with titles from Chrome's history.
+
+All the tabs are grouped at once (`clusterItems`: average-linkage clustering on Wenlo's meaning of their titles, without
+site names, plus shared keywords; threshold 0.2 and keyword bonus 0.1, chosen on the tuning threads of
+`scripts/wenlo/eval-trails.js`: precision 0.93, F1 0.62; held-out threads: precision 0.80, F1 0.73). Each group becomes a
+trail, joining an existing one when it's about the same thing. The tab in front in each Chrome window, and pinned tabs,
+come over open (asleep until clicked); the rest are tucked into their trails, on the shelf. Nothing is closed in Chrome.
+
 ## Research an AI did
 
 When an AI app (Claude Desktop, Cursor…) uses Skillerr, the tabs it opens for one research task make a trail of their

@@ -257,3 +257,26 @@ test('research an AI did: its own trail, titled from the best source, kept apart
   // A user's page that was also in the research isn't filed back into it.
   assert.notStrictEqual(tr.trailOfUrl('https://audio.example/best-anc'), r);
 });
+
+test('Chrome session files: the tabs open now, at their current page, in window order', () => {
+  const { parseSession } = require('../src/chrome-import');
+  const fx = (f) => fs.readFileSync(path.join(__dirname, 'fixtures', f));
+  // Recorded from Chromium 141 with six tabs; the last one opened is in front.
+  const a = parseSession(fx('chrome-session.snss'));
+  assert.deepStrictEqual(a.map((t) => t.url.split('/').pop()), ['hp1.html', 'hp2.html', 'py1.html', 'japan0.html', 'rust1.html', 'baby2.html']);
+  assert.deepStrictEqual(a.filter((t) => t.active).map((t) => t.url.split('/').pop()), ['baby2.html']);
+  // Recorded after navigating one tab (hp2 → hp3) and closing another (py1).
+  const b = parseSession(fx('chrome-session-2.snss'));
+  assert.deepStrictEqual(b.map((t) => t.url.split('/').pop()), ['hp1.html', 'hp3.html']);
+  assert.throws(() => parseSession(Buffer.from('not a session')), /Not a Chrome session/);
+});
+
+test('an import of many tabs is grouped all at once, merging only what is alike', () => {
+  const { clusterItems } = require('../src/trails');
+  // 0,1,2 alike; 3,4 alike; 5 alone. Groups merge while their average similarity stays at the threshold or above.
+  const S = [
+    [0, 0.6, 0.5, 0, 0, 0], [0.6, 0, 0.4, 0, 0, 0.1], [0.5, 0.4, 0, 0, 0.05, 0],
+    [0, 0, 0, 0, 0.7, 0], [0, 0, 0.05, 0.7, 0, 0], [0, 0.1, 0, 0, 0, 0]];
+  const groups = clusterItems(6, (i, j) => S[i][j], { threshold: 0.2 }).map((g) => g.sort().join(',')).sort();
+  assert.deepStrictEqual(groups, ['0,1,2', '3,4', '5']);
+});

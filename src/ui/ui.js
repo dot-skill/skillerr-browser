@@ -1816,7 +1816,7 @@ $('doImport').onclick = async () => {
   const b = $('doImport');
   b.disabled = true;
   b.textContent = 'Importing…';
-  const r = await skillerr.invoke('chrome-import', { profile: $('chromeProfile').value, bookmarks: $('impBookmarks').checked, history: $('impHistory').checked });
+  const r = await skillerr.invoke('chrome-import', { profile: $('chromeProfile').value, tabs: $('impTabs').checked, bookmarks: $('impBookmarks').checked, history: $('impHistory').checked });
   b.disabled = false;
   b.textContent = 'Import';
   $('importResult').className = 'small ' + (r.ok ? 'ok-text' : 'err-text');
@@ -1978,7 +1978,7 @@ async function showOnboarding() {
     if (available && $('obImport').checked) {
       const { profiles } = await skillerr.invoke('chrome-profiles');
       if (profiles[0]) {
-        skillerr.invoke('chrome-import', { profile: profiles[0].dir, bookmarks: true, history: $('obRemember').checked });
+        skillerr.invoke('chrome-import', { profile: profiles[0].dir, tabs: $('obTrails').checked, bookmarks: true, history: $('obRemember').checked });
         if ($('obTrails').checked) skillerr.invoke('trails-seed', profiles[0].dir).then(() => renderTrailsHome());
       }
     }

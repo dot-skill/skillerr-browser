@@ -136,6 +136,29 @@ function chooseTabsToTuck(list, { now = Date.now(), keep = 5, idleMs = 12 * HOUR
   return open.slice(keep).filter((t) => force || now - (t.lastUsed || 0) > idleMs).map((t) => t.id);
 }
 
+// Group many pages at once (an import of open tabs): average-linkage clustering. sim(i, j) → similarity of two items;
+// groups merge while their average similarity stays at or above `threshold`. Returns arrays of item indexes.
+function clusterItems(n, sim, { threshold = 0.3 } = {}) {
+  const S = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 0 : sim(i, j))));
+  let groups = Array.from({ length: n }, (_, i) => [i]);
+  for (;;) {
+    let best = null;
+    let bestS = threshold;
+    for (let a = 0; a < groups.length; a++) {
+      for (let b = a + 1; b < groups.length; b++) {
+        let s = 0;
+        for (const i of groups[a]) for (const j of groups[b]) s += S[i][j];
+        s /= groups[a].length * groups[b].length;
+        if (s >= bestS) [best, bestS] = [[a, b], s];
+      }
+    }
+    if (!best) return groups;
+    const [a, b] = best;
+    groups[a] = [...groups[a], ...groups[b]];
+    groups = groups.filter((_, k) => k !== b);
+  }
+}
+
 class Trails {
   // meaning: optional, Wenlo (src/wenlo): { affinity(page, trail) → 0…1, rank(query, trails) → trails }.
   // Without it, trails match by shared words only.
@@ -683,4 +706,4 @@ class Trails {
   }
 }
 
-module.exports = { Trails, chooseTabsToTuck, searchQuery, cleanTitle, pageWords, pageKey, hostOf };
+module.exports = { Trails, chooseTabsToTuck, clusterItems, searchQuery, cleanTitle, pageWords, pageKey, hostOf };

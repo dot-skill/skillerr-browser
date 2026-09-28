@@ -1060,6 +1060,57 @@ function reopenTuckedTab(id, url) {
   return back.length ? reopenTucked(back, id) : 0;
 }
 
+// ---------- moving over from Chrome: its open tabs, sorted into trails ----------
+// All the tabs are grouped at once (average-linkage clustering on Wenlo's meaning plus shared keywords; settings chosen
+// on scripts/wenlo/eval-trails.js), then each group is filed as one trail, joining an existing trail when it's about the
+// same thing. The tab in front in each Chrome window, and pinned tabs, come over open (asleep until clicked); the rest are
+// tucked into their trails, one click away. Nothing is lost and the tab strip stays calm.
+const IMPORT_CLUSTER = { threshold: 0.2, wordBonus: 0.1 };
+function importChromeTabs(profile) {
+  const db = trailsDb();
+  const seen = new Set(userTabs().map((t) => pageKey(tabUrl(t))));
+  const list = [];
+  for (const t of chrome_.openTabs(profile)) {
+    const key = pageKey(t.url);
+    if (seen.has(key) || !db.tuckable(t.url)) continue;
+    seen.add(key);
+    list.push({ ...t, title: t.title || t.url });
+  }
+  const { pageWords, cleanTitle } = require('./trails');
+  const vecs = list.map((t) => (wenloOn() ? wenlo.vec(cleanTitle(t.title)) : null)); // without the site's name, as Trails compares titles
+  const words = list.map((t) => new Set(pageWords({ url: t.url, title: t.title })));
+  const sim = (i, j) => {
+    const shared = [...words[i]].filter((w) => words[j].has(w)).length;
+    return (vecs[i] && vecs[j] ? wenloCosine(vecs[i], vecs[j]) : 0) + IMPORT_CLUSTER.wordBonus * Math.min(shared, 2);
+  };
+  const groupsOfTabs = require('./trails').clusterItems(list.length, sim, { threshold: IMPORT_CLUSTER.threshold });
+  const at = Date.now();
+  const open = [];
+  const tucked = new Map(); // trail id → tabs
+  for (const g of groupsOfTabs) {
+    let trailId = null;
+    for (const i of g) {
+      const t = list[i];
+      trailId = db.observe({ url: t.url, title: t.title }, trailId ? { tabTrail: trailId, tabAt: at } : { typed: true }) || trailId || db.loose();
+      if (t.active || t.pinned) open.push({ url: t.url, title: t.title, trailId, order: [t.window, t.index] });
+      else (tucked.get(trailId) || tucked.set(trailId, []).get(trailId)).push({ url: t.url, title: t.title });
+    }
+  }
+  for (const [trailId, tabsOf] of tucked) db.tuck(trailId, tabsOf, 'chrome');
+  open.sort((a, b) => a.order[0] - b.order[0] || a.order[1] - b.order[1]);
+  for (const x of open) sleepingTab(x);
+  if (open.length) {
+    const start = activeTab()?.isStart ? activeTab() : null;
+    const first = tabs.find((t) => t.sleeping && pageKey(t.sleeping.url) === pageKey(open[0].url));
+    if (first) switchTab(first.id);
+    if (start && tabs.length > 1) closeTab(start.id);
+  }
+  pushTabs();
+  trailsChanged();
+  const trailIds = new Set([...tucked.keys(), ...open.map((x) => x.trailId)]);
+  return { count: list.length, open: open.length, trails: trailIds.size };
+}
+
 // "Continue": the trail's tucked tabs come back; with none, the page the user stopped at (scrolled where they were).
 function continueTrail(id) {
   const db = trailsDb();
@@ -2302,9 +2353,14 @@ function wireIpc() {
   ipcMain.handle('mem-stats', () => memory.stats());
   ipcMain.handle('bookmarks', () => store.readJson('bookmarks.json', []));
   ipcMain.handle('chrome-profiles', () => ({ available: chrome_.available(), profiles: chrome_.profiles() }));
-  ipcMain.handle('chrome-import', (_e, { profile, bookmarks, history }) => {
+  ipcMain.handle('chrome-import', (_e, { profile, bookmarks, history, tabs: openTabs }) => {
     const done = [];
     try {
+      if (openTabs && learningTrails()) {
+        const r = importChromeTabs(profile);
+        if (r.count) done.push(`${r.count} open tabs, sorted into ${r.trails} trail${r.trails === 1 ? '' : 's'} (${r.open} open, the rest tucked in their trails)`);
+        else done.push('no open tabs found');
+      }
       if (bookmarks) {
         const list = chrome_.bookmarks(profile);
         store.writeJson('bookmarks.json', list);

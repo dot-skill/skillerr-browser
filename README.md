@@ -147,8 +147,9 @@ flowchart LR
   the tab strip with its tabs' icons, and unfolds into them with a click.
 - **Pick up where you left off.** The start page shows your most relevant trails. **Continue** reopens a trail's tabs
   (asleep until clicked) or the page you stopped at, scrolled to where you were. Quitting no longer loses your tabs.
-- **Yours to control:** rename, merge, mark done, forget, never learn from a site. Chrome history can seed the first
-  trails. AI apps see your trails (`my_trails`) only after you allow each one once.
+- **Move over from Chrome in one click.** Your open Chrome tabs come over sorted into trails: the ones you had in front
+  open, the rest tucked in their trails. Chrome history can seed trails too.
+- **Yours to control:** rename, merge, mark done, forget, never learn from a site. AI apps see your trails (`my_trails`) only after you allow each one once.
 
 See [docs/trails.md](docs/trails.md).
 
