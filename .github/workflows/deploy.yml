@@ -147,6 +147,10 @@ jobs:
     timeout-minutes: 5
     environment: ${{ needs.plan.outputs.environment }}
     steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
@@ -154,7 +158,10 @@ jobs:
           ENVIRONMENT: ${{ needs.plan.outputs.environment }}
         run: |
           if [ "$ENVIRONMENT" = production ]; then
-            gh release edit "v$VERSION" --repo "$RELEASES_REPO" --draft=false --prerelease=false --latest
+            # Release notes come from .github/release-notes/v<version>.md when the release commit adds one.
+            notes=".github/release-notes/v$VERSION.md"
+            gh release edit "v$VERSION" --repo "$RELEASES_REPO" --draft=false --prerelease=false --latest \
+              $([ -f "$notes" ] && echo --notes-file "$notes")
           else
             gh release edit "v$VERSION" --repo "$RELEASES_REPO" --draft=false --prerelease --latest=false \
               --notes "Staging build from ${GITHUB_SHA::7} on develop. Only Skillerr installs with Beta updates on receive it."

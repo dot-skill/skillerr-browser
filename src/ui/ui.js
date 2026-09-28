@@ -483,8 +483,14 @@ async function renderAiCards() {
   const builtin = h('div', 'ai-card');
   let sub;
   let action = '';
-  const configured = settings.provider === 'anthropic' ? !!settings.apiKey : !!(settings.baseUrl && settings.model);
+  // Pro settings saved before launch (testing) don't count: the card offers a local model or an API key instead.
+  const proLocked = !PRO_OPEN && (settings.baseUrl === PRO_GATEWAY || settings.baseUrl === PRO_API);
+  const configured = !proLocked && (settings.provider === 'anthropic' ? !!settings.apiKey : !!(settings.baseUrl && settings.model));
   if (ready) sub = `<div class="sub ok">Ready · ${esc(agentName())}</div>`;
+  else if (proLocked && !local.length) {
+    sub = '<div class="sub">Skillerr Pro: coming soon</div>';
+    action = '<button class="btn ghost sm" data-act="setup">Set up</button>';
+  }
   else if (configured && settings.builtinOff) {
     sub = `<div class="sub">Off · ${esc(agentName())}</div>`;
   } else if (local.length) {
@@ -511,6 +517,14 @@ async function renderAiCards() {
   for (const t of targets) grid.appendChild(connCard(t, 'ai-card'));
   grid.querySelectorAll('.ai-card').forEach((c, i) => (c.style.animationDelay = `${i * 60}ms`));
 }
+
+// Connections left by an earlier install were removed (Skillerr's data was fresh): say so, and show the cards as they are now.
+skillerr.on('connections-reset', (names) => {
+  const note = $('aiNote');
+  note.hidden = false;
+  note.textContent = `Removed old connections from an earlier install of Skillerr (${names.join(', ')}). Connect the apps you want below.`;
+  renderAiCards();
+});
 
 // A small on/off switch for the start page's AI cards.
 function aiSwitch(on, title) {

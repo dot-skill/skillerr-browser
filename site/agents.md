@@ -61,5 +61,13 @@ opens it, and connects the AI apps it finds. Config files are backed up (`*.skil
 ELECTRON_RUN_AS_NODE=1 /Applications/Skillerr.app/Contents/MacOS/Skillerr /Applications/Skillerr.app/Contents/Resources/app.asar/mcp/setup.js --undo-prefer
 ```
 
-This gives Claude Code its own web tools back. To remove Skillerr's connection from an app, use **Disconnect** in Skillerr
-(plug icon in the Pilot panel), then delete the app.
+This gives Claude Code its own web tools back. To remove Skillerr's connection from one app, use **Disconnect** in Skillerr
+(plug icon in the Pilot panel).
+
+To uninstall Skillerr completely (disconnect every AI app, undo `--prefer`, remove the app), use **Uninstall Skillerr…** in
+its menu, or:
+
+```sh
+curl -fsSL https://skillerr.com/install.sh | sh -s -- --uninstall            # macOS, Linux (--purge also deletes its data)
+& ([scriptblock]::Create((irm https://skillerr.com/install.ps1))) --uninstall   # Windows
+```

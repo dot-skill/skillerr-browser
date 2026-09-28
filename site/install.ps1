@@ -1,8 +1,25 @@
 # Install Skillerr, the agentic browser, and connect it to your AI apps (Windows).
 #   irm https://skillerr.com/install.ps1 | iex
 #   & ([scriptblock]::Create((irm https://skillerr.com/install.ps1))) --prefer     # also make Skillerr your AI's browser
+#   & ([scriptblock]::Create((irm https://skillerr.com/install.ps1))) --uninstall [--purge]      # disconnect and remove
 $ErrorActionPreference = 'Stop'
-$version = if ($env:SKILLERR_VERSION) { $env:SKILLERR_VERSION } else { '0.1.3' }
+if ($args -contains '--uninstall') {
+  $exe = Join-Path $env:LOCALAPPDATA 'Programs\Skillerr\Skillerr.exe'
+  if (-not (Test-Path $exe)) { Write-Host "Skillerr isn't installed where this installer puts it ($exe)."; return }
+  Get-Process Skillerr -ErrorAction SilentlyContinue | Stop-Process -Force
+  $env:ELECTRON_RUN_AS_NODE = '1'
+  & $exe (Join-Path (Split-Path $exe) 'resources\app.asar\mcp\setup.js') @($args | Where-Object { $_ -in '--uninstall', '--purge', '--dry-run' })
+  Remove-Item Env:ELECTRON_RUN_AS_NODE
+  if ($args -contains '--dry-run') { Write-Host 'Dry run: nothing removed.'; return }
+  # The uninstaller runs the same disconnect step again (harmless) and removes the app.
+  Start-Process -FilePath (Join-Path (Split-Path $exe) 'Uninstall Skillerr.exe') -ArgumentList '/S' -Wait
+  Write-Host 'Skillerr is uninstalled. Your notes in ~\Skillerr stay.'
+  return
+}
+# The newest published release, unless SKILLERR_VERSION pins one.
+$version = if ($env:SKILLERR_VERSION) { $env:SKILLERR_VERSION } else {
+  try { (Invoke-RestMethod 'https://api.github.com/repos/dot-skill/skillerr-releases/releases/latest' -UseBasicParsing).tag_name.TrimStart('v') } catch { '0.1.4' }
+}
 $base = if ($env:SKILLERR_RELEASE) { $env:SKILLERR_RELEASE } else { "https://github.com/dot-skill/skillerr-releases/releases/download/v$version" }
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
 $file = "Skillerr-Setup-$version-$arch.exe"
