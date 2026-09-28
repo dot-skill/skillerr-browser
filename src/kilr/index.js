@@ -1,17 +1,17 @@
-// Wenlo: Skillerr's own small AI, running inside the browser. It knows the user's work (trails) by meaning.
+// Kilr: Skillerr's own small AI, running inside the browser. It knows the user's work (trails) by meaning.
 //
-// Wenlo doesn't generate text. It embeds (src/wenlo/embed.js: distilled static embeddings, microseconds per text) and
+// Kilr doesn't generate text. It embeds (src/kilr/embed.js: distilled static embeddings, microseconds per text) and
 // then chooses: the trail a page belongs to, the trails a search means, the trail a question is about. What it says is
 // built from the facts of the user's own trails, so it can't make things up.
-const { WenloEmbed, cosine, centroid, decodePersonal } = require('./embed');
+const { KilrEmbed, cosine, centroid, decodePersonal } = require('./embed');
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
 
 const { LOW, HIGH, TOPIC_LOW, TOPIC_HIGH } = require('./calibration');
 
-class Wenlo {
-  // personalFile: where the user's personal vectors live (src/wenlo/train.js); applied on top of the base model.
+class Kilr {
+  // personalFile: where the user's personal vectors live (src/kilr/train.js); applied on top of the base model.
   constructor({ embedder = null, dir, personalFile = null } = {}) {
     this._base = embedder;
     this._embedder = null;
@@ -23,7 +23,7 @@ class Wenlo {
 
   // The model as shipped. Personal retraining always starts from this.
   get base() {
-    if (!this._base) this._base = WenloEmbed.load(this.dir);
+    if (!this._base) this._base = KilrEmbed.load(this.dir);
     return this._base;
   }
 
@@ -157,4 +157,4 @@ function describe(s, now = Date.now()) {
   return parts.join(' ');
 }
 
-module.exports = { Wenlo, describe, LOW, HIGH };
+module.exports = { Kilr, describe, LOW, HIGH };

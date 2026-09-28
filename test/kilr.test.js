@@ -3,14 +3,14 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { Wenlo, describe } = require('../src/wenlo');
-const { WenloEmbed, cosine } = require('../src/wenlo/embed');
-const { WordPiece } = require('../src/wenlo/tokenizer');
+const { Kilr, describe } = require('../src/kilr');
+const { KilrEmbed, cosine } = require('../src/kilr/embed');
+const { WordPiece } = require('../src/kilr/tokenizer');
 const { Trails } = require('../src/trails');
 const { Embedder } = require('../src/embed');
 const { Memory } = require('../src/memory');
 
-const wenlo = new Wenlo();
+const kilr = new Kilr();
 const T0 = Date.parse('2026-09-01T09:00:00Z');
 const DAY = 864e5;
 
@@ -21,7 +21,7 @@ test('tokenizer: BERT uncased WordPiece', () => {
 });
 
 test('the model loads, is small, and embeds to unit vectors', () => {
-  const e = WenloEmbed.load();
+  const e = KilrEmbed.load();
   assert.strictEqual(e.V, 30522);
   assert.ok(e.D >= 128 && e.D <= 384);
   const v = e.embed('Best ryokan in Kyoto near Gion');
@@ -30,13 +30,13 @@ test('the model loads, is small, and embeds to unit vectors', () => {
 });
 
 test('meaning: related texts are closer than unrelated ones, even with no shared words', () => {
-  const sim = (a, b) => wenlo.similarity(a, b);
+  const sim = (a, b) => kilr.similarity(a, b);
   assert.ok(sim('cheap flights to Tokyo', 'airfare to Japan') > sim('cheap flights to Tokyo', 'sourdough starter recipe') + 0.2);
   assert.ok(sim('mechanical keyboard switches', 'linear vs tactile keys') > sim('mechanical keyboard switches', 'visa application form') + 0.2);
   assert.ok(sim('best office chair for back pain', 'ergonomic seating') > sim('best office chair for back pain', 'mortgage rates today') + 0.1);
 });
 
-test('Wenlo answers from a trail\'s facts', () => {
+test('Kilr answers from a trail\'s facts', () => {
   const s = { id: 't1', title: 'Standing desk', lastAt: T0 - 2 * DAY, stoppedAt: { title: 'Your cart' }, unfinished: [{ kind: 'cart', title: 'Your cart' }], tucked: 2 };
   const text = describe(s, T0);
   assert.match(text, /Standing desk, 2 days ago/);
@@ -45,19 +45,19 @@ test('Wenlo answers from a trail\'s facts', () => {
   assert.match(text, /2 of its tabs are tucked/);
 });
 
-test('Trails with Wenlo group real threads of work better than words alone (held-out threads)', () => {
-  const { run, HELD_OUT } = require('../scripts/wenlo/eval-trails');
-  const meaning = { affinity: (p, t) => wenlo.pageAffinity(p, t), rank: (q, l) => wenlo.rankTrails(q, l).map((x) => x.trail) };
+test('Trails with Kilr group real threads of work better than words alone (held-out threads)', () => {
+  const { run, HELD_OUT } = require('../scripts/kilr/eval-trails');
+  const meaning = { affinity: (p, t) => kilr.pageAffinity(p, t), rank: (q, l) => kilr.rankTrails(q, l).map((x) => x.trail) };
   const f1 = (m) => [1, 2, 3].reduce((a, seed) => a + run(m, seed, HELD_OUT).f1, 0) / 3;
   const words = f1(null);
-  const withWenlo = f1(meaning);
-  assert.ok(withWenlo > words + 0.1, `Wenlo ${withWenlo.toFixed(2)} vs words ${words.toFixed(2)}`);
+  const withKilr = f1(meaning);
+  assert.ok(withKilr > words + 0.1, `Kilr ${withKilr.toFixed(2)} vs words ${words.toFixed(2)}`);
 });
 
 test('search finds trails by meaning', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skillerr-wenlo-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skillerr-kilr-'));
   const clock = { t: T0 };
-  const tr = new Trails(dir, { now: () => clock.t, meaning: { affinity: () => 0, rank: (q, l) => wenlo.rankTrails(q, l, { now: clock.t }).map((x) => x.trail) } });
+  const tr = new Trails(dir, { now: () => clock.t, meaning: { affinity: () => 0, rank: (q, l) => kilr.rankTrails(q, l, { now: clock.t }).map((x) => x.trail) } });
   const flights = tr.observe({ url: 'https://www.google.com/search?q=cheap+flights+to+tokyo' }, { typed: true });
   tr.observe({ url: 'https://air.example/a', title: 'Tokyo Narita flights - compare airfares' }, { tabTrail: flights, tabAt: clock.t });
   tr.observe({ url: 'https://air.example/b', title: 'Direct flights from London to Tokyo' }, { tabTrail: flights, tabAt: clock.t });
@@ -70,17 +70,17 @@ test('search finds trails by meaning', () => {
   // "Where was I with …" is about what follows; "where was I?" alone is the latest trail.
   const summaries = tr.list();
   const shown = tr.trails;
-  assert.strictEqual(wenlo.answer('where was I with the office chair?', summaries, shown, { now: clock.t }).trailId, chair);
-  assert.strictEqual(wenlo.answer('What was I doing about plane tickets', summaries, shown, { now: clock.t }).trailId, flights);
-  assert.strictEqual(wenlo.answer('where was I?', summaries, shown, { now: clock.t }).trailId, summaries[0].id);
+  assert.strictEqual(kilr.answer('where was I with the office chair?', summaries, shown, { now: clock.t }).trailId, chair);
+  assert.strictEqual(kilr.answer('What was I doing about plane tickets', summaries, shown, { now: clock.t }).trailId, flights);
+  assert.strictEqual(kilr.answer('where was I?', summaries, shown, { now: clock.t }).trailId, summaries[0].id);
 });
 
-test('recall by meaning uses Wenlo when no endpoint is set, with nothing written to disk', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skillerr-wenlo-mem-'));
+test('recall by meaning uses Kilr when no endpoint is set, with nothing written to disk', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skillerr-kilr-mem-'));
   const memory = new Memory(dir);
   const { id: sid } = memory.session({ name: 'AI', via: 'mcp' }, { goal: 'cheap flights to Tokyo' });
   memory.fileSession(sid, { summary: 'Booked a direct flight to Narita for October', topics: ['Travel > Japan'] });
-  const e = new Embedder({ memory, dir, builtin: () => wenlo.embedder, getConfig: () => ({ on: true }) });
+  const e = new Embedder({ memory, dir, builtin: () => kilr.embedder, getConfig: () => ({ on: true }) });
   const sims = await e.similar('airfare to Japan');
   assert.ok(sims && sims.get(sid) >= 0.55, 'the flights session is found by meaning');
   assert.ok(!(await e.similar('sourdough starter recipe'))?.get(sid), 'and not for something unrelated');
@@ -88,10 +88,10 @@ test('recall by meaning uses Wenlo when no endpoint is set, with nothing written
 });
 
 test('personal retraining: learns the user\'s jargon, proves it on held-back items, and is kept only if it helps', () => {
-  const { trainPersonal } = require('../src/wenlo/train');
-  const { WEEK1, WEEK2 } = require('../scripts/wenlo/personal-data');
-  const { encodePersonal, decodePersonal, centroid } = require('../src/wenlo/embed');
-  const base = WenloEmbed.load();
+  const { trainPersonal } = require('../src/kilr/train');
+  const { WEEK1, WEEK2 } = require('../scripts/kilr/personal-data');
+  const { encodePersonal, decodePersonal, centroid } = require('../src/kilr/embed');
+  const base = KilrEmbed.load();
   const trails = Object.entries(WEEK1).map(([id, texts]) => ({ id, texts }));
   const r = trainPersonal(trails, base);
   assert.ok(r.accepted, JSON.stringify(r.report));
@@ -119,11 +119,11 @@ test('personal retraining: learns the user\'s jargon, proves it on held-back ite
 
 test('personal retraining runs in a worker thread under a memory cap', async () => {
   const { Worker } = require('worker_threads');
-  const { WEEK1 } = require('../scripts/wenlo/personal-data');
+  const { WEEK1 } = require('../scripts/kilr/personal-data');
   const trails = Object.entries(WEEK1).map(([id, texts]) => ({ id, texts }));
   const result = await new Promise((resolve, reject) => {
-    const w = new Worker(path.join(__dirname, '..', 'src', 'wenlo', 'train-worker.js'), {
-      workerData: { dir: path.join(__dirname, '..', 'assets', 'wenlo'), trails },
+    const w = new Worker(path.join(__dirname, '..', 'src', 'kilr', 'train-worker.js'), {
+      workerData: { dir: path.join(__dirname, '..', 'assets', 'kilr'), trails },
       resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32 },
     });
     w.on('message', (m) => m.done && (resolve(m), w.terminate()));

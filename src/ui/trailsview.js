@@ -1,4 +1,4 @@
-/* global skillerr, esc, trunc, icon, btn, h, trailCard, agoText, UNFINISHED, saveSettings, renderWenloLine, learnResultText */
+/* global skillerr, esc, trunc, icon, btn, h, trailCard, agoText, UNFINISHED, saveSettings, renderKilrLine, learnResultText */
 // Trails page: every ongoing trail, what's in it, and the user's controls (rename, merge, done, forget, never learn
 // from a site), plus the Trails settings.
 (() => {
@@ -17,9 +17,9 @@
   async function renderList() {
     const box = $('tvList');
     const q = $('tvQ').value.trim();
-    // A question gets Wenlo's answer on top; the list below is the trails it matches, by meaning.
+    // A question gets Kilr's answer on top; the list below is the trails it matches, by meaning.
     const answer = tab === 'active' && q.split(/\s+/).length >= 2 ? await skillerr.invoke('trails-ask', q) : null;
-    renderWenloLine($('tvAnswer'), answer);
+    renderKilrLine($('tvAnswer'), answer);
     list = await skillerr.invoke('trails-list', { state: tab, query: q });
     box.innerHTML = '';
     if (!list.length) {
@@ -170,7 +170,7 @@
     const info = await skillerr.invoke('trails-info');
     $('tvLearn').checked = info.enabled;
     $('tvTuck').checked = info.tuck;
-    $('tvWenlo').checked = info.wenlo;
+    $('tvKilr').checked = info.kilr;
     renderLearn();
     const hosts = (box, items, empty, action) => {
       box.innerHTML = items.length ? '' : `<span class="muted small">${empty}</span>`;
@@ -208,24 +208,24 @@
   }
 
   $('tvLearn').onchange = () => saveSettings({ trails: $('tvLearn').checked });
-  $('tvLearnMode').onchange = () => saveSettings({ wenloLearn: $('tvLearnMode').value });
-  $('tvLearnEvery').onchange = () => saveSettings({ wenloLearnEvery: $('tvLearnEvery').value });
-  $('tvLearnNow').onclick = () => skillerr.invoke('wenlo-learn');
+  $('tvLearnMode').onchange = () => saveSettings({ kilrLearn: $('tvLearnMode').value });
+  $('tvLearnEvery').onchange = () => saveSettings({ kilrLearnEvery: $('tvLearnEvery').value });
+  $('tvLearnNow').onclick = () => skillerr.invoke('kilr-learn');
   $('tvLearnForget').onclick = async () => {
-    await skillerr.invoke('wenlo-forget');
+    await skillerr.invoke('kilr-forget');
     renderLearn();
   };
   async function renderLearn() {
-    const w = await skillerr.invoke('wenlo-info');
+    const w = await skillerr.invoke('kilr-info');
     $('tvLearnMode').value = w.learn || 'suggest';
     $('tvLearnEvery').value = w.every || 'weekly';
     $('tvLearnEvery').disabled = w.learn === 'off';
     $('tvLearnNow').disabled = w.learning;
     $('tvLearnForget').hidden = !w.personal;
-    $('tvLearnStatus').textContent = w.learning ? 'Learning…' : w.last ? `${new Date(w.last.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}: ${learnResultText(w.last)}` : 'Wenlo hasn\'t learned from your trails yet.';
+    $('tvLearnStatus').textContent = w.learning ? 'Learning…' : w.last ? `${new Date(w.last.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}: ${learnResultText(w.last)}` : 'Kilr hasn\'t learned from your trails yet.';
   }
   $('tvTuck').onchange = () => saveSettings({ trailsTuck: $('tvTuck').checked });
-  $('tvWenlo').onchange = () => saveSettings({ wenlo: $('tvWenlo').checked });
+  $('tvKilr').onchange = () => saveSettings({ kilr: $('tvKilr').checked });
   $('tvIgnoreForm').onsubmit = async (e) => {
     e.preventDefault();
     const v = $('tvIgnoreHost').value.trim().replace(/^https?:\/\//, '').split('/')[0];

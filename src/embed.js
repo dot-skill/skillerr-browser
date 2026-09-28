@@ -1,5 +1,5 @@
 // Semantic recall: local embeddings so `recall` finds past research phrased differently ("lodging" ↔ "hotel").
-// By default Skillerr's own Wenlo embeddings (src/wenlo), built in: nothing to install, microseconds per text, vectors kept
+// By default Skillerr's own Kilr embeddings (src/kilr), built in: nothing to install, microseconds per text, vectors kept
 // in memory only (re-making them is cheaper than reading them). If the user sets an OpenAI-compatible endpoint
 // (embedBaseUrl, e.g. Ollama with nomic-embed-text), that is used instead and its vectors are saved.
 // Only what memory already keeps is embedded (labels, summaries, keywords), never page text. Nothing leaves the machine.
@@ -8,7 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const DEFAULT_MODEL = 'nomic-embed-text'; // for a user-set endpoint
-const WENLO_MODEL = 'wenlo-embed-1';
+const KILR_MODEL = 'kilr-embed-1';
 const RETRY_AFTER_MS = 10 * 60 * 1000; // after a failure (model not pulled, server off), try again later
 const BATCH = 32;
 const MIN_SIMILARITY = 0.55; // below this, a vector match is noise
@@ -27,7 +27,7 @@ function cosine(a, b) {
 
 class Embedder {
   // memory: the Memory instance; dir: where vectors.jsonl lives (next to the graph).
-  // builtin: () => an object with embed(text) → unit vector (Wenlo). Used when no endpoint is set.
+  // builtin: () => an object with embed(text) → unit vector (Kilr). Used when no endpoint is set.
   constructor({ memory, dir, getConfig = () => ({}), fetchImpl = fetch, builtin = null, builtinId = null }) {
     this.memory = memory;
     this.builtin = builtin;
@@ -48,8 +48,8 @@ class Embedder {
   config() {
     const c = this.getConfig() || {};
     const baseUrl = String(c.baseUrl || '').replace(/\/+$/, '');
-    // The model id changes when Wenlo is retrained, so vectors made with the old one are re-made.
-    if (!baseUrl && this.builtin && c.builtin !== false) return { on: c.on !== false, builtin: true, baseUrl: '', model: (c.on !== false && this.builtinId?.()) || WENLO_MODEL };
+    // The model id changes when Kilr is retrained, so vectors made with the old one are re-made.
+    if (!baseUrl && this.builtin && c.builtin !== false) return { on: c.on !== false, builtin: true, baseUrl: '', model: (c.on !== false && this.builtinId?.()) || KILR_MODEL };
     return { on: c.on !== false, builtin: false, baseUrl: baseUrl || 'http://127.0.0.1:11434/v1', model: c.model || DEFAULT_MODEL };
   }
 
@@ -70,7 +70,7 @@ class Embedder {
   }
 
   save() {
-    if (this.config().builtin) return; // Wenlo's vectors are re-made in milliseconds; nothing to keep on disk
+    if (this.config().builtin) return; // Kilr's vectors are re-made in milliseconds; nothing to keep on disk
     fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });
     const tmp = this.file + '.tmp';
     const lines = [...this.vectors.entries()].map(([id, r]) => JSON.stringify({ id, h: r.h, m: r.m, v: r.v }));
@@ -145,7 +145,7 @@ class Embedder {
   async similar(query, { limit = 30 } = {}) {
     if (!this.available() || !String(query || '').trim()) return null;
     const { model, builtin } = this.config();
-    if (builtin) await this.index(); // Wenlo's vectors live in memory: make them now (milliseconds)
+    if (builtin) await this.index(); // Kilr's vectors live in memory: make them now (milliseconds)
     else this.index(); // catch up in the background; this query uses the vectors there are
     if (!this.vectors.size) return null;
     let q;
@@ -158,8 +158,8 @@ class Embedder {
     const scored = [];
     for (const [id, r] of this.vectors) {
       if (r.m !== model || r.v.length !== q.length) continue;
-      // Wenlo's raw cosines run lower than nomic's; map them onto the same scale so recall's thresholds hold.
-      const s = builtin ? wenloScale(cosine(q, r.v)) : cosine(q, r.v);
+      // Kilr's raw cosines run lower than nomic's; map them onto the same scale so recall's thresholds hold.
+      const s = builtin ? kilrScale(cosine(q, r.v)) : cosine(q, r.v);
       if (s >= MIN_SIMILARITY) scored.push([id, s]);
     }
     return new Map(scored.sort((a, b) => b[1] - a[1]).slice(0, limit));
@@ -171,8 +171,8 @@ class Embedder {
   }
 }
 
-// Wenlo cosine → the 0.5 (unrelated) … 1 (same thing) scale recall expects. LOW and HIGH come from src/wenlo.
-const { LOW, HIGH } = require('./wenlo/calibration');
-const wenloScale = (c) => 0.5 + 0.5 * Math.max(0, Math.min(1, (c - LOW) / (HIGH - LOW)));
+// Kilr cosine → the 0.5 (unrelated) … 1 (same thing) scale recall expects. LOW and HIGH come from src/kilr.
+const { LOW, HIGH } = require('./kilr/calibration');
+const kilrScale = (c) => 0.5 + 0.5 * Math.max(0, Math.min(1, (c - LOW) / (HIGH - LOW)));
 
-module.exports = { Embedder, cosine, MIN_SIMILARITY, WENLO_MODEL, wenloScale };
+module.exports = { Embedder, cosine, MIN_SIMILARITY, KILR_MODEL, kilrScale };

@@ -21,7 +21,7 @@ const CONTINUE_MS = 30 * 60 * 1000; // the same tab, used again within this long
 const SESSION_GAP_MS = 2 * HOUR; // coming back to a trail after this long counts as returning to it
 const MATCH_DAYS = 14; // a page can join a trail touched in the last two weeks
 const JOIN = 0.34; // how alike a page and a trail must be for the page to join it on topic alone
-const MEANING_WEIGHT = 0.8; // Wenlo's "same topic" (1.0) counts as a strong word match; a loose one stays under JOIN
+const MEANING_WEIGHT = 0.8; // Kilr's "same topic" (1.0) counts as a strong word match; a loose one stays under JOIN
 const PAGE_WORDS = 12;
 const TRAIL_WORDS = 60;
 const MAX_TRAILS = 300;
@@ -160,7 +160,7 @@ function clusterItems(n, sim, { threshold = 0.3 } = {}) {
 }
 
 class Trails {
-  // meaning: optional, Wenlo (src/wenlo): { affinity(page, trail) → 0…1, rank(query, trails) → trails }.
+  // meaning: optional, Kilr (src/kilr): { affinity(page, trail) → 0…1, rank(query, trails) → trails }.
   // Without it, trails match by shared words only.
   constructor(dir, { now = Date.now, meaning = null } = {}) {
     this.meaning = meaning;
@@ -267,7 +267,7 @@ class Trails {
     return trail.id;
   }
 
-  // Wenlo must never break learning: any failure counts as "no opinion".
+  // Kilr must never break learning: any failure counts as "no opinion".
   meaningOf(fn, fallback = 0) {
     try {
       const v = fn();
@@ -523,7 +523,7 @@ class Trails {
       return Math.pow(0.5, age / 3) * (1 + 0.4 * Math.min(t.sessions, 6) + 0.8 * Math.min(this.unfinished(t).length, 3) + (t.tucked.length ? 0.6 : 0));
     };
     const shown = this.trails.filter((t) => (state === 'all' || t.state === state) && this.worth(t));
-    // With Wenlo, a search finds trails by meaning ("where to stay" finds "ryokan near Gion"), best match first.
+    // With Kilr, a search finds trails by meaning ("where to stay" finds "ryokan near Gion"), best match first.
     if (query && this.meaning) {
       const hits = this.meaningOf(() => this.meaning.rank(query, shown), null);
       if (hits) {
@@ -546,7 +546,7 @@ class Trails {
     return hit?.id || null;
   }
 
-  // What Wenlo learns from when it retrains (src/wenlo/train.js): each trail's searches and page titles, newest trails
+  // What Kilr learns from when it retrains (src/kilr/train.js): each trail's searches and page titles, newest trails
   // first. Never pages with password or payment fields, never "Other tabs", never an AI's research (it learns the user).
   trainingSet() {
     return this.trails
@@ -559,7 +559,7 @@ class Trails {
       .filter((t) => t.texts.length);
   }
 
-  // Pages first visited since a time: what's new for Wenlo to learn from.
+  // Pages first visited since a time: what's new for Kilr to learn from.
   newPagesSince(at) {
     let n = 0;
     for (const t of this.trails) if (!t.loose && !t.research) for (const p of t.pages) if (p.firstAt > at && !p.sensitive) n++;

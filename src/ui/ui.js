@@ -530,7 +530,7 @@ async function renderTrailsHome() {
     }));
     intro.appendChild(acts);
   }
-  renderWenloLine($('wenloLine'), home.wenlo);
+  renderKilrLine($('kilrLine'), home.kilr);
   renderLearnCard(home);
   const row = $('sessionRow');
   row.hidden = !home.session;
@@ -550,27 +550,27 @@ async function renderTrailsHome() {
   $('allTrails').textContent = home.total > home.trails.length ? `All ${home.total} trails` : 'All trails';
   box.querySelector('.section-row').hidden = !home.trails.length;
 }
-// Wenlo's line: one or two sentences built from a trail's facts, with Continue.
-function renderWenloLine(box, line) {
+// Kilr's line: one or two sentences built from a trail's facts, with Continue.
+function renderKilrLine(box, line) {
   box.hidden = !line;
   if (!line) return;
-  box.innerHTML = `<span class="orb xs"></span><span class="sl-text"><b>Wenlo</b> ${esc(line.text)}</span>`;
+  box.innerHTML = `<span class="orb xs"></span><span class="sl-text"><b>Kilr</b> ${esc(line.text)}</span>`;
   const go = btn('Continue', 'ghost', () => skillerr.invoke('trails-continue', line.trailId));
   box.appendChild(go);
 }
-// ----- Wenlo learning from the user's trails -----
+// ----- Kilr learning from the user's trails -----
 function learnResultText(r) {
   if (!r) return '';
-  if (r.error) return 'Wenlo couldn\'t learn this time. It will try again later.';
+  if (r.error) return 'Kilr couldn\'t learn this time. It will try again later.';
   const rep = r.report || {};
   if (r.accepted) {
     const pct = (x) => Math.round((x || 0) * 100);
     const gain = rep.after > rep.before ? `It now files your pages right ${pct(rep.after)}% of the time, up from ${pct(rep.before)}%.`
       : `It now tells your trails apart ${Math.max(1, Math.round(((rep.marginAfter - rep.marginBefore) / Math.max(0.05, Math.abs(rep.marginBefore))) * 100))}% more clearly, so new pages join the right one more often.`;
-    return `Wenlo learned your words from ${rep.items} pages and searches in ${rep.trails} trails. ${gain}`;
+    return `Kilr learned your words from ${rep.items} pages and searches in ${rep.trails} trails. ${gain}`;
   }
-  if (rep.reason === 'not-enough') return 'Not enough browsing yet for Wenlo to learn from. It will offer again later.';
-  return 'Wenlo checked your latest browsing: it already files your pages well, so nothing changed.';
+  if (rep.reason === 'not-enough') return 'Not enough browsing yet for Kilr to learn from. It will offer again later.';
+  return 'Kilr checked your latest browsing: it already files your pages well, so nothing changed.';
 }
 let learnProgress = null;
 function renderLearnCard(home) {
@@ -584,31 +584,31 @@ function renderLearnCard(home) {
   const acts = h('div', 'ti-acts');
   card.append(ic, text, acts);
   if (home.learning || learnProgress != null) {
-    text.innerHTML = `<b>Wenlo is learning your words…</b><div class="learn-bar"><i style="width:${Math.round((learnProgress || 0) * 100)}%"></i></div>`;
+    text.innerHTML = `<b>Kilr is learning your words…</b><div class="learn-bar"><i style="width:${Math.round((learnProgress || 0) * 100)}%"></i></div>`;
     return;
   }
   if (home.learned) {
-    text.innerHTML = `<b>Wenlo learned.</b> ${esc(learnResultText(home.learned))}`;
+    text.innerHTML = `<b>Kilr learned.</b> ${esc(learnResultText(home.learned))}`;
     acts.append(btn('OK', 'ghost', async () => {
-      await skillerr.invoke('wenlo-learned-seen');
+      await skillerr.invoke('kilr-learned-seen');
       renderTrailsHome();
     }));
     return;
   }
-  text.innerHTML = `<b>Wenlo can learn from your browsing.</b> ${home.learn.newPages} new pages since last time. It learns your own words (the places, products and jargon you look up) so new pages join the right trail. A few seconds, on this computer.`;
+  text.innerHTML = `<b>Kilr can learn from your browsing.</b> ${home.learn.newPages} new pages since last time. It learns your own words (the places, products and jargon you look up) so new pages join the right trail. A few seconds, on this computer.`;
   acts.append(
-    btn('Learn now', 'primary', () => skillerr.invoke('wenlo-learn')),
+    btn('Learn now', 'primary', () => skillerr.invoke('kilr-learn')),
     btn('Always, automatically', 'ghost', async () => {
-      await saveSettings({ wenloLearn: 'auto' });
-      skillerr.invoke('wenlo-learn');
+      await saveSettings({ kilrLearn: 'auto' });
+      skillerr.invoke('kilr-learn');
     }),
     btn('Not now', 'ghost', async () => {
-      await skillerr.invoke('wenlo-learn-snooze');
+      await skillerr.invoke('kilr-learn-snooze');
       renderTrailsHome();
     }),
   );
 }
-skillerr.on('wenlo-learning', ({ progress }) => {
+skillerr.on('kilr-learning', ({ progress }) => {
   const first = learnProgress == null;
   learnProgress = progress;
   const bar = document.querySelector('#learnCard .learn-bar i');
@@ -616,7 +616,7 @@ skillerr.on('wenlo-learning', ({ progress }) => {
   else if (first && !$('start').hidden) renderTrailsHome();
   window.trailsView?.learning?.(progress);
 });
-skillerr.on('wenlo-learned', (r) => {
+skillerr.on('kilr-learned', (r) => {
   learnProgress = null;
   if (!$('start').hidden) renderTrailsHome();
   window.trailsView?.learned?.(r);
@@ -707,7 +707,7 @@ function intentInput({ input, badge, form, hint, idleIcon, onValue, idleWhenBlur
 
 // ================= find anything by meaning =================
 // Typing in the address bar (or the start page's box) shows matching tabs, tucked tabs and trail pages, by words and by
-// Wenlo's sense of meaning. ↑/↓ choose, ↵ opens the chosen one (or does what the bar would do if none is chosen).
+// Kilr's sense of meaning. ↑/↓ choose, ↵ opens the chosen one (or does what the bar would do if none is chosen).
 const jump = { input: null, items: [], sel: -1, seq: 0 };
 const JUMP_KIND = { tab: 'Open tab', tucked: 'Tucked away', page: 'Visited' };
 function jumpHide() {
@@ -722,7 +722,7 @@ function jumpRender() {
   if (!jump.items.length || !jump.input || document.activeElement !== jump.input) return jumpHide();
   const r = (jump.input.closest('form') || jump.input).getBoundingClientRect();
   Object.assign(box.style, { left: `${r.left}px`, top: `${r.bottom + 6}px`, width: `${r.width}px` });
-  box.innerHTML = `<div class="jump-head">${icon('sparkle', 11)} Wenlo found</div>`;
+  box.innerHTML = `<div class="jump-head">${icon('sparkle', 11)} Kilr found</div>`;
   jump.items.forEach((c, i) => {
     const el = h('button', 'jump-item' + (i === jump.sel ? ' on' : ''));
     el.type = 'button';

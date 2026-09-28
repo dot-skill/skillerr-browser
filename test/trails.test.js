@@ -200,8 +200,8 @@ test('Chrome history seeds trails from groups of related pages', () => {
   assert.strictEqual(t.title, 'Mechanical keyboard switches');
 });
 
-test('with Wenlo, pages join trails by meaning and search finds by meaning', () => {
-  // A stand-in for Wenlo: two topics, known by a few words each.
+test('with Kilr, pages join trails by meaning and search finds by meaning', () => {
+  // A stand-in for Kilr: two topics, known by a few words each.
   const topic = (s) => (/kyoto|ryokan|gion|stay|lodging|japan/i.test(s) ? 'kyoto' : /desk|standing|ergonomic|chair/i.test(s) ? 'desk' : null);
   const trailTopic = (t) => topic([...t.searches, ...t.pages.map((p) => p.title)].join(' '));
   const meaning = {
@@ -216,12 +216,12 @@ test('with Wenlo, pages join trails by meaning and search finds by meaning', () 
   const b = tr.observe({ url: 'https://www.google.com/search?q=where+to+stay+in+japan' }, { typed: true });
   assert.strictEqual(b, a);
   tr.observe({ url: 'https://inn.example/hotel/8', title: 'Lodging 8' }, { tabTrail: a, tabAt: clock.t });
-  assert.strictEqual(tr.get(a).title, 'Ryokan near gion'); // named by its first search, as without Wenlo
+  assert.strictEqual(tr.get(a).title, 'Ryokan near gion'); // named by its first search, as without Kilr
   const d = tr.observe({ url: 'https://www.google.com/search?q=standing+desk' }, { typed: true });
   assert.notStrictEqual(d, a);
   tr.observe({ url: 'https://desk.example/uplift', title: 'Uplift desk' }, { tabTrail: d, tabAt: clock.t });
   assert.deepStrictEqual(tr.list({ query: 'somewhere to stay' }).map((t) => t.id), [a]);
-  // A broken Wenlo never breaks learning.
+  // A broken Kilr never breaks learning.
   const broken = new Trails(tmp(), { meaning: { affinity: () => { throw new Error('x'); }, rank: () => { throw new Error('x'); } } });
   assert.ok(broken.observe({ url: 'https://www.google.com/search?q=espresso' }, { typed: true }));
   assert.deepStrictEqual(broken.list({ query: 'espresso' }).length, 0);
@@ -252,7 +252,7 @@ test('research an AI did: its own trail, titled from the best source, kept apart
   assert.notStrictEqual(mine, r);
   // …but do when the user carries on from it.
   assert.strictEqual(tr.observe({ url: 'https://shop.example/sony-xm6', title: 'Sony WH-1000XM6 headphones' }, { tabTrail: r, tabAt: clock.t }), r);
-  // Wenlo learns the user, not the AI.
+  // Kilr learns the user, not the AI.
   assert.ok(!tr.trainingSet().some((x) => x.id === r));
   // A user's page that was also in the research isn't filed back into it.
   assert.notStrictEqual(tr.trailOfUrl('https://audio.example/best-anc'), r);

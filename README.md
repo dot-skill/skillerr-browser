@@ -155,24 +155,24 @@ See [docs/trails.md](docs/trails.md).
 
 </details>
 
-### Wenlo: Skillerr's own small AI
+### Kilr: Skillerr's own small AI
 
 <details>
 <summary><b>What you get</b></summary>
 
 - **Built in, tiny, fast.** One 7.9 MB file, about 26 µs per text in plain JavaScript. Nothing to install, nothing to
   download, nothing leaves your computer.
-- **Knows your work by meaning.** Pages join the right trail even in different words, "Ask Wenlo" on the Trails page
+- **Knows your work by meaning.** Pages join the right trail even in different words, "Ask Kilr" on the Trails page
   finds "plane tickets to Japan" in a trail of Tokyo flights, and the start page says where you were and what's
   unfinished.
 - **Your tabs sort themselves** into named trail groups as you browse, and **the address bar finds anything by
   meaning**: type "newborn feeding" and the tucked "How often to feed a newborn" comes back, scrolled where you were.
-- **Learns your words.** Every week (it asks first, or runs on its own when you're away), Wenlo retrains on your own
+- **Learns your words.** Every week (it asks first, or runs on its own when you're away), Kilr retrains on your own
   trails in under a second, on this computer, and keeps the result only if it files your pages better.
 - **Recall by meaning, out of the box.** No Ollama needed any more.
-- **It doesn't make things up.** Wenlo chooses from the facts of your own trails; it never generates text.
+- **It doesn't make things up.** Kilr chooses from the facts of your own trails; it never generates text.
 - **Ours.** Distilled from an open model (Apache-2.0) with a closed-form fit anyone can rerun on a laptop. See
-  [docs/wenlo.md](docs/wenlo.md).
+  [docs/kilr.md](docs/kilr.md).
 
 </details>
 
@@ -194,7 +194,7 @@ See [docs/trails.md](docs/trails.md).
   index and linked notes. Open a folder, or **Copy prompt for your AI** to hand the research to any AI.
 - **Continuity across AIs.** `recall`, `my_research` and `read_note` bring back past research. Notes and skills are
   also exposed as MCP resources, straight from disk.
-- **Recall by meaning.** Recall matches by meaning as well as by words, with Wenlo built in (or your own embeddings
+- **Recall by meaning.** Recall matches by meaning as well as by words, with Kilr built in (or your own embeddings
   endpoint). See [docs/recall-by-meaning.md](docs/recall-by-meaning.md).
 
 </details>
@@ -306,7 +306,7 @@ npm test                           # unit tests, including the recall quality ch
 ```
 
 Requires Node.js 22. More docs: [live view in Claude Desktop](docs/live-view.md), [passkeys](docs/passkeys.md),
-[recall by meaning](docs/recall-by-meaning.md), [trails](docs/trails.md), [Wenlo](docs/wenlo.md), [benchmarks](docs/benchmarks.md).
+[recall by meaning](docs/recall-by-meaning.md), [trails](docs/trails.md), [Kilr](docs/kilr.md), [benchmarks](docs/benchmarks.md).
 
 <details>
 <summary><b>Project layout</b></summary>

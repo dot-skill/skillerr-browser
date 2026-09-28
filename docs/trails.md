@@ -35,7 +35,7 @@ user visits a page (not an AI: tabs an AI drives or opened are research memory's
       ▼
 score every active trail touched in the last 14 days:
    words shared with the trail          share of the page's keywords (up to 4) among the trail's top 30 words
-   or, with Wenlo, closeness in meaning  0.8 × how close the page is to the trail's centre (docs/wenlo.md), if higher
+   or, with Kilr, closeness in meaning  0.8 × how close the page is to the trail's centre (docs/kilr.md), if higher
  + same tab, within 30 min              +0.6 (link clicked)  /  +0.15 (typed address or a search: maybe a new thread)
  + opened from a tab on that trail      +0.5
  + same site as the trail's pages       +0.12 (not for everyday sites)
@@ -82,9 +82,9 @@ Settings → Bring your Chrome data → **Open tabs** (and the first-launch impo
 read from Chrome's session file on this computer (`<profile>/Sessions/Session_*`, the "SNSS" format; `parseSession` in
 `src/chrome-import.js`), at each tab's current page, closed tabs left out, with titles from Chrome's history.
 
-All the tabs are grouped at once (`clusterItems`: average-linkage clustering on Wenlo's meaning of their titles, without
+All the tabs are grouped at once (`clusterItems`: average-linkage clustering on Kilr's meaning of their titles, without
 site names, plus shared keywords; threshold 0.2 and keyword bonus 0.1, chosen on the tuning threads of
-`scripts/wenlo/eval-trails.js`: precision 0.93, F1 0.62; held-out threads: precision 0.80, F1 0.73). Each group becomes a
+`scripts/kilr/eval-trails.js`: precision 0.93, F1 0.62; held-out threads: precision 0.80, F1 0.73). Each group becomes a
 trail, joining an existing one when it's about the same thing. The tab in front in each Chrome window, and pinned tabs,
 come over open (asleep until clicked); the rest are tucked into their trails, on the shelf. Nothing is closed in Chrome.
 
@@ -94,10 +94,10 @@ When an AI app (Claude Desktop, Cursor…) uses Skillerr, the tabs it opens for 
 own, marked **Research by Claude Desktop**, kept apart from the user's own trails:
 
 - **Named from the best source there is:** the AI's own question (its `recall`), else its first web search, else the
-  clearest page title (the one closest in meaning to the rest, chosen by Wenlo). The tab-strip group uses the same name.
+  clearest page title (the one closest in meaning to the rest, chosen by Kilr). The tab-strip group uses the same name.
 - **Its conclusion** (the AI's `tag_session` summary) shows on the trail's card.
 - **Continue it later** from the start page like any trail; pages the user opens from it join it. The user's other
-  pages never join it by topic, and Wenlo doesn't learn from it (it learns the user).
+  pages never join it by topic, and Kilr doesn't learn from it (it learns the user).
 - When Skillerr quits, or the AI hasn't touched a tab for half an hour and Tidy runs, its tabs are tucked into its
   research trail, never into the user's.
 
@@ -111,8 +111,8 @@ its research keep priority.
 ## Find anything by meaning
 
 Typing in the address bar (or the start page's box) shows open tabs, tucked tabs and trail pages that match, by words
-(where words start) and by Wenlo's sense of meaning, above web search. ↑/↓ choose, ↵ opens: it switches to the tab, or
-brings a tucked or visited page back, scrolled where the user was. Typing an address skips it. See docs/wenlo.md.
+(where words start) and by Kilr's sense of meaning, above web search. ↑/↓ choose, ↵ opens: it switches to the tab, or
+brings a tucked or visited page back, scrolled where the user was. Typing an address skips it. See docs/kilr.md.
 
 ## Duplicates
 
@@ -174,7 +174,7 @@ don't get these tools.
 
 ## Limits
 
-- **Matching by meaning** (Wenlo) catches most differently worded pages, but not all: on held-out threads with no tab
+- **Matching by meaning** (Kilr) catches most differently worded pages, but not all: on held-out threads with no tab
   hints, it groups 57% of the pairs that belong together (words alone: 30%), with 95% precision. Merge the rest.
 - **Chrome seeding** sees one row per page (last visit, visit count), not the order pages were opened in, so it groups
   by topic alone and only keeps groups of three or more from the last month.

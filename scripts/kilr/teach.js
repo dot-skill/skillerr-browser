@@ -1,7 +1,7 @@
 // Teacher: all-MiniLM-L6-v2 (ONNX). Writes vocab-token and corpus embeddings for distillation, plus eval embeddings.
 const ort = require('onnxruntime-node');
 const fs = require('fs');
-const { WordPiece } = require('../../src/wenlo/tokenizer.js');
+const { WordPiece } = require('../../src/kilr/tokenizer.js');
 const vocab = fs.readFileSync('vocab.txt', 'utf8').split('\n');
 const wp = new WordPiece(vocab);
 const CLS = 101, SEP = 102, D = 384, MAXLEN = 64;

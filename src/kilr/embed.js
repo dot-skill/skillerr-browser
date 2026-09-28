@@ -1,19 +1,19 @@
-// Wenlo's embeddings: one small vector per word piece, distilled from all-MiniLM-L6-v2 (see scripts/wenlo/).
+// Kilr's embeddings: one small vector per word piece, distilled from all-MiniLM-L6-v2 (see scripts/kilr/).
 // A text's embedding is the average of its pieces' vectors: no neural network runs, so it takes microseconds, in plain
 // JavaScript, with no native code and nothing to download. The table is int8 with a scale per row (about 8 MB).
 //
-// File format (wenlo-embed.bin, little-endian):
-//   "WNL1" | uint32 vocab size V | uint32 dims D | float32 scale[V] | int8 vector[V * D]
+// File format (kilr-embed.bin, little-endian):
+//   "KLR1" | uint32 vocab size V | uint32 dims D | float32 scale[V] | int8 vector[V * D]
 // Vocabulary: vocab.txt, one word piece per line, line number = id.
 const fs = require('fs');
 const path = require('path');
 const { WordPiece } = require('./tokenizer');
 
-const DIR = path.join(__dirname, '..', '..', 'assets', 'wenlo');
+const DIR = path.join(__dirname, '..', '..', 'assets', 'kilr');
 
-class WenloEmbed {
+class KilrEmbed {
   constructor(buf, vocab) {
-    if (buf.toString('latin1', 0, 4) !== 'WNL1') throw new Error('Not a Wenlo embedding file');
+    if (buf.toString('latin1', 0, 4) !== 'KLR1') throw new Error('Not a Kilr embedding file');
     this.V = buf.readUInt32LE(4);
     this.D = buf.readUInt32LE(8);
     const scalesAt = 12;
@@ -23,17 +23,17 @@ class WenloEmbed {
     for (let i = 0; i < this.V; i++) this.scale[i] = buf.readFloatLE(scalesAt + i * 4);
     this.vec = new Int8Array(buf.buffer.slice(buf.byteOffset + vecsAt, buf.byteOffset + vecsAt + this.V * this.D));
     this.tok = new WordPiece(vocab);
-    this.id = 'wenlo-embed-1';
-    if (vocab.length !== this.V) throw new Error('Wenlo vocabulary and vectors disagree');
+    this.id = 'kilr-embed-1';
+    if (vocab.length !== this.V) throw new Error('Kilr vocabulary and vectors disagree');
   }
 
   static load(dir = DIR) {
-    return new WenloEmbed(fs.readFileSync(path.join(dir, 'wenlo-embed.bin')), fs.readFileSync(path.join(dir, 'vocab.txt'), 'utf8').split(/\r?\n/)); // CRLF-safe
+    return new KilrEmbed(fs.readFileSync(path.join(dir, 'kilr-embed.bin')), fs.readFileSync(path.join(dir, 'vocab.txt'), 'utf8').split(/\r?\n/)); // CRLF-safe
   }
 
-  // A copy with some rows replaced: the user's personal vectors (src/wenlo/train.js). rows: Map id → numbers.
+  // A copy with some rows replaced: the user's personal vectors (src/kilr/train.js). rows: Map id → numbers.
   withRows(rows, id = 'personal') {
-    const e = Object.create(WenloEmbed.prototype);
+    const e = Object.create(KilrEmbed.prototype);
     Object.assign(e, this, { vec: new Int8Array(this.vec), scale: new Float32Array(this.scale), id: `${this.id}+${id}` });
     for (const [row, v] of rows) {
       if (row < 0 || row >= this.V || v.length !== this.D) continue;
@@ -66,10 +66,10 @@ class WenloEmbed {
   }
 }
 
-// The user's personal vectors on disk: "WNP1" | uint32 rows | uint32 dims | per row: uint32 id, float32 scale, int8[dims].
+// The user's personal vectors on disk: "KLP1" | uint32 rows | uint32 dims | per row: uint32 id, float32 scale, int8[dims].
 function encodePersonal(rows, D) {
   const buf = Buffer.alloc(12 + rows.size * (8 + D));
-  buf.write('WNP1', 0, 'latin1');
+  buf.write('KLP1', 0, 'latin1');
   buf.writeUInt32LE(rows.size, 4);
   buf.writeUInt32LE(D, 8);
   let o = 12;
@@ -86,7 +86,7 @@ function encodePersonal(rows, D) {
 }
 
 function decodePersonal(buf) {
-  if (buf.toString('latin1', 0, 4) !== 'WNP1') throw new Error('Not a Wenlo personal file');
+  if (buf.toString('latin1', 0, 4) !== 'KLP1') throw new Error('Not a Kilr personal file');
   const n = buf.readUInt32LE(4);
   const D = buf.readUInt32LE(8);
   const rows = new Map();
@@ -121,4 +121,4 @@ function centroid(vs) {
   return out;
 }
 
-module.exports = { WenloEmbed, cosine, centroid, encodePersonal, decodePersonal, DIR };
+module.exports = { KilrEmbed, cosine, centroid, encodePersonal, decodePersonal, DIR };

@@ -15,8 +15,8 @@ const store = require('./store');
 const { Memory, recallText, tokens } = require('./memory');
 const chrome_ = require('./chrome-import');
 const { Trails, chooseTabsToTuck, pageKey } = require('./trails');
-const { Wenlo } = require('./wenlo');
-const { cosine: wenloCosine } = require('./wenlo/embed');
+const { Kilr } = require('./kilr');
+const { cosine: kilrCosine } = require('./kilr/embed');
 
 traceStartup('modules loaded');
 // Read on first use (or in the background once the window is up), never before the window: a big memory
@@ -27,16 +27,23 @@ const memory = new Memory(path.join(store.DIR, 'memory'), { lazy: true });
 const freshData = !fs.existsSync(path.join(store.DIR, 'settings.json'));
 let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
-// Wenlo: Skillerr's own small AI (src/wenlo), built in. It knows trails and research by meaning. Loaded on first use.
-const WENLO_DIR = path.join(__dirname, '..', 'assets', 'wenlo'); // src/ and out/src/ alike
-const WENLO_PERSONAL = path.join(store.DIR, 'wenlo', 'personal.bin'); // what Wenlo learned from this user's trails
-const wenlo = new Wenlo({ dir: WENLO_DIR, personalFile: WENLO_PERSONAL });
-const wenloOn = () => store.getSettings().wenlo !== false;
+// Kilr: Skillerr's own small AI (src/kilr), built in. It knows trails and research by meaning. Loaded on first use.
+const KILR_DIR = path.join(__dirname, '..', 'assets', 'kilr'); // src/ and out/src/ alike
+const KILR_PERSONAL = path.join(store.DIR, 'kilr', 'personal.bin'); // what Kilr learned from this user's trails
+try { // staging builds called it Wenlo
+  const old = path.join(store.DIR, 'wenlo', 'personal.bin');
+  if (fs.existsSync(old) && !fs.existsSync(KILR_PERSONAL)) {
+    fs.mkdirSync(path.dirname(KILR_PERSONAL), { recursive: true, mode: 0o700 });
+    fs.renameSync(old, KILR_PERSONAL);
+  }
+} catch {}
+const kilr = new Kilr({ dir: KILR_DIR, personalFile: KILR_PERSONAL });
+const kilrOn = () => store.getSettings().kilr !== false;
 const embedder = new Embedder({
   memory, dir: path.join(store.DIR, 'memory'),
-  builtin: () => wenlo.embedder,
-  builtinId: () => wenlo.embedder.id,
-  getConfig: () => { const s = store.getSettings(); return { on: s.semanticRecall !== false && remembering(), baseUrl: s.embedBaseUrl, model: s.embedModel, builtin: s.wenlo !== false }; },
+  builtin: () => kilr.embedder,
+  builtinId: () => kilr.embedder.id,
+  getConfig: () => { const s = store.getSettings(); return { on: s.semanticRecall !== false && remembering(), baseUrl: s.embedBaseUrl, model: s.embedModel, builtin: s.kilr !== false }; },
 });
 // Semantic matches for a recall; null (keyword-only) if no local embedding model answers in time.
 const similarTo = (q) => Promise.race([embedder.similar(q).catch(() => null), new Promise((r) => setTimeout(() => r(null), 3000))]);
@@ -361,7 +368,7 @@ function researchTrailOf(g) {
 }
 
 // A page an AI's tab finished loading goes into the research trail. Until the AI has asked a question or searched,
-// the research is named by its clearest page: the title closest in meaning to all the others (Wenlo).
+// the research is named by its clearest page: the title closest in meaning to all the others (Kilr).
 function researchVisit(tab) {
   const g = tab?.groupId && groups.get(tab.groupId);
   const id = g && researchTrailOf(g);
@@ -372,11 +379,11 @@ function researchVisit(tab) {
   tab.trailId = id;
   tab.trailAt = Date.now();
   const t = db.get(id);
-  if (['', 'page'].includes(t.research.titleFrom || '') && wenloOn()) {
+  if (['', 'page'].includes(t.research.titleFrom || '') && kilrOn()) {
     try {
       const titles = t.pages.slice(-12).map((p) => p.title).filter(Boolean);
-      const centre = require('./wenlo/embed').centroid(titles.map((x) => wenlo.vec(x)));
-      const best = titles.map((x) => [x, wenloCosine(wenlo.vec(x), centre)]).sort((a, b) => b[1] - a[1])[0];
+      const centre = require('./kilr/embed').centroid(titles.map((x) => kilr.vec(x)));
+      const best = titles.map((x) => [x, kilrCosine(kilr.vec(x), centre)]).sort((a, b) => b[1] - a[1])[0];
       if (best) db.researchTitle(id, best[0], 'page');
     } catch {}
   }
@@ -818,11 +825,11 @@ setInterval(sleepIdleTabs, 20000);
 // with where they were), and come back with one click from the start page or the Trails view. Only what the user does:
 // pages an AI opens or drives are research memory's, not trails'.
 let trailStore = null;
-const trailsDb = () => trailStore || (trailStore = new Trails(path.join(store.DIR, 'trails'), { meaning: wenloOn() ? wenloMeaning : null }));
-// What Trails asks Wenlo: how close a page is to a trail, and which trails a search means.
-const wenloMeaning = {
-  affinity: (page, t) => wenlo.pageAffinity(page, t),
-  rank: (q, list) => wenlo.rankTrails(q, list).map((x) => x.trail),
+const trailsDb = () => trailStore || (trailStore = new Trails(path.join(store.DIR, 'trails'), { meaning: kilrOn() ? kilrMeaning : null }));
+// What Trails asks Kilr: how close a page is to a trail, and which trails a search means.
+const kilrMeaning = {
+  affinity: (page, t) => kilr.pageAffinity(page, t),
+  rank: (q, list) => kilr.rankTrails(q, list).map((x) => x.trail),
 };
 const learningTrails = () => store.getSettings().trails !== false;
 const TRAIL_WORLD = 7701; // the page's own scripts can't see or fake-silence the watcher in this isolated world
@@ -1061,8 +1068,8 @@ function reopenTuckedTab(id, url) {
 }
 
 // ---------- moving over from Chrome: its open tabs, sorted into trails ----------
-// All the tabs are grouped at once (average-linkage clustering on Wenlo's meaning plus shared keywords; settings chosen
-// on scripts/wenlo/eval-trails.js), then each group is filed as one trail, joining an existing trail when it's about the
+// All the tabs are grouped at once (average-linkage clustering on Kilr's meaning plus shared keywords; settings chosen
+// on scripts/kilr/eval-trails.js), then each group is filed as one trail, joining an existing trail when it's about the
 // same thing. The tab in front in each Chrome window, and pinned tabs, come over open (asleep until clicked); the rest are
 // tucked into their trails, one click away. Nothing is lost and the tab strip stays calm.
 const IMPORT_CLUSTER = { threshold: 0.2, wordBonus: 0.1 };
@@ -1077,11 +1084,11 @@ function importChromeTabs(profile) {
     list.push({ ...t, title: t.title || t.url });
   }
   const { pageWords, cleanTitle } = require('./trails');
-  const vecs = list.map((t) => (wenloOn() ? wenlo.vec(cleanTitle(t.title)) : null)); // without the site's name, as Trails compares titles
+  const vecs = list.map((t) => (kilrOn() ? kilr.vec(cleanTitle(t.title)) : null)); // without the site's name, as Trails compares titles
   const words = list.map((t) => new Set(pageWords({ url: t.url, title: t.title })));
   const sim = (i, j) => {
     const shared = [...words[i]].filter((w) => words[j].has(w)).length;
-    return (vecs[i] && vecs[j] ? wenloCosine(vecs[i], vecs[j]) : 0) + IMPORT_CLUSTER.wordBonus * Math.min(shared, 2);
+    return (vecs[i] && vecs[j] ? kilrCosine(vecs[i], vecs[j]) : 0) + IMPORT_CLUSTER.wordBonus * Math.min(shared, 2);
   };
   const groupsOfTabs = require('./trails').clusterItems(list.length, sim, { threshold: IMPORT_CLUSTER.threshold });
   const at = Date.now();
@@ -1164,33 +1171,33 @@ function trailsHome() {
     session: session.length ? { tabs: session.reduce((n, x) => n + x.tabs.length, 0), trails: session.length, at: db.data.quitAt } : null,
     trails: all.slice(0, 3),
     total: all.length,
-    // Wenlo's one line about where you were, built from the facts of the top trail.
-    wenlo: s.wenlo !== false && all[0] ? wenloLine(all[0]) : null,
-    // Wenlo offering to learn (setting "suggest"), or what it just learned.
-    learn: s.wenloLearn === 'suggest' ? learnDue() : null,
+    // Kilr's one line about where you were, built from the facts of the top trail.
+    kilr: s.kilr !== false && all[0] ? kilrLine(all[0]) : null,
+    // Kilr offering to learn (setting "suggest"), or what it just learned.
+    learn: s.kilrLearn === 'suggest' ? learnDue() : null,
     learning: !!learning,
-    learned: s.wenloLastLearn && Date.now() - s.wenloLastLearn.at < 864e5 && !s.wenloLastLearn.seen ? s.wenloLastLearn : null,
+    learned: s.kilrLastLearn && Date.now() - s.kilrLastLearn.at < 864e5 && !s.kilrLastLearn.seen ? s.kilrLastLearn : null,
   };
 }
 
-function wenloLine(summary) {
+function kilrLine(summary) {
   try {
-    return { text: require('./wenlo').describe(summary), trailId: summary.id };
+    return { text: require('./kilr').describe(summary), trailId: summary.id };
   } catch {
     return null;
   }
 }
 
 // "What was I doing about the visa?": the trail it's about, and the facts of it.
-function askWenlo(query) {
+function askKilr(query) {
   const db = trailsDb();
   const shown = db.trails.filter((t) => t.state === 'active' && db.worth(t));
   const summaries = db.list({ limit: 300 });
-  return wenlo.answer(String(query || ''), summaries, shown);
+  return kilr.answer(String(query || ''), summaries, shown);
 }
 
-// ---------- Wenlo learns from the user's trails (src/wenlo/train.js) ----------
-// Weekly by default, Wenlo offers to learn the user's own words from their trails (or does it on its own when the
+// ---------- Kilr learns from the user's trails (src/kilr/train.js) ----------
+// Weekly by default, Kilr offers to learn the user's own words from their trails (or does it on its own when the
 // computer is idle, if they chose that). Training runs in a worker thread with a hard memory cap, so it never touches
 // browsing and fits 4 GB machines; the trail texts live only in that thread and are gone when it ends.
 const LEARN_EVERY = { daily: 1, weekly: 7, monthly: 30 };
@@ -1200,17 +1207,17 @@ let learning = null;
 // Is it time to learn? Returns { newPages } or null.
 function learnDue() {
   const s = store.getSettings();
-  if (s.wenlo === false || s.trails === false || s.wenloLearn === 'off' || learning) return null;
+  if (s.kilr === false || s.trails === false || s.kilrLearn === 'off' || learning) return null;
   const now = Date.now();
-  if (now < (s.wenloSnoozedUntil || 0) || now - (s.wenloLearnedAt || 0) < (LEARN_EVERY[s.wenloLearnEvery] || 7) * 864e5) return null;
+  if (now < (s.kilrSnoozedUntil || 0) || now - (s.kilrLearnedAt || 0) < (LEARN_EVERY[s.kilrLearnEvery] || 7) * 864e5) return null;
   const db = trailsDb();
-  const newPages = db.newPagesSince(s.wenloLearnedAt || 0);
+  const newPages = db.newPagesSince(s.kilrLearnedAt || 0);
   if (newPages < LEARN_MIN_NEW_PAGES) return null;
   if (db.trainingSet().filter((t) => t.texts.length >= 4).length < 3) return null; // too little to learn from yet
   return { newPages };
 }
 
-function wenloLearn({ auto = false } = {}) {
+function kilrLearn({ auto = false } = {}) {
   if (learning) return learning;
   const trails = trailsDb().trainingSet();
   learning = new Promise((resolve) => {
@@ -1221,29 +1228,29 @@ function wenloLearn({ auto = false } = {}) {
       done = true;
       const s = store.getSettings();
       const saved = { at: Date.now(), auto, accepted: !!result.accepted, report: result.report || null, error: result.error || null };
-      store.saveSettings({ ...s, wenloLearnedAt: result.error ? s.wenloLearnedAt : Date.now(), wenloLastLearn: saved });
-      ui('wenlo-learned', saved);
+      store.saveSettings({ ...s, kilrLearnedAt: result.error ? s.kilrLearnedAt : Date.now(), kilrLastLearn: saved });
+      ui('kilr-learned', saved);
       trailsChanged();
       resolve(saved);
     };
     let w;
     try {
-      w = new Worker(path.join(__dirname, 'wenlo', 'train-worker.js'), {
-        workerData: { dir: WENLO_DIR, trails },
+      w = new Worker(path.join(__dirname, 'kilr', 'train-worker.js'), {
+        workerData: { dir: KILR_DIR, trails },
         resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32 },
       });
     } catch (err) {
       return finish({ error: err.message });
     }
     w.on('message', (m) => {
-      if (m.progress != null) ui('wenlo-learning', { progress: m.progress });
+      if (m.progress != null) ui('kilr-learning', { progress: m.progress });
       if (!m.done) return;
       if (m.accepted && m.file) {
         try {
-          fs.mkdirSync(path.dirname(WENLO_PERSONAL), { recursive: true, mode: 0o700 });
-          fs.writeFileSync(WENLO_PERSONAL + '.tmp', Buffer.from(m.file), { mode: 0o600 });
-          fs.renameSync(WENLO_PERSONAL + '.tmp', WENLO_PERSONAL);
-          wenlo.reload();
+          fs.mkdirSync(path.dirname(KILR_PERSONAL), { recursive: true, mode: 0o700 });
+          fs.writeFileSync(KILR_PERSONAL + '.tmp', Buffer.from(m.file), { mode: 0o600 });
+          fs.renameSync(KILR_PERSONAL + '.tmp', KILR_PERSONAL);
+          kilr.reload();
         } catch (err) {
           m.error = err.message;
           m.accepted = false;
@@ -1255,14 +1262,14 @@ function wenloLearn({ auto = false } = {}) {
     w.on('error', (err) => finish({ error: err.message }));
     w.on('exit', (code) => finish({ error: `stopped (${code})` }));
   }).finally(() => (learning = null));
-  ui('wenlo-learning', { progress: 0 });
+  ui('kilr-learning', { progress: 0 });
   return learning;
 }
 
-function wenloForget() {
-  fs.rmSync(WENLO_PERSONAL, { force: true });
-  wenlo.reload();
-  store.saveSettings({ ...store.getSettings(), wenloLastLearn: null });
+function kilrForget() {
+  fs.rmSync(KILR_PERSONAL, { force: true });
+  kilr.reload();
+  store.saveSettings({ ...store.getSettings(), kilrLastLearn: null });
   trailsChanged();
 }
 
@@ -1271,13 +1278,13 @@ setInterval(() => {
   try {
     if (!learnDue()) return;
     const { powerMonitor } = require('electron');
-    if (store.getSettings().wenloLearn === 'auto' && powerMonitor.getSystemIdleTime() >= 120) wenloLearn({ auto: true });
+    if (store.getSettings().kilrLearn === 'auto' && powerMonitor.getSystemIdleTime() >= 120) kilrLearn({ auto: true });
     else trailsChanged();
   } catch {}
 }, 30 * 60 * 1000);
 
 // ---------- find anything by meaning (the address bar) ----------
-// What the user remembers ("that chair review", "the visa form"), matched by words and by Wenlo's sense of meaning
+// What the user remembers ("that chair review", "the visa form"), matched by words and by Kilr's sense of meaning
 // against open tabs, tabs tucked into trails, and pages in trails. A few milliseconds; nothing leaves the computer.
 // Words of 3+ letters, matched where a word starts ("tok" finds "Tokyo", "re" finds nothing inside "middleware").
 const jumpWords = (q) => String(q || '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3);
@@ -1286,7 +1293,7 @@ function jumpSearch(query) {
   const q = String(query || '').trim();
   if (q.length < 2 || !learningTrails()) return [];
   const words = jumpWords(q);
-  const useMeaning = wenloOn() && q.split(/\s+/).length <= 12;
+  const useMeaning = kilrOn() && q.split(/\s+/).length <= 12;
   const db = trailsDb();
   const seen = new Set();
   const cands = [];
@@ -1306,7 +1313,7 @@ function jumpSearch(query) {
     for (const x of tr.tucked) add({ kind: 'tucked', url: x.url, title: x.title, favicon: x.favicon, trailId: tr.id, at: x.at });
     for (const p of tr.pages) if (p.lastAt > cutoff) add({ kind: 'page', url: p.url, title: p.title, favicon: p.favicon, trailId: tr.id, at: p.lastAt, scrollY: p.scrollY || 0 });
   }
-  const qv = useMeaning ? wenlo.vec(q) : null;
+  const qv = useMeaning ? kilr.vec(q) : null;
   const scored = [];
   for (const c of cands) {
     const hay = `${c.title} ${c.url}`.toLowerCase();
@@ -1314,7 +1321,7 @@ function jumpSearch(query) {
     const wordScore = words.length ? (hit === words.length ? 0.9 : 0.55 * (hit / words.length)) : 0;
     let meaning = 0;
     if (qv) {
-      const cos = wenloCosine(qv, wenlo.vec(c.title));
+      const cos = kilrCosine(qv, kilr.vec(c.title));
       meaning = cos >= 0.45 ? Math.min(0.85, 0.35 + cos) : 0; // single titles are noisy: only clear matches count
     }
     const score = Math.max(wordScore, meaning) + (c.kind === 'tab' ? 0.08 : c.kind === 'tucked' ? 0.05 : 0) + 0.04 * Math.pow(0.5, (Date.now() - c.at) / (7 * 864e5));
@@ -2385,8 +2392,8 @@ function wireIpc() {
   const changed = (r) => (trailsChanged(), r);
   ipcMain.on('open-trails', () => openInternal('trails'));
   ipcMain.handle('trails-home', () => trailsHome());
-  ipcMain.handle('trails-ask', (_e, q) => (wenloOn() ? askWenlo(q) : null));
-  ipcMain.handle('wenlo-learn', () => wenloLearn());
+  ipcMain.handle('trails-ask', (_e, q) => (kilrOn() ? askKilr(q) : null));
+  ipcMain.handle('kilr-learn', () => kilrLearn());
   ipcMain.handle('jump-search', (_e, q) => {
     try {
       return jumpSearch(q);
@@ -2405,18 +2412,18 @@ function wireIpc() {
     chromeOnTop = !!on;
     applyVisibility();
   });
-  ipcMain.handle('wenlo-learn-snooze', () => {
-    store.saveSettings({ ...store.getSettings(), wenloSnoozedUntil: Date.now() + 3 * 864e5 });
+  ipcMain.handle('kilr-learn-snooze', () => {
+    store.saveSettings({ ...store.getSettings(), kilrSnoozedUntil: Date.now() + 3 * 864e5 });
     trailsChanged();
   });
-  ipcMain.handle('wenlo-learned-seen', () => {
+  ipcMain.handle('kilr-learned-seen', () => {
     const s = store.getSettings();
-    if (s.wenloLastLearn) store.saveSettings({ ...s, wenloLastLearn: { ...s.wenloLastLearn, seen: true } });
+    if (s.kilrLastLearn) store.saveSettings({ ...s, kilrLastLearn: { ...s.kilrLastLearn, seen: true } });
   });
-  ipcMain.handle('wenlo-forget', () => wenloForget());
-  ipcMain.handle('wenlo-info', () => {
+  ipcMain.handle('kilr-forget', () => kilrForget());
+  ipcMain.handle('kilr-info', () => {
     const s = store.getSettings();
-    return { learn: s.wenloLearn, every: s.wenloLearnEvery, last: s.wenloLastLearn, personal: wenlo.personal, learning: !!learning };
+    return { learn: s.kilrLearn, every: s.kilrLearnEvery, last: s.kilrLastLearn, personal: kilr.personal, learning: !!learning };
   });
   ipcMain.handle('trails-list', (_e, { state = 'active', query = '' } = {}) => trailsDb().list({ state, query: String(query) }));
   ipcMain.handle('trails-detail', (_e, id) => trailsDb().detail(String(id)));
@@ -2440,7 +2447,7 @@ function wireIpc() {
   ipcMain.handle('trails-undo-tuck', () => undoTuck());
   ipcMain.handle('trails-info', () => {
     const s = store.getSettings();
-    return { enabled: s.trails !== false, tuck: s.trailsTuck !== false, wenlo: s.wenlo !== false, ignored: trailsDb().data.ignoredHosts, everyday: trailsDb().everydaySites(),
+    return { enabled: s.trails !== false, tuck: s.trailsTuck !== false, kilr: s.kilr !== false, ignored: trailsDb().data.ignoredHosts, everyday: trailsDb().everydaySites(),
       clients: s.trailsAllowedClients || [], chrome: chrome_.available() ? chrome_.profiles() : [] };
   });
   ipcMain.handle('trails-revoke-client', (_e, name) => {
@@ -2681,7 +2688,7 @@ function wireIpc() {
     if (s.shareSkillsWithClaudeCode === true) skills.shareWithClaudeCode();
     if (s.theme) applyTheme(s.theme);
     if ('trails' in s) trailsChanged(); // the shelf shows or hides
-    if ('wenlo' in s && trailStore) trailStore.meaning = s.wenlo !== false ? wenloMeaning : null;
+    if ('kilr' in s && trailStore) trailStore.meaning = s.kilr !== false ? kilrMeaning : null;
     if (s.searchEngine) setSearchTemplate(searchTemplateFor(s.searchEngine));
     if ('searchApi' in s || 'searchApiKey' in s) applySearchApi();
     status.requireApproval = !!store.getSettings().requireApproval;

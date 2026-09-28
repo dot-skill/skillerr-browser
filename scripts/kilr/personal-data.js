@@ -1,5 +1,5 @@
 // A user's week of jargon-heavy browsing (WEEK1) and the next week's new pages on the same threads (WEEK2), for
-// evaluating and testing personal retraining (eval-personal.js, test/wenlo.test.js).
+// evaluating and testing personal retraining (eval-personal.js, test/kilr.test.js).
 const WEEK1 = {
   japan: ['ryokan near gion', 'Best ryokan in Kyoto with private onsen', 'Arashiyama bamboo grove at sunrise', 'kaiseki dinner gion reservation',
     'shinkansen tokyo to kyoto time', 'JR pass vs shinkansen single tickets', 'Fushimi Inari hike: how long does it take', 'onsen etiquette for tattoos',

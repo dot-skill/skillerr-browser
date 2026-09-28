@@ -1,12 +1,12 @@
-// Personal retraining: Wenlo learns the user's own topics from their trails, on their computer.
+// Personal retraining: Kilr learns the user's own topics from their trails, on their computer.
 //
 // Pages and searches the user keeps in the same trail (clicked through, opened from each other, merged by hand) belong
-// together, so Wenlo should place them together. For the word pieces in the user's own pages we find a small change Δ
+// together, so Kilr should place them together. For the word pieces in the user's own pages we find a small change Δ
 // to their vectors so that each page lands near the centre of the rest of its trail:
 //
 //   minimise Σᵢ ‖ mean(E + Δ)[pieces of item i] − yᵢ ‖² + λ‖Δ‖²,   yᵢ = centre of item i's trail without it
 //
-// Linear least squares again, like Wenlo's distillation (scripts/wenlo): solved with conjugate gradients, all 256
+// Linear least squares again, like Kilr's distillation (scripts/kilr): solved with conjugate gradients, all 256
 // dimensions at once, in plain JavaScript. Seconds, no GPU, and no teacher model. The base model is never changed;
 // training always starts from it, so a bad week can't compound.
 //
@@ -168,7 +168,7 @@ function fit(items, row, D, { lambda, iterations, topicShare }, onProgress) {
   return out;
 }
 
-// trails: [{ id, texts: [search or page title, …] }]. embed: a WenloEmbed (base model).
+// trails: [{ id, texts: [search or page title, …] }]. embed: a KilrEmbed (base model).
 // Returns { accepted, rows (Map id → Float64Array) | null, report }.
 function trainPersonal(trails, embed, opts = {}, onProgress) {
   const o = { ...DEFAULTS, ...opts };

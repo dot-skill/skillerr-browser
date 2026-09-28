@@ -1,11 +1,11 @@
-// Wenlo's speed and footprint: load time, memory, and embeddings per second for page titles and sentences.
-// Usage: node scripts/wenlo/bench.js [texts.txt]   (defaults to generated page-title-like texts)
+// Kilr's speed and footprint: load time, memory, and embeddings per second for page titles and sentences.
+// Usage: node scripts/kilr/bench.js [texts.txt]   (defaults to generated page-title-like texts)
 const fs = require('fs');
-const { WenloEmbed } = require('../../src/wenlo/embed');
+const { KilrEmbed } = require('../../src/kilr/embed');
 
 const before = process.memoryUsage();
 let t = performance.now();
-const e = WenloEmbed.load();
+const e = KilrEmbed.load();
 const loadMs = performance.now() - t;
 const after = process.memoryUsage();
 
@@ -21,7 +21,7 @@ const ms = performance.now() - t;
 console.log(JSON.stringify({
   vocab: e.V,
   dims: e.D,
-  fileMB: +(fs.statSync(require('path').join(require('../../src/wenlo/embed').DIR, 'wenlo-embed.bin')).size / 1e6).toFixed(1),
+  fileMB: +(fs.statSync(require('path').join(require('../../src/kilr/embed').DIR, 'kilr-embed.bin')).size / 1e6).toFixed(1),
   loadMs: +loadMs.toFixed(1),
   heapMB: +((after.heapUsed + after.arrayBuffers - before.heapUsed - before.arrayBuffers) / 1e6).toFixed(1),
   texts: texts.length,

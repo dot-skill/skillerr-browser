@@ -64,7 +64,7 @@
           <div class="trails-intro" id="trailsIntro" hidden></div>
           <div class="section-row"><div class="section-label">Pick up where you left off</div><button type="button" class="link-btn" id="allTrails">All trails</button></div>
           <div class="learn-card" id="learnCard" hidden></div>
-          <div class="wenlo-line" id="wenloLine" hidden></div>
+          <div class="kilr-line" id="kilrLine" hidden></div>
           <div class="session-row" id="sessionRow" hidden></div>
           <div class="trail-cards" id="trailCards"></div>
         </div>
@@ -128,25 +128,25 @@
         </div>
       </div>
       <div class="dv-pane on" data-tvpane="list">
-        <div class="dv-bar"><input id="tvQ" spellcheck="false" placeholder="Ask Wenlo, e.g. “where was I with the visa?”" /></div>
-        <div class="wenlo-line" id="tvAnswer" hidden></div>
+        <div class="dv-bar"><input id="tvQ" spellcheck="false" placeholder="Ask Kilr, e.g. “where was I with the visa?”" /></div>
+        <div class="kilr-line" id="tvAnswer" hidden></div>
         <div class="tv-list" id="tvList"></div>
       </div>
       <div class="dv-pane" data-tvpane="settings">
         <div class="tv-settings">
           <label class="switch-row"><div><b>Learn my trails</b><span>Files the pages you visit into threads of work, and notices what you leave unfinished. Pages an AI opens aren't included. Nothing leaves this computer.</span></div><input type="checkbox" id="tvLearn" /><span class="switch"></span></label>
-          <label class="switch-row"><div><b>Wenlo</b><span>Skillerr's own small AI, built in. It matches pages to trails and finds your research by meaning, names trails, and answers “where was I?” from your own pages. Runs on this computer in microseconds, with nothing to download.</span></div><input type="checkbox" id="tvWenlo" /><span class="switch"></span></label>
+          <label class="switch-row"><div><b>Kilr</b><span>Skillerr's own small AI, built in. It matches pages to trails and finds your research by meaning, names trails, and answers “where was I?” from your own pages. Runs on this computer in microseconds, with nothing to download.</span></div><input type="checkbox" id="tvKilr" /><span class="switch"></span></label>
           <label class="switch-row"><div><b>Tuck away idle tabs</b><span>Tabs you haven't used for 12 hours go into their trail once you have 9 or more open. Your 5 most recent tabs, forms you're typing, audio and pages you keep coming back to always stay.</span></div><input type="checkbox" id="tvTuck" /><span class="switch"></span></label>
           <div class="tv-block" id="tvLearnBlock">
-            <b>Wenlo learns from your trails</b>
-            <span class="muted small">Wenlo teaches itself your own words (the places, products and jargon in your trails) so it files new pages where they belong. On this computer, in a few seconds, with no graphics card and little memory. A new version is kept only if it files your pages better.</span>
+            <b>Kilr learns from your trails</b>
+            <span class="muted small">Kilr teaches itself your own words (the places, products and jargon in your trails) so it files new pages where they belong. On this computer, in a few seconds, with no graphics card and little memory. A new version is kept only if it files your pages better.</span>
             <div class="tv-learn-row">
               <select id="tvLearnMode"><option value="suggest">Ask me when it's time</option><option value="auto">Do it automatically, when I'm away</option><option value="off">Off</option></select>
               <select id="tvLearnEvery"><option value="daily">every day</option><option value="weekly">every week</option><option value="monthly">every month</option></select>
               <button type="button" class="btn ghost sm" id="tvLearnNow">Learn now</button>
             </div>
             <div class="small muted" id="tvLearnStatus"></div>
-            <div><button type="button" class="link-btn" id="tvLearnForget" hidden>Forget what Wenlo learned</button></div>
+            <div><button type="button" class="link-btn" id="tvLearnForget" hidden>Forget what Kilr learned</button></div>
           </div>
           <div class="tv-block" id="tvChrome"></div>
           <div class="tv-block"><b>Never learn from these sites</b><div class="tv-hosts" id="tvIgnored"></div>
@@ -389,7 +389,7 @@
           <input type="checkbox" id="remember" /><span class="switch"></span>
         </label>
         <label class="switch-row">
-          <div><b>Recall by meaning</b><span>Finds past research even when it was worded differently, with Wenlo, Skillerr's own small AI, built in. Stays on this computer; off, recall matches words.</span></div>
+          <div><b>Recall by meaning</b><span>Finds past research even when it was worded differently, with Kilr, Skillerr's own small AI, built in. Stays on this computer; off, recall matches words.</span></div>
           <input type="checkbox" id="semanticRecall" /><span class="switch"></span>
         </label>
         <label class="switch-row">

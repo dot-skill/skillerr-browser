@@ -1,6 +1,6 @@
-# Building Wenlo's embeddings
+# Building Kilr's embeddings
 
-Wenlo's model is a table: one small vector per word piece of the `all-MiniLM-L6-v2` vocabulary (30,522 pieces × 256
+Kilr's model is a table: one small vector per word piece of the `all-MiniLM-L6-v2` vocabulary (30,522 pieces × 256
 numbers, int8). A text's embedding is the average of its pieces' vectors. This folder rebuilds that table from scratch
 on a laptop CPU in well under an hour. No GPU, no training loop.
 
@@ -20,9 +20,9 @@ on a laptop CPU in well under an hour. No GPU, no training loop.
    with preconditioned conjugate gradients on the sparse normal equations. The fit learns, among other things, how
    much each piece should count ("the" next to nothing, "ryokan" a lot), which other methods need a hand-set weighting
    or a gradient-trained model for.
-4. **Pack** (`export.py`): int8 rows with a float32 scale each, `WNL1` format (see `src/wenlo/embed.js`).
+4. **Pack** (`export.py`): int8 rows with a float32 scale each, `KLR1` format (see `src/kilr/embed.js`).
 5. **Calibrate** (`calibrate.py`): where cosines of unrelated and near-identical pairs fall, on STS-B dev, for
-   `src/wenlo/calibration.js`.
+   `src/kilr/calibration.js`.
 
 ## Training texts
 
@@ -33,7 +33,7 @@ on a laptop CPU in well under an hour. No GPU, no training loop.
 - word bags drawn from the vocabulary (covers modern words the books lack)
 - short spans cut from the sentences (page titles and searches are 2–8 words)
 
-What Wenlo learns comes from the teacher's embedding of each text, so the texts only need to be varied.
+What Kilr learns comes from the teacher's embedding of each text, so the texts only need to be varied.
 
 ## Run it
 
@@ -49,8 +49,8 @@ npm i onnxruntime-node --ignore-scripts && pip install numpy scipy tokenizers
 python3 ../corpus.py
 node ../teach.js vocab && node ../teach.js clean && node ../teach.js eval
 SFX=-clean LAMS=0.01,0.03 python3 ../distill.py 256
-python3 ../export.py wenlo-E-clean.npy ../../../assets/wenlo/wenlo-embed.bin && cp vocab.txt ../../../assets/wenlo/
-python3 ../calibrate.py wenlo-E-clean.npy
+python3 ../export.py kilr-E-clean.npy ../../../assets/kilr/kilr-embed.bin && cp vocab.txt ../../../assets/kilr/
+python3 ../calibrate.py kilr-E-clean.npy
 node ../bench.js
 ```
 

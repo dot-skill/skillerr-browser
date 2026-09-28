@@ -822,16 +822,16 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .mini-more { font-size: 11.5px; font-weight: 600; color: var(--text-3); padding: 0 4px; }
 .ghost-tab.rest { width: auto; padding: 0 7px; font-size: 11px; font-weight: 600; }
 
-/* Wenlo's line */
-.wenlo-line { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; margin-bottom: 10px; border-radius: 12px; font-size: 13px; line-height: 1.45;
+/* Kilr's line */
+.kilr-line { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; margin-bottom: 10px; border-radius: 12px; font-size: 13px; line-height: 1.45;
   color: var(--text-2); background: linear-gradient(120deg, color-mix(in srgb, var(--violet) 9%, var(--surface-2)), color-mix(in srgb, var(--teal) 7%, var(--surface-2)));
   border: 1px solid color-mix(in srgb, var(--violet) 22%, var(--line)); animation: rise .3s both; }
-.wenlo-line[hidden] { display: none; }
-.wenlo-line .sl-text { flex: 1; min-width: 0; }
-.wenlo-line b { color: var(--text); margin-right: 4px; }
+.kilr-line[hidden] { display: none; }
+.kilr-line .sl-text { flex: 1; min-width: 0; }
+.kilr-line b { color: var(--text); margin-right: 4px; }
 #tvAnswer { margin: 0 0 10px; }
 
-/* Wenlo learning */
+/* Kilr learning */
 .learn-card { display: flex; gap: 12px; align-items: flex-start; padding: 14px; margin-bottom: 12px; border-radius: 14px; font-size: 13px; line-height: 1.5; color: var(--text-2);
   background: color-mix(in srgb, var(--violet) 8%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--violet) 28%, var(--line)); animation: rise .3s both; }
 .learn-card[hidden] { display: none; }

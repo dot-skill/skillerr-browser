@@ -1,7 +1,7 @@
-# Where Wenlo's cosines fall for pairs people call unrelated vs the same, on STS-B dev (not the test set):
+# Where Kilr's cosines fall for pairs people call unrelated vs the same, on STS-B dev (not the test set):
 # LOW = 75th percentile of unrelated pairs (gold <= 1); HIGH = median of pairs rated "roughly equivalent, details
-# differ" (gold 3-4): Wenlo judges "same topic", not "same sentence".
-# Usage: python3 calibrate.py wenlo-E-clean.npy   → prints LOW and HIGH for src/wenlo/calibration.js
+# differ" (gold 3-4): Kilr judges "same topic", not "same sentence".
+# Usage: python3 calibrate.py kilr-E-clean.npy   → prints LOW and HIGH for src/kilr/calibration.js
 import sys, csv, numpy as np, tokenizers
 E = np.load(sys.argv[1]).astype(np.float32)
 tok = tokenizers.Tokenizer.from_file('pk/mini/package/tokenizer.json'); tok.no_padding(); tok.no_truncation()

@@ -1,14 +1,14 @@
-// Does personal retraining help? A user's own jargon is where Wenlo's base model is weakest: rare words split into
-// pieces it never learned well (ryokan, tokio, bassinet). "This week" is what the user browsed; Wenlo retrains on it.
+// Does personal retraining help? A user's own jargon is where Kilr's base model is weakest: rare words split into
+// pieces it never learned well (ryokan, tokio, bassinet). "This week" is what the user browsed; Kilr retrains on it.
 // "Next week" is new pages on the same threads, worded differently, never seen in training. Scored: how many of next
 // week's pages land nearest their own trail, before and after retraining.
-// Usage: node scripts/wenlo/eval-personal.js
-const { WenloEmbed } = require('../../src/wenlo/embed');
-const { trainPersonal, heldOutAccuracy } = require('../../src/wenlo/train');
+// Usage: node scripts/kilr/eval-personal.js
+const { KilrEmbed } = require('../../src/kilr/embed');
+const { trainPersonal, heldOutAccuracy } = require('../../src/kilr/train');
 
 const { WEEK1, WEEK2 } = require('./personal-data');
 
-const e = WenloEmbed.load();
+const e = KilrEmbed.load();
 const toItems = (set) => Object.entries(set).flatMap(([trail, l]) => l.map((t) => ({ trail, ids: e.tok.encode(t) })));
 const row = (emb) => (id) => {
   const r = new Float64Array(emb.D);
@@ -27,11 +27,11 @@ const after = heldOutAccuracy(train, next, row(personal), e.D);
 console.log(`next week's pages in the right trail: before ${(before * 100).toFixed(0)}%, after ${(after * 100).toFixed(0)}%`);
 
 // The measure that matters in the app: would Trails join next week's page to its trail by meaning alone?
-// (Wenlo's closeness to the trail's centre, as Trails uses it, reaching the join threshold.)
-const { Wenlo } = require('../../src/wenlo');
-const { cosine, centroid } = require('../../src/wenlo/embed');
+// (Kilr's closeness to the trail's centre, as Trails uses it, reaching the join threshold.)
+const { Kilr } = require('../../src/kilr');
+const { cosine, centroid } = require('../../src/kilr/embed');
 function joinRate(emb) {
-  const w = new Wenlo({ embedder: emb });
+  const w = new Kilr({ embedder: emb });
   let joined = 0, total = 0, sum = 0;
   for (const [trail, texts] of Object.entries(WEEK2)) {
     const c = centroid(WEEK1[trail].map((t) => w.vec(t)));
@@ -49,7 +49,7 @@ const a = joinRate(personal);
 console.log(`next week's pages Trails would join by meaning: before ${(b.joined * 100).toFixed(0)}% (closeness ${b.meanCos.toFixed(2)}), after ${(a.joined * 100).toFixed(0)}% (closeness ${a.meanCos.toFixed(2)})`);
 // And the cost to watch: next week's pages that would wrongly join another trail.
 function wrongRate(emb) {
-  const w = new Wenlo({ embedder: emb });
+  const w = new Kilr({ embedder: emb });
   let wrong = 0, total = 0;
   for (const [trail, texts] of Object.entries(WEEK2)) {
     for (const [other, ot] of Object.entries(WEEK1)) {

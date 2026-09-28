@@ -30,12 +30,12 @@ const DEFAULTS = {
   sitePermissions: {}, // origin → { permission: 'allow' | 'block' }
   popupsAllowed: {}, // host → true
   sleepTabs: true, // unload tabs nobody is using, to stay light
-  wenlo: true, // Skillerr's own small AI (src/wenlo): trails and recall by meaning, on this computer
-  wenloLearn: 'suggest', // retraining on the user's own trails: 'suggest' (ask when due) | 'auto' (when the computer is idle) | 'off'
-  wenloLearnEvery: 'weekly', // 'daily' | 'weekly' | 'monthly'
-  wenloLearnedAt: 0,
-  wenloSnoozedUntil: 0,
-  wenloLastLearn: null, // { at, accepted, report, auto }
+  kilr: true, // Skillerr's own small AI (src/kilr): trails and recall by meaning, on this computer
+  kilrLearn: 'suggest', // retraining on the user's own trails: 'suggest' (ask when due) | 'auto' (when the computer is idle) | 'off'
+  kilrLearnEvery: 'weekly', // 'daily' | 'weekly' | 'monthly'
+  kilrLearnedAt: 0,
+  kilrSnoozedUntil: 0,
+  kilrLastLearn: null, // { at, accepted, report, auto }
   trails: true, // learn the user's ongoing work from their own browsing (src/trails.js)
   trailsTuck: true, // tuck tabs unused for half a day into their trail (the 5 most recent always stay)
   trailsIntroSeen: false,
@@ -44,6 +44,12 @@ const DEFAULTS = {
   betaUpdates: false, // also take staging builds (prereleases from the develop branch)
   dismissedNotices: [], // update/notice ids the user closed
 };
+
+// Kilr was called Wenlo in staging builds: carry its settings over (wenlo → kilr, wenloLearn → kilrLearn, …).
+function renamed(s) {
+  for (const k of Object.keys(s)) if (k.startsWith('wenlo') && !(`kilr${k.slice(5)}` in s)) s[`kilr${k.slice(5)}`] = s[k];
+  return s;
+}
 
 function ensureDir() {
   fs.mkdirSync(DIR, { recursive: true, mode: 0o700 });
@@ -68,7 +74,7 @@ module.exports = {
   writeJson: (name, data) => writeJson(path.join(DIR, name), data),
   DIR,
   SESSION,
-  getSettings: () => ({ ...DEFAULTS, ...readJson(SETTINGS, {}) }),
+  getSettings: () => ({ ...DEFAULTS, ...renamed(readJson(SETTINGS, {})) }),
   saveSettings: (s) => writeJson(SETTINGS, { ...DEFAULTS, ...s }),
   writeSession: (s) => writeJson(SESSION, s),
   readSession: () => readJson(SESSION, null),
