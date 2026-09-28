@@ -13,7 +13,7 @@
 // It proves itself before it's kept: part of each trail is held back, and the new vectors are accepted only if they put
 // more of the held-back items in the right trail than the current ones.
 
-const DEFAULTS = { lambda: 0.1, iterations: 40, maxItems: 8000, holdout: 0.25, minTrails: 3, minItemsPerTrail: 4 };
+const DEFAULTS = { lambda: 0.3, iterations: 40, maxItems: 8000, holdout: 0.25, minTrails: 3, minItemsPerTrail: 4, topicShare: 0.2 };
 
 // A stable pseudo-random choice (same answer for the same text), so a held-back item stays held back.
 function hashUnit(s) {
@@ -35,8 +35,10 @@ function meanOf(ids, row, D) {
   return m;
 }
 
-// Of the held-back items, how many land nearest their own trail's centre (centres from the training items)?
-function heldOutAccuracy(train, test, row, D) {
+// Of the held-back items, how many land nearest their own trail's centre (centres from the training items), and by what
+// margin: closeness to their own trail minus closeness to the nearest other one. The margin is what lets Trails join a
+// page to its trail with confidence, so it counts even when every item already lands right.
+function heldOut(train, test, row, D) {
   const byTrail = new Map();
   for (const it of train) {
     const u = meanOf(it.ids, row, D);
@@ -46,30 +48,47 @@ function heldOutAccuracy(train, test, row, D) {
   }
   const centres = [...byTrail.entries()].map(([t, c]) => [t, c.map((x) => x / (norm(c) || 1))]);
   let hit = 0;
+  let margin = 0;
   for (const it of test) {
     const u = meanOf(it.ids, row, D);
+    const n = norm(u) || 1;
     let best = null;
     let bestS = -Infinity;
+    let own = 0;
+    let other = -Infinity;
     for (const [t, c] of centres) {
       let s = 0;
       for (let k = 0; k < D; k++) s += u[k] * c[k];
+      s /= n;
       if (s > bestS) [best, bestS] = [t, s];
+      if (t === it.trail) own = s;
+      else other = Math.max(other, s);
     }
     if (best === it.trail) hit++;
+    margin += own - (other === -Infinity ? 0 : other);
   }
-  return test.length ? hit / test.length : 0;
+  return { accuracy: test.length ? hit / test.length : 0, margin: test.length ? margin / test.length : 0 };
 }
+const heldOutAccuracy = (train, test, row, D) => heldOut(train, test, row, D).accuracy;
+const MIN_MARGIN_GAIN = 0.02;
 
 // Fit Δ for the pieces used in `items`. row(id) gives the base vector. Returns Map id → Float64Array (new vector).
-function fit(items, row, D, { lambda, iterations }, onProgress) {
+function fit(items, row, D, { lambda, iterations, topicShare }, onProgress) {
+  // Only words specific to a topic are adapted: pieces used in at most a few of the user's trails. Common words ("best",
+  // "how", "guide") appear everywhere; moving them toward one topic would pull unrelated pages into it.
+  const trailsOf = new Map();
+  for (const it of items) for (const id of it.ids) (trailsOf.get(id) || trailsOf.set(id, new Set()).get(id)).add(it.trail);
+  const nTrails = new Set(items.map((it) => it.trail)).size;
+  const maxTrails = Math.max(2, Math.floor(topicShare * nTrails));
   const cols = new Map();
-  for (const it of items) for (const id of it.ids) if (!cols.has(id)) cols.set(id, cols.size);
+  for (const it of items) for (const id of it.ids) if (!cols.has(id) && trailsOf.get(id).size <= maxTrails) cols.set(id, cols.size);
   const T = cols.size;
   const N = items.length;
   // A: each item averages its pieces. Stored as rows of (col, weight).
+  // Fixed (common) pieces still count in each item's average; only the adapted ones get a column.
   const rowsA = items.map((it) => {
     const w = new Map();
-    for (const id of it.ids) w.set(cols.get(id), (w.get(cols.get(id)) || 0) + 1 / it.ids.length);
+    for (const id of it.ids) if (cols.has(id)) w.set(cols.get(id), (w.get(cols.get(id)) || 0) + 1 / it.ids.length);
     return [...w.entries()];
   });
   // Targets: each item's current mean, turned toward the centre of the rest of its trail (length kept).
@@ -182,9 +201,12 @@ function trainPersonal(trails, embed, opts = {}, onProgress) {
   const train = items.filter((it) => hashUnit(it.key) >= o.holdout);
   const trial = fit(train, row, D, o, (p) => onProgress?.(p * 0.5));
   const trialRow = (id) => trial.get(id) || row(id);
-  report.before = heldOutAccuracy(train, test, row, D);
-  report.after = heldOutAccuracy(train, test, trialRow, D);
-  if (!(report.after > report.before)) return { accepted: false, rows: null, report: { ...report, reason: 'no-gain', ms: Date.now() - t0 } };
+  const b = heldOut(train, test, row, D);
+  const a = heldOut(train, test, trialRow, D);
+  Object.assign(report, { before: b.accuracy, after: a.accuracy, marginBefore: b.margin, marginAfter: a.margin });
+  // Kept only if it never files fewer items right, and files more right or tells trails apart more clearly.
+  const better = a.accuracy >= b.accuracy && (a.accuracy > b.accuracy || a.margin - b.margin >= MIN_MARGIN_GAIN);
+  if (!better) return { accepted: false, rows: null, report: { ...report, reason: 'no-gain', ms: Date.now() - t0 } };
 
   // It helps: learn from everything.
   const rows = fit(items, row, D, o, (p) => onProgress?.(0.5 + p * 0.5));

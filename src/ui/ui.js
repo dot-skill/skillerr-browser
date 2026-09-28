@@ -563,7 +563,9 @@ function learnResultText(r) {
   const rep = r.report || {};
   if (r.accepted) {
     const pct = (x) => Math.round((x || 0) * 100);
-    return `Wenlo learned your words from ${rep.items} pages and searches in ${rep.trails} trails. It now files your pages right ${pct(rep.after)}% of the time, up from ${pct(rep.before)}%.`;
+    const gain = rep.after > rep.before ? `It now files your pages right ${pct(rep.after)}% of the time, up from ${pct(rep.before)}%.`
+      : `It now tells your trails apart ${Math.max(1, Math.round(((rep.marginAfter - rep.marginBefore) / Math.max(0.05, Math.abs(rep.marginBefore))) * 100))}% more clearly, so new pages join the right one more often.`;
+    return `Wenlo learned your words from ${rep.items} pages and searches in ${rep.trails} trails. ${gain}`;
   }
   if (rep.reason === 'not-enough') return 'Not enough browsing yet for Wenlo to learn from. It will offer again later.';
   return 'Wenlo checked your latest browsing: it already files your pages well, so nothing changed.';

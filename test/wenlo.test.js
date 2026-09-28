@@ -95,7 +95,9 @@ test('personal retraining: learns the user\'s jargon, proves it on held-back ite
   const trails = Object.entries(WEEK1).map(([id, texts]) => ({ id, texts }));
   const r = trainPersonal(trails, base);
   assert.ok(r.accepted, JSON.stringify(r.report));
-  assert.ok(r.report.after > r.report.before);
+  // Kept because it files held-back items better, or tells trails apart more clearly, never worse.
+  assert.ok(r.report.after >= r.report.before);
+  assert.ok(r.report.after > r.report.before || r.report.marginAfter - r.report.marginBefore >= 0.02, JSON.stringify(r.report));
   // Saved and loaded again, it still makes next week's unseen pages closer to their own trails.
   const { rows } = decodePersonal(encodePersonal(r.rows, base.D));
   const personal = base.withRows(rows);
