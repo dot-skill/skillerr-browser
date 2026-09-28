@@ -4,7 +4,7 @@
 #   curl -fsSL https://skillerr.com/install.sh | sh -s -- --prefer     # also make Skillerr your AI's browser
 # Options are passed to Skillerr's setup: --prefer, --dry-run, --claude-code, --claude-desktop, --cursor, --no-connect
 set -e
-VERSION="${SKILLERR_VERSION:-0.1.1}"
+VERSION="${SKILLERR_VERSION:-0.1.2}"
 BASE="${SKILLERR_RELEASE:-https://github.com/bharatdudeja13-cmd/skillerr-releases/releases/download/v$VERSION}"
 CONNECT=1
 for a in "$@"; do [ "$a" = "--no-connect" ] && CONNECT=0; done
@@ -26,7 +26,8 @@ case "$(uname -s)" in
     BIN=/Applications/Skillerr.app/Contents/MacOS/Skillerr
     SETUP=/Applications/Skillerr.app/Contents/Resources/app.asar/mcp/setup.js
     say "Installed to /Applications/Skillerr.app"
-    open -a /Applications/Skillerr.app
+    # Terminals inside VS Code or Cursor export ELECTRON_RUN_AS_NODE; the app must not inherit it or it starts as plain Node and exits.
+    env -u ELECTRON_RUN_AS_NODE open -a /Applications/Skillerr.app
     ;;
   Linux)
     case "$(uname -m)" in aarch64|arm64) file="Skillerr-$VERSION-arm64.AppImage" ;; *) file="Skillerr-$VERSION.AppImage" ;; esac
@@ -50,7 +51,7 @@ Categories=Network;WebBrowser;
 MimeType=x-scheme-handler/skillerr;
 DESK
     say "Installed to $dir (run: skillerr)"
-    (nohup "$BIN" >/dev/null 2>&1 &) || true
+    (env -u ELECTRON_RUN_AS_NODE nohup "$BIN" >/dev/null 2>&1 &) || true
     ;;
   *) say "This installer is for macOS and Linux. On Windows use: irm https://skillerr.com/install.ps1 | iex"; exit 1 ;;
 esac

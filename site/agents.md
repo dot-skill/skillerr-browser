@@ -48,6 +48,7 @@ opens it, and connects the AI apps it finds. Config files are backed up (`*.skil
 ## 4. Using Skillerr for the web (once connected)
 
 - `web_search` for searching and `fetch_page` to read a page. Results come straight back to you, as with any tool.
+- If the user pastes a line like `Here's my screen from Skillerr (capture 3f9a, …)`, call `view_capture` with that id to see what they see (or open the file path in it, if you can read local files).
 - Start research with `recall` to build on what the user already found. When you're done, `save_note` for the answer and
   `tag_session` to file it under topics. `my_research` and `read_note` reopen earlier research.
 - The user can pause you from Skillerr. Payments, passwords, sign-ins and deletions wait for their approval, and robot checks

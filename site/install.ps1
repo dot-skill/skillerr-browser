@@ -2,7 +2,7 @@
 #   irm https://skillerr.com/install.ps1 | iex
 #   & ([scriptblock]::Create((irm https://skillerr.com/install.ps1))) --prefer     # also make Skillerr your AI's browser
 $ErrorActionPreference = 'Stop'
-$version = if ($env:SKILLERR_VERSION) { $env:SKILLERR_VERSION } else { '0.1.1' }
+$version = if ($env:SKILLERR_VERSION) { $env:SKILLERR_VERSION } else { '0.1.2' }
 $base = if ($env:SKILLERR_RELEASE) { $env:SKILLERR_RELEASE } else { "https://github.com/bharatdudeja13-cmd/skillerr-releases/releases/download/v$version" }
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
 $file = "Skillerr-Setup-$version-$arch.exe"
@@ -14,6 +14,8 @@ Start-Process -FilePath $tmp -ArgumentList '/S' -Wait
 $exe = Join-Path $env:LOCALAPPDATA 'Programs\Skillerr\Skillerr.exe'
 if (-not (Test-Path $exe)) { throw "Skillerr didn't install where expected ($exe)." }
 Write-Host "Installed to $exe"
+# Terminals inside VS Code or Cursor export ELECTRON_RUN_AS_NODE; the app must not inherit it or it starts as plain Node and exits.
+Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
 Start-Process -FilePath $exe
 if ($args -notcontains '--no-connect') {
   Write-Host 'Connecting your AI apps...'

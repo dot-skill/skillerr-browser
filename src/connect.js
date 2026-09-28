@@ -95,15 +95,18 @@ async function connect(id, entry) {
     }
     fs.mkdirSync(path.dirname(target.file), { recursive: true });
     if (fs.existsSync(target.file)) fs.copyFileSync(target.file, target.file + '.skillerr-backup');
-    config.mcpServers = { ...(config.mcpServers || {}), skillerr: entry };
+    const servers = { ...(config.mcpServers || {}) };
+    config.mcpServers = { ...servers, skillerr: entry };
     fs.writeFileSync(target.file, JSON.stringify(config, null, 2));
     return target.done;
   }
   if (id === 'claude-code') {
     const bin = await findClaudeCli();
     if (!bin) throw new Error('Claude Code CLI not found.');
+    // Replace, don't keep: an existing entry may point at another copy of Skillerr (an old install or a dev build).
+    await run(bin, ['mcp', 'remove', 'skillerr', '--scope', 'user']);
     const r = await run(bin, ['mcp', 'add', 'skillerr', '--scope', 'user', '-e', 'ELECTRON_RUN_AS_NODE=1', '--', entry.command, ...entry.args]);
-    if (r.err && !/already exists/i.test(r.stderr + r.stdout)) throw new Error((r.stderr || r.err.message).trim().slice(0, 300));
+    if (r.err) throw new Error((r.stderr || r.err.message).trim().slice(0, 300));
     return 'Connected. New Claude Code sessions can use Skillerr.';
   }
   throw new Error(`Unknown app: ${id}`);
@@ -140,7 +143,7 @@ async function disconnect(id) {
   if (id === 'claude-code') {
     const bin = await findClaudeCli();
     if (!bin) throw new Error('Claude Code CLI not found.');
-    await run(bin, ['mcp', 'remove', 'skillerr', '--scope', 'user']);
+    for (const name of ['skillerr']) await run(bin, ['mcp', 'remove', name, '--scope', 'user']);
     return 'Disconnected. New Claude Code sessions won\'t see Skillerr.';
   }
   throw new Error(`Unknown app: ${id}`);

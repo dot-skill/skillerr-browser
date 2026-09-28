@@ -10,7 +10,8 @@ const IDEAS = [
   'Find well-reviewed noise-cancelling headphones under $200',
   'Explain the Wikipedia article on auroras simply',
 ];
-const PAGE_CHIPS = ['Summarize this page', 'What are the key points?', 'Explain it simply'];
+// Page suggestions that need the built-in AI stay off until Pro; the panel offers what works with any AI.
+const PAGE_CHIPS = [];
 const CONN_ICONS = { 'claude-desktop': 'message', 'claude-code': 'terminal', cursor: 'code' };
 const OTHER_PRESETS = {
   gemini: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash' },
@@ -95,6 +96,20 @@ skillerr.on('popup-blocked', ({ host, url }) => {
   chip.append(open, allow);
   clearTimeout(chip.timer);
   chip.timer = setTimeout(() => (chip.hidden = true), 12000);
+});
+
+// ----- updates and notices from skillerr.com (stays until closed) -----
+skillerr.on('update', (u) => {
+  const chip = $('updateChip');
+  chip.hidden = false;
+  chip.title = u.version ? `Skillerr ${u.version} is available${u.text ? `: ${u.text}` : ''}. Click to download.` : u.text;
+  chip.innerHTML = `<span class="dot"></span><span>${u.version ? 'Update' : esc(u.text.length > 32 ? u.text.slice(0, 31) + '…' : u.text)}</span>`;
+  chip.onclick = () => u.url && skillerr.send('update-open', u.url);
+  chip.append(btn(icon('x', 10), 'ghost icon-only', (e) => {
+    e?.stopPropagation?.();
+    skillerr.send('update-dismiss', u.id);
+    chip.hidden = true;
+  }));
 });
 
 // ----- passkeys (not available in early builds): point to the site's other sign-in route -----
@@ -247,6 +262,8 @@ skillerr.on('tabs', (list) => {
   $('forward').disabled = !currentTab.canGoForward;
   $('reload').innerHTML = currentTab.loading ? icon('x', 16) : icon('reload', 15);
   $('reload').title = currentTab.loading ? 'Stop' : 'Reload  ⌘R';
+  $('omni').classList.toggle('loading', !!currentTab.loading && !currentTab.isStart);
+  $('omni').classList.toggle('ai', !!currentTab.ai);
   if (currentTab.isStart && document.activeElement !== $('task')) setTimeout(() => $('hero').focus(), 0);
   renderComposerContext();
 });
@@ -305,9 +322,11 @@ function renderGroupsOnStart(list) {
     const live = ts.some((t) => t.ai);
     const card = h('div', 'lg-card' + (live ? ' live' : ''));
     card.style.setProperty('--g', g.color);
-    card.innerHTML = `<div class="lg-head"><span class="gdot"></span><div class="lg-meta"><div class="lg-title">${esc(g.title)}</div>
-      <div class="lg-sub">${brandIcon(g.controller, 12)}${esc(g.controller)} · ${ts.length} tab${ts.length === 1 ? '' : 's'} · ${live ? '<b class="lg-live">researching now</b>' : 'idle'}</div></div></div>
-      <div class="lg-tabs">${ts.slice(0, 6).map((t) => `<span>${esc(trunc(t.title, 28))}</span>`).join('')}${ts.length > 6 ? `<span>+${ts.length - 6} more</span>` : ''}</div>`;
+    const by = g.controller && g.controller !== g.title ? `${esc(g.controller)} · ` : '';
+    card.innerHTML = `<div class="lg-head"><span class="lg-ic">${brandIcon(g.controller, 16) || '<span class="gdot"></span>'}</span>
+      <div class="lg-meta"><div class="lg-title">${esc(g.title)}</div><div class="lg-sub">${by}${ts.length} tab${ts.length === 1 ? '' : 's'}</div></div>
+      <span class="lg-state${live ? ' on' : ''}">${live ? '<span class="orb live"></span>Researching' : 'Idle'}</span></div>
+      <div class="lg-tabs">${ts.slice(0, 4).map((t) => `<span title="${esc(t.title)}">${esc(t.title)}</span>`).join('')}${ts.length > 4 ? `<span class="more">+${ts.length - 4}</span>` : ''}</div>`;
     const acts = h('div', 'imp-row');
     acts.append(btn(`${icon('layers', 12)}Show all`, 'ghost', () => skillerr.send('group-show', g.id)),
       btn(`${icon('x', 12)}Close all`, 'ghost', () => skillerr.send('group-close', g.id)));
@@ -318,7 +337,7 @@ function renderGroupsOnStart(list) {
 
 // ================= intent-aware inputs (address bar + start page) =================
 
-function intentInput({ input, badge, form, hint, idleIcon, onValue, idleWhenBlurred }) {
+function intentInput({ input, badge, form, hint, idleIcon, onValue, idleWhenBlurred, emptyHint }) {
   let manual = null;
   const current = () => (input.value.trim() && !(idleWhenBlurred && document.activeElement !== input) ? manual || detectIntent(input.value) : null);
   const options = () => (looksLikeUrl(input.value.trim()) ? ['go', 'search', 'ask'] : ['search', 'ask']);
@@ -330,7 +349,9 @@ function intentInput({ input, badge, form, hint, idleIcon, onValue, idleWhenBlur
     form.classList.toggle('ask', it === 'ask');
     if (hint) {
       const focused = document.activeElement === input;
-      hint.innerHTML = !focused || !it ? '' : it === 'ask' ? '<kbd>↵</kbd> to run' : input.value.trim().split(/\s+/).length >= 2 ? '<kbd>Tab</kbd> Ask Skillerr' : '';
+      const next = options().filter((o) => o !== it)[0];
+      hint.innerHTML = !it ? (emptyHint || '') : !focused ? '' :
+        `<kbd>↵</kbd> ${INTENTS[it].label}${next ? ` · <kbd>Tab</kbd> ${INTENTS[next].label} instead` : ''}`;
     }
   }
   function cycle() {
@@ -381,14 +402,39 @@ const omniCtl = intentInput({
   idleIcon: () => (currentTab && !currentTab.isStart ? 'globe' : 'search'),
   onValue: go,
 });
+// Unfocused, the bar reads like a place: the site's name, then the rest of the address, dimmed.
+function prettyUrl() {
+  const u = currentTab && !currentTab.isStart ? currentTab.url : '';
+  let host = '', rest = '';
+  try {
+    const p = new URL(u);
+    if (/^https?:$/.test(p.protocol)) {
+      host = p.hostname.replace(/^www\./, '');
+      rest = (p.pathname === '/' ? '' : p.pathname) + p.search;
+      try { rest = decodeURI(rest); } catch {} // show ’Ship's_wheel’, not ’Ship%27s_wheel’
+    }
+  } catch {}
+  const on = !!host && document.activeElement !== $('url');
+  $('omni').classList.toggle('pretty', on);
+  if (on) {
+    $('urlShow').querySelector('b').textContent = host;
+    $('urlShow').querySelector('span').textContent = rest;
+  }
+}
 const omni = {
   reset() {
     $('url').value = currentTab && !currentTab.isStart ? currentTab.url : '';
     omniCtl.clearManual();
     omniCtl.render();
+    prettyUrl();
   },
 };
+$('urlShow').addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  $('url').focus();
+});
 $('url').addEventListener('focus', () => {
+  $('omni').classList.remove('pretty');
   omniCtl.render();
   setTimeout(() => $('url').select(), 0);
 });
@@ -402,7 +448,8 @@ $('url').addEventListener('keydown', (e) => {
 $('url').addEventListener('blur', () => setTimeout(() => document.activeElement !== $('url') && omni.reset(), 0));
 skillerr.on('focus-url', () => $('url').focus());
 
-intentInput({ input: $('hero'), badge: $('heroIntent'), form: $('heroForm'), idleIcon: () => 'sparkle', onValue: go });
+intentInput({ input: $('hero'), badge: $('heroIntent'), form: $('heroForm'), hint: $('heroHint'), idleIcon: () => 'sparkle', onValue: go,
+  emptyHint: 'Type an address, a search, or something for Skillerr to do' });
 
 // ================= start page =================
 
@@ -429,15 +476,24 @@ async function renderAiCards() {
   const builtin = h('div', 'ai-card');
   let sub;
   let action = '';
+  const configured = settings.provider === 'anthropic' ? !!settings.apiKey : !!(settings.baseUrl && settings.model);
   if (ready) sub = `<div class="sub ok">Ready · ${esc(agentName())}</div>`;
-  else if (local.length) {
+  else if (configured && settings.builtinOff) {
+    sub = `<div class="sub">Off · ${esc(agentName())}</div>`;
+  } else if (local.length) {
     sub = `<div class="sub">${esc(local[0].source)} found — free & private</div>`;
     action = '<button class="btn primary sm" data-act="use-local">Use it</button>';
   } else {
     sub = '<div class="sub">Local model or API key</div>';
     action = '<button class="btn ghost sm" data-act="setup">Set up</button>';
   }
+  if (configured) action = aiSwitch(ready, 'Turn the built-in AI on or off');
   builtin.innerHTML = `<div class="ic ${ready ? 'on' : ''}">${icon('sparkle', 18)}</div><div class="meta"><div class="name">Built-in AI</div>${sub}</div>${action}`;
+  builtin.querySelector('.ai-switch input')?.addEventListener('change', async (e) => {
+    await saveSettings({ builtinOff: !e.target.checked });
+    renderAiCards();
+    renderModelPill?.();
+  });
   builtin.querySelector('[data-act=use-local]')?.addEventListener('click', async () => {
     await saveSettings({ pane: 'local', provider: 'openai-compatible', baseUrl: local[0].baseUrl, model: local[0].model, apiKey: '', localModel: local[0].model, localBaseUrl: local[0].baseUrl });
     renderAiCards();
@@ -449,15 +505,34 @@ async function renderAiCards() {
   grid.querySelectorAll('.ai-card').forEach((c, i) => (c.style.animationDelay = `${i * 60}ms`));
 }
 
+// A small on/off switch for the start page's AI cards.
+function aiSwitch(on, title) {
+  return `<label class="ai-switch" title="${esc(title)}"><input type="checkbox" ${on ? 'checked' : ''} /><span class="switch"></span></label>`;
+}
+
 function connCard(t, cls) {
   const card = h('div', cls);
   const state = t.connected ? '<div class="sub ok">Connected</div>' : t.stale ? '<div class="sub err">Connection points to an old copy of Skillerr</div>'
     : t.detected ? '<div class="sub">Installed · not connected</div>' : '<div class="sub">Not installed</div>';
   let action = '';
-  if (!t.connected && t.detected) action = `<button class="btn primary sm" data-act="connect">${t.stale ? 'Reconnect' : 'Connect'}</button>`;
+  // On the start page, a connected (or connectable) app gets an on/off switch: off disconnects it.
+  if (cls === 'ai-card' && (t.connected || (t.detected && !t.stale))) action = aiSwitch(t.connected, t.connected ? `Disconnect ${t.name} from Skillerr` : `Connect ${t.name} to Skillerr`);
+  else if (!t.connected && t.detected) action = `<button class="btn primary sm" data-act="connect">${t.stale ? 'Reconnect' : 'Connect'}</button>`;
   else if (!t.detected && t.id === 'claude-desktop') action = '<button class="btn ghost sm" data-act="get">Get it</button>';
   card.innerHTML = `<div class="ic ${t.connected ? 'on' : ''}">${brandIcon(t.id, 18) || icon(CONN_ICONS[t.id] || 'plug', 17)}</div><div class="meta"><div class="name">${esc(t.name)}</div>${state}</div>${action}`;
   card.querySelector('[data-act=get]')?.addEventListener('click', () => skillerr.send('open-url', 'https://claude.ai/download'));
+  card.querySelector('.ai-switch input')?.addEventListener('change', async (e) => {
+    const on = e.target.checked;
+    e.target.disabled = true;
+    const r = await skillerr.invoke(on ? 'connect' : 'disconnect', t.id);
+    const subEl = card.querySelector('.sub');
+    subEl.className = 'sub ' + (r.ok ? (on ? 'ok' : '') : 'err');
+    subEl.textContent = r.ok ? (on ? 'Connected' : 'Disconnected') : r.message;
+    subEl.title = r.message || '';
+    card.querySelector('.ic').classList.toggle('on', r.ok ? on : !on);
+    if (!r.ok) e.target.checked = !on;
+    e.target.disabled = false;
+  });
   card.querySelector('[data-act=connect]')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
@@ -677,8 +752,9 @@ async function startTask(text) {
   skillerr.send('toggle-panel', true);
   if (agentRunning) return flash('Skillerr is still working on the last task — stop it first.');
   if (!(await skillerr.invoke('agent-ready'))) {
-    pendingTask = text;
-    openSheet('settings', { setup: true });
+    // No built-in AI yet: most people drive Skillerr from Claude Desktop, Claude Code or Cursor. Hand them the task.
+    skillerr.send('copy', `Use Skillerr to ${text.charAt(0).toLowerCase()}${text.slice(1)}`);
+    flash('Copied. Paste it into Claude Desktop, Claude Code or Cursor: it will do it here, where you can watch. (Or pick a built-in AI in Settings to run it right here.)', 8000);
     return;
   }
   newTaskGroup(text);
@@ -686,10 +762,10 @@ async function startTask(text) {
   skillerr.send('agent-run', text);
 }
 
-function flash(text) {
+function flash(text, ms = 4000) {
   const s = h('div', 'say', esc(text));
   place(s);
-  setTimeout(() => s.remove(), 4000);
+  setTimeout(() => s.remove(), ms);
 }
 
 function setRunning(on) {
@@ -764,6 +840,12 @@ function renderChips() {
     c.onclick = () => startTask(text);
     box.appendChild(c);
   });
+  const snap = h('button', 'chip', `${icon('camera', 11)}Show my AI this page`);
+  snap.type = 'button';
+  snap.style.animationDelay = `${list.length * 50}ms`;
+  snap.title = 'Captures the page and copies a line to paste into your AI';
+  snap.onclick = snapForAi;
+  box.appendChild(snap);
   if (skillCache.some((s) => s.name === 'demo-recorder')) {
     const c = h('button', 'chip', `${icon('film', 11)}Record a demo of this page`);
     c.type = 'button';
@@ -805,6 +887,34 @@ async function renderModelPill() {
   p.innerHTML = ready ? `<span class="dot"></span><span>${esc(agentName())}</span>` : `${icon('sparkle', 12)}<span>Choose an AI to power Skillerr</span>`;
 }
 $('modelPill').onclick = () => openSheet('settings');
+
+// Screenshot for your AI: capture the page, copy one line, paste it into your AI and just say what's wrong.
+$('snapBtn').innerHTML = icon('camera', 13);
+async function snapForAi() {
+  const r = await skillerr.invoke('capture-for-ai');
+  showCaptured(r);
+}
+function showCaptured(r) {
+  const b = $('snapBtn');
+  if (!r.ok) {
+    b.title = r.message;
+    return;
+  }
+  b.classList.add('on');
+  b.innerHTML = icon('check', 13);
+  setTimeout(() => {
+    b.classList.remove('on');
+    b.innerHTML = icon('camera', 13);
+  }, 2200);
+  // The first few times, say what to do next, in one line.
+  const seen = Number(localStorage.getItem('snapHints') || 0);
+  if (seen < 3) {
+    localStorage.setItem('snapHints', String(seen + 1));
+    flash(`Copied. Paste it into Claude or any AI, then say what's wrong. It opens the screenshot itself.`, 7000);
+  }
+}
+$('snapBtn').onclick = snapForAi;
+skillerr.on('captured', (r) => showCaptured({ ok: true, ...r }));
 
 // Deep research toggle: applies to the built-in AI and to connected AIs (they're told when it's on).
 function renderDeep() {
@@ -902,6 +1012,12 @@ async function renderConnectSheet() {
 }
 
 // ----- settings -----
+// Skillerr Pro stays switched off until launch: no tab, no keys. (skillerr.com refuses Pro requests too.)
+const PRO_OPEN = false;
+if (!PRO_OPEN) {
+  document.querySelector('#providerSeg [data-p="cloud"]').style.display = 'none';
+  document.querySelector('.pane[data-pane="cloud"]').style.display = 'none';
+}
 let pane = 'local';
 let localChoice = null;
 
@@ -921,7 +1037,7 @@ async function loadSettingsSheet({ setup } = {}) {
   settings = await skillerr.invoke('get-settings');
   $('setupBanner').hidden = !setup;
   const s = settings;
-  showPane(s.pane || (s.provider === 'anthropic' ? (s.apiKey ? 'claude' : 'local') : /localhost|127\.0\.0\.1/.test(s.baseUrl) ? 'local' : 'other'));
+  showPane((PRO_OPEN || s.pane !== 'cloud' ? s.pane : '') || (s.provider === 'anthropic' ? (s.apiKey ? 'claude' : 'local') : /localhost|127\.0\.0\.1/.test(s.baseUrl) ? 'local' : 'other'));
   $('claudeModel').value = s.claudeModel || (s.provider === 'anthropic' ? s.model : 'claude-opus-5') || 'claude-opus-5';
   $('claudeKey').value = s.anthropicKey || (s.provider === 'anthropic' ? s.apiKey : '') || '';
   $('otherPreset').value = s.otherPreset || 'gemini';
@@ -934,6 +1050,7 @@ async function loadSettingsSheet({ setup } = {}) {
   $('remember').checked = s.remember !== false;
   $('shareSkills').checked = !!s.shareSkillsWithClaudeCode;
   $('sleepTabs').checked = s.sleepTabs !== false;
+  $('updateChecks').checked = s.updateChecks !== false;
   $('searchEngine').value = s.searchEngine || 'google';
   document.querySelectorAll('#themeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.t === (s.theme || 'system')));
   renderMemStats();
@@ -977,6 +1094,7 @@ $('saveSettings').onclick = async () => {
     remember: $('remember').checked,
     shareSkillsWithClaudeCode: $('shareSkills').checked,
     sleepTabs: $('sleepTabs').checked,
+    updateChecks: $('updateChecks').checked,
     claudeModel: $('claudeModel').value,
     anthropicKey: $('claudeKey').value.trim(),
     otherPreset: $('otherPreset').value,
@@ -1203,19 +1321,31 @@ async function renderProAccount() {
   // Until Pro opens, say so plainly; a key bought later activates here without a new download.
   $('proIntro').innerHTML = st.pro ? 'Top models built in, no provider accounts or API keys.'
     : '<b>Skillerr Pro is coming soon</b>: top models built in, no accounts or API keys. Already have a Pro key? Paste it below.';
-  if (!a.signedIn && !st.signIn) return;
+  if (!a.signedIn && !st.signIn) {
+    box.innerHTML = '<span class="muted small">Sign-in is coming soon.</span>';
+    return;
+  }
   if (!a.signedIn) {
     box.appendChild(btn(`${icon('globe', 13)}Sign in with Google`, 'primary', () => {
       skillerr.send('pro-sign-in');
-      $('proStatus').className = 'small muted';
-      $('proStatus').textContent = 'Finish signing in in your browser, then come back here.';
+      if (box.querySelector('.code-row')) return;
+      // Normally the browser hands the sign-in back by itself; if it can't, the page shows a code to paste here.
+      const row = h('div', 'imp-row code-row', '<input class="code-in" spellcheck="false" placeholder="Or paste the sign-in code" />');
+      row.appendChild(btn('Use code', 'ghost', async () => {
+        const r = await skillerr.invoke('pro-activate', row.querySelector('input').value.trim());
+        if (r.ok) renderProAccount();
+        else row.querySelector('input').placeholder = r.message;
+      }));
+      box.appendChild(h('span', 'muted small', 'Finish signing in in your browser, then come back here.'));
+      box.appendChild(row);
     }));
     return;
   }
-  const line = h('div', 'pro-line', `<span>Signed in as <b>${esc(a.email)}</b></span><span class="${a.pro ? 'ok-text' : 'muted'}">${a.pro ? 'Pro active' : a.pro === null ? 'Offline' : 'No Pro yet'}</span>`);
+  const status = !PRO_OPEN ? '' : `<span class="${a.pro ? 'ok-text' : 'muted'}">${a.pro ? 'Pro active' : a.pro === null ? 'Offline' : 'No Pro yet'}</span>`;
+  const line = h('div', 'pro-line', `<span>Signed in as <b>${esc(a.email)}</b></span>${status}`);
   box.appendChild(line);
   const row = h('div', 'imp-row');
-  if (!a.pro && st.pro) row.appendChild(btn('Get Pro', 'primary', () => skillerr.send('open-url', a.checkout || 'https://skillerr.com/#pricing')));
+  if (PRO_OPEN && !a.pro && st.pro) row.appendChild(btn('Get Pro', 'primary', () => skillerr.send('open-url', a.checkout || 'https://skillerr.com/#pricing')));
   row.appendChild(btn('Sign out', 'ghost', async () => {
     await skillerr.invoke('pro-sign-out');
     renderProAccount();
@@ -1401,7 +1531,7 @@ async function showOnboarding() {
   const cards = $('obCards');
   const targets = await skillerr.invoke('connect-targets');
   for (const t of targets) cards.appendChild(connCard(t, 'conn'));
-  const pro = h('div', 'conn', `<div class="ic">${icon('sparkle', 17)}</div><div class="meta"><div class="name">Built-in AI</div><div class="sub">A free local model, your own API key, or Skillerr Pro</div></div>`);
+  const pro = h('div', 'conn', `<div class="ic">${icon('sparkle', 17)}</div><div class="meta"><div class="name">Built-in AI</div><div class="sub">A free local model or your own API key</div></div>`);
   pro.appendChild(btn('Set up later', 'ghost', () => go(2)));
   cards.appendChild(pro);
 

@@ -25,6 +25,8 @@ const DEFAULTS = {
   sitePermissions: {}, // origin → { permission: 'allow' | 'block' }
   popupsAllowed: {}, // host → true
   sleepTabs: true, // unload tabs nobody is using, to stay light
+  updateChecks: true, // ask skillerr.com if there's a newer version (sends only the version and platform)
+  dismissedNotices: [], // update/notice ids the user closed
 };
 
 function ensureDir() {

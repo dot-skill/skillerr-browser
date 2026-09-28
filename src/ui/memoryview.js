@@ -431,6 +431,13 @@
       cp.title = text;
       setTimeout(() => (cp.innerHTML = `${icon('sparkle', 12)}Copy prompt for your AI`), 1800);
     });
+    const sk = mk(`${icon('sparkle', 12)}Make it a skill`, 'ghost', async () => {
+      const r = await skillerr.invoke('mem-folder-skill', f.id);
+      sk.innerHTML = r.ok ? `${icon('check', 12)}Skill “${esc(r.name)}” saved` : esc(r.message);
+      sk.title = r.ok ? `${r.file}\nAny AI that reads skills can use it; shared with Claude Code if that's on.` : '';
+      sk.disabled = !!r.ok;
+    });
+    sk.title = 'Save this research as a skill (SKILL.md) that any AI can load';
     mk(`${icon('eye', 12)}Show on map`, 'ghost', async () => {
       setMode('map');
       await load();

@@ -2,7 +2,7 @@
 
 **The agentic browser.** Your AI does its web research in real tabs you can watch, and everything it finds is kept: in a private research graph, in real topic folders on disk, and as reusable skills.
 
-Skillerr is a desktop browser (macOS, Windows, Linux) built on Electron/Chromium. Any AI can drive it: Claude Desktop, Claude Code, Cursor and other MCP clients connect over a local MCP bridge, and a built-in agent runs local models (Ollama, LM Studio), your own API keys, or Skillerr Pro.
+Skillerr is a desktop browser (macOS, Windows, Linux) built on Electron/Chromium. Any AI can drive it: Claude Desktop, Claude Code, Cursor and other MCP clients connect over a local MCP bridge, and a built-in agent runs local models (Ollama, LM Studio) or your own API keys.
 
 Website: https://skillerr.com
 
@@ -39,7 +39,7 @@ mcp/bridge.js      MCP stdio server that forwards to the running app (and serves
 mcp/setup.js       Connects AI apps and, if asked, makes Skillerr their web browser (runs inside the app, no Node needed)
 skills/            Built-in skills
 scripts/build.mjs  Production bundle (esbuild, minified) into out/, packed into app.asar
-site/              skillerr.com: static landing page and Vercel functions (download gate, Pro proxy, sign-in)
+site/              install.sh, install.ps1 and agents.md (how an AI installs and connects Skillerr)
 demo/              Local fixture pages for testing
 ```
 
@@ -77,22 +77,11 @@ npm run dist:all    # everything
 
 Builds bundle and minify the app (`scripts/build.mjs`), so no readable source or `node_modules` ship. macOS builds are ad-hoc signed; notarization and Windows signing need a Developer ID and a code-signing certificate. Installers are published to the public releases repository that the website links to.
 
-## Website (`site/`)
-
-A static page plus Vercel functions. Environment variables (set in Vercel, never in code):
-
-| Variable | Used for |
-|---|---|
-| `DATABASE_URL` | Neon Postgres (download sign-ups) |
-| `AI_GATEWAY_API_KEY` | Skillerr Pro model access (server-side only) |
-| `SESSION_SECRET` | Signing sign-in sessions |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Sign in with Google |
-| `LS_STORE_ID`, `LS_PRODUCT_ID`, `LS_API_KEY`, `LS_CHECKOUT_URL` | Lemon Squeezy (Pro subscriptions and licences) |
-
 ## Data and privacy
 
 Everything the app keeps stays on the user's computer: `~/.skillerr/browser` (settings, research memory, skills), `~/Skillerr/notes` and `~/Skillerr/research`, and recordings and screenshots in the user's Movies and Pictures folders. The app has no telemetry. See `site/privacy.html`.
 
 ## License
 
-Proprietary. Copyright © 2026 Bharat Dudeja. All rights reserved. See [LICENSE](LICENSE).
+Skillerr is open source under the [GNU AGPL-3.0](LICENSE). Contributions need the one-line agreement in [CLA.md](CLA.md); see [CONTRIBUTING.md](CONTRIBUTING.md).
+The Skillerr name and logo are trademarks ([TRADEMARKS.md](TRADEMARKS.md)). The hosted services on skillerr.com (sign-in, downloads, updates) are not part of this repository.

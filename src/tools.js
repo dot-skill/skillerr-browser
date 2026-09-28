@@ -293,8 +293,10 @@ const VIEW_TOOL = {
 const LOOKUP_TOOLS = [
   {
     name: 'web_search',
-    description: 'Search the web in a visible Skillerr tab and get the results back (title, URL, snippet). Use this instead of your own ' +
-      'web search tool while Skillerr is connected. Then use fetch_page or open_tabs on the results worth reading.',
+    description: 'Your live internet access: search the web in a Skillerr tab the user can watch, and get the results back (title, URL, snippet). ' +
+      'Use it for anything current or outside your training data: weather, news, prices, scores, schedules, facts to check. While Skillerr ' +
+      'is connected, never tell the user you lack internet access, and use this instead of any built-in web search, in-app browser, ' +
+      'browser pane or fetch tool. Then use fetch_page or open_tabs on the results worth reading.',
     input_schema: {
       type: 'object',
       properties: { query: { type: 'string' }, max_results: { type: 'integer', minimum: 1, maximum: 20, description: 'Default 8' }, tab_id: TAB_ID },
@@ -303,8 +305,8 @@ const LOOKUP_TOOLS = [
   },
   {
     name: 'fetch_page',
-    description: 'Open a URL in a visible Skillerr tab and get its readable text back in one step. Use this instead of your own web fetch ' +
-      'tool while Skillerr is connected. Opens a new tab unless tab_id is given.',
+    description: 'Open a URL in a Skillerr tab the user can watch and get its readable text back in one step. While Skillerr is connected, ' +
+      'use this instead of any built-in web fetch, in-app browser or browser pane. Opens a new tab unless tab_id is given.',
     input_schema: { type: 'object', properties: { url: { type: 'string' }, tab_id: TAB_ID }, required: ['url'] },
   },
 ];
@@ -467,6 +469,25 @@ const CURSOR_JS = (x, y) => `(() => {
 })()`;
 
 // Result links from a search page (Google, DuckDuckGo or Bing), with a generic fallback.
+// Google hides result URLs behind /goto redirects. Ask where each one points without loading the page.
+function resolveRedirect(wc, url) {
+  if (!/^https:\/\/(www\.)?google\.[a-z.]+\/goto\?/.test(url)) return Promise.resolve(url);
+  const { net } = require('electron');
+  return new Promise((done) => {
+    const timer = setTimeout(() => done(url), 3000);
+    const finish = (u) => { clearTimeout(timer); done(u); };
+    try {
+      const req = net.request({ url, session: wc.session, redirect: 'manual', useSessionCookies: true });
+      req.on('redirect', (_code, _method, to) => { finish(to); req.abort(); });
+      req.on('response', () => finish(url));
+      req.on('error', () => finish(url));
+      req.end();
+    } catch {
+      finish(url);
+    }
+  });
+}
+
 const RESULTS_JS = (max) => `(() => {
   const out = [];
   const seen = new Set();
@@ -476,6 +497,7 @@ const RESULTS_JS = (max) => `(() => {
     try {
       const u = new URL(href);
       if (/(^|\\.)google\\./.test(u.hostname) && u.pathname === '/url') href = u.searchParams.get('q') || href;
+      if (/(^|\\.)google\\./.test(u.hostname) && u.pathname === '/goto') { if (!seen.has(href) && title) { seen.add(href); out.push({ title: title.trim().slice(0, 160), url: href, snippet: (snippet || '').replace(/\\s+/g, ' ').trim().slice(0, 300) }); } return; }
       if (/duckduckgo\\.com$/.test(u.hostname) && u.searchParams.get('uddg')) href = u.searchParams.get('uddg');
       if (/(google|duckduckgo|bing)\\./.test(new URL(href).hostname)) return;
     } catch { return; }
@@ -491,13 +513,26 @@ const RESULTS_JS = (max) => `(() => {
     const box = a.closest('article, .result'); push(a, a.innerText, box && box.querySelector('[data-result=snippet], .result__snippet, [data-testid=result-snippet]')?.innerText);
   }
   for (const a of document.querySelectorAll('#b_results .b_algo h2 a')) push(a, a.innerText, a.closest('.b_algo')?.querySelector('p')?.innerText);
-  if (!out.length) for (const a of document.querySelectorAll('main a h3, a h2, a h3')) push(a.closest('a'), a.innerText, '');
+  // Engines change their markup often; fall back to structure: an outbound link that carries a heading or a cite.
+  if (out.length < 3) for (const a of document.querySelectorAll('a[href]')) {
+    const head = a.querySelector('h3, h2, [role=heading]');
+    if (!head && !a.querySelector('cite')) continue;
+    const title = head ? head.innerText : a.innerText.split('\\n')[0];
+    const box = a.closest('[data-hveid], .g, .MjjYud, [data-snc], li, article') || a.parentElement?.parentElement?.parentElement;
+    let snippet = box && box.querySelector('[data-sncf], .VwiC3b, [style*="-webkit-line-clamp"]')?.innerText;
+    if (!snippet && box) snippet = box.innerText.split('\\n').filter((l) => l.length > 60 && !a.innerText.includes(l)).sort((x, y) => y.length - x.length)[0];
+    push(a, title, snippet);
+  }
   return out.slice(0, ${Number(max) || 8});
 })()`;
 
 const READ_JS = `(() => {
-  const root = document.querySelector('main, article, [role=main]') || document.body;
-  return (root.innerText || '').replace(/\\n{3,}/g, '\\n\\n').trim();
+  // Prefer the main content, but some sites keep their text outside <main> (JAL's notices, for one): then read the whole page.
+  const main = document.querySelector('main, article, [role=main]');
+  const pick = (el) => (el && el.innerText) || '';
+  let text = pick(main);
+  if (text.trim().length < 400) text = pick(document.body);
+  return text.replace(/\\n{3,}/g, '\\n\\n').trim();
 })()`;
 
 // ---------- helpers ----------
@@ -652,6 +687,9 @@ async function clickAt(tab, id, visible) {
   // Page coordinates are CSS pixels; input events use view pixels (they differ when a fleet tile is zoomed out).
   const z = wc.getZoomFactor();
   const at = { x: Math.round(x * z), y: Math.round(y * z) };
+  // Mark this click as the AI's, so fleet view doesn't treat it as the user picking a tile.
+  wc.skillerrAiInputAt = Date.now();
+  await wc.executeJavaScript('window.__skillerrAiAt = Date.now()').catch(() => {});
   wc.sendInputEvent({ type: 'mouseMove', ...at });
   wc.sendInputEvent({ type: 'mouseDown', ...at, button: 'left', clickCount: 1 });
   wc.sendInputEvent({ type: 'mouseUp', ...at, button: 'left', clickCount: 1 });
@@ -847,6 +885,7 @@ async function runTool(browser, name, args = {}) {
       }
       await sleep(400);
       const results = await inFrame(wc, RESULTS_JS(args.max_results)).catch(() => []);
+      await Promise.all(results.map(async (r) => (r.url = await resolveRedirect(wc, r.url))));
       if (!results.length) return { text: `Searched “${q}”${where} but couldn't pick out results. Use read_page or snapshot on this tab.` };
       return { text: `Search results for “${q}”${where} (${wc.getURL().split('/')[2]}):\n` +
         results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ''}`).join('\n') };

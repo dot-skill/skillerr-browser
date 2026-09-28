@@ -101,13 +101,29 @@ a:hover { text-decoration: underline; }
 .newtab { -webkit-app-region: no-drag; margin: 0 0 4px 4px; }
 
 .toolbar { height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 10px; background: var(--chrome-2); margin: 0; }
-.navbtns { display: flex; gap: 2px; }
+/* Back, forward and reload share one capsule: one control, not three loose buttons. */
+.navbtns { -webkit-app-region: no-drag; display: flex; gap: 0; padding: 2px; border-radius: 12px; background: var(--chrome); border: 1px solid var(--line); flex: none; }
+.navbtns .ibtn { width: 30px; height: 28px; border-radius: 9px; }
 .ibtn { -webkit-app-region: no-drag; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--text-2); transition: background .12s, color .12s; }
 .ibtn:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
 .ibtn:disabled { opacity: .35; cursor: default; }
 
-.omni { -webkit-app-region: no-drag; flex: 1; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 6px 0 4px;
-  border-radius: 10px; background: var(--chrome); border: 1px solid transparent; transition: border-color .15s, box-shadow .15s, background .15s; }
+/* The address capsule: centred, the site's name first. An aurora line sweeps along it while a page loads,
+   and its rim turns into the aurora ring while an AI works in this tab (the same signature as the page frame). */
+.omni { -webkit-app-region: no-drag; position: relative; flex: 1 1 auto; max-width: 780px; margin: 0 auto; display: flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 12px 0 5px; border-radius: 17px; background: var(--chrome); border: 1px solid var(--line);
+  transition: border-color .15s, box-shadow .15s, background .15s; }
+.omni::after { content: ''; position: absolute; left: 16px; right: 16px; bottom: 0; height: 2px; border-radius: 2px; opacity: 0; pointer-events: none;
+  background: linear-gradient(90deg, transparent, #8b6cff, #3de0c0, #ff7ac6, transparent) no-repeat; background-size: 45% 100%; transition: opacity .3s; }
+.omni.loading::after { opacity: 1; animation: omni-sweep 1.1s linear infinite; }
+@keyframes omni-sweep { from { background-position: -80% 0; } to { background-position: 180% 0; } }
+.omni.ai::before { content: ''; position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; pointer-events: none;
+  background: conic-gradient(from var(--spin), var(--aurora)); animation: spin 3s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.url-show { display: none; flex: 1; min-width: 0; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: text; color: var(--text-3); }
+.url-show b { color: var(--text); font-weight: 600; }
+.omni.pretty .url-show { display: block; }
+.omni.pretty input { flex: 0 0 0; width: 0; padding: 0; opacity: 0; }
 .omni:focus-within { background: var(--surface); border-color: var(--line-2); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .omni.ask:focus-within { border-color: color-mix(in srgb, var(--violet) 60%, transparent); }
 .omni input { flex: 1; min-width: 0; height: 100%; border: 0; outline: none; background: none; font-size: 13.5px; }
@@ -497,8 +513,19 @@ body.recording #openConnect, body.recording #openSettings { display: none; } /* 
 .deep-btn:hover { background: var(--surface-3); color: var(--text-2); }
 .deep-btn.on { color: var(--text); border-color: var(--line-2); background: var(--surface-3); }
 .deep-btn.on .i { color: var(--violet); }
+.snap-btn { padding: 0 7px; }
+/* start page: on/off for each AI */
+.ai-switch { position: relative; flex: none; display: inline-flex; align-items: center; cursor: pointer; }
+.ai-switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.ai-switch input:checked + .switch { background: var(--accent); }
+.ai-switch input:checked + .switch::after { transform: translateX(14px); }
+.ai-switch input:disabled + .switch { opacity: .5; }
+.snap-btn.on .i { color: var(--teal); }
 .deep-depth { height: 24px; border-radius: 7px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text-2); font-size: 11.5px; padding: 0 4px; }
 .deep-depth[hidden] { display: none; }
+.account-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 12px; font-size: 13px; }
+.account-row .code-in { height: 28px; min-width: 180px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); padding: 0 8px; font-size: 12px; }
+.account-row .pro-account { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .theme-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; font-size: 13px; }
 .small-seg { grid-template-columns: repeat(3, auto); margin-bottom: 0; }
 .small-seg button { padding: 0 10px; height: 26px; }
@@ -573,6 +600,12 @@ body.os-other .tab, body.os-other .ibtn, body.os-other button { -webkit-app-regi
 .popup-chip { -webkit-app-region: no-drag; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px 0 10px; border-radius: 10px; font-size: 12px;
   color: var(--warn); background: var(--warn-bg); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); flex: none; max-width: 420px; white-space: nowrap; overflow: hidden; }
 .popup-chip[hidden] { display: none; }
+/* Update: a small pill. The version and notes are in its tooltip; the × shows on hover. */
+.update-chip { height: 24px; padding: 0 4px 0 9px; gap: 3px; border-radius: 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; color: var(--text);
+  background: color-mix(in srgb, var(--violet) 14%, var(--surface)); border-color: color-mix(in srgb, var(--violet) 40%, var(--line-2)); }
+.update-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: conic-gradient(var(--aurora)); margin-right: 3px; }
+.update-chip .btn { height: 18px; width: 18px; padding: 0; opacity: 0; transition: opacity .15s; }
+.update-chip:hover .btn { opacity: 1; }
 .popup-chip .btn { height: 24px; padding: 0 8px; font-size: 11.5px; }
 .dl-btn { -webkit-app-region: no-drag; position: relative; }
 .dl-btn[hidden] { display: none; }
@@ -645,15 +678,21 @@ body.os-other .tab, body.os-other .ibtn, body.os-other button { -webkit-app-regi
 
 /* research in progress on the start page */
 .live-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 26px; }
-.lg-card { padding: 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); border-left: 3px solid var(--g); text-align: left; animation: rise .3s both; }
-.lg-card.live { box-shadow: 0 0 0 1px color-mix(in srgb, var(--g) 35%, transparent), 0 0 24px color-mix(in srgb, var(--g) 18%, transparent); }
-.lg-head { display: flex; gap: 10px; align-items: flex-start; }
-.lg-head .gdot { margin-top: 6px; }
-.lg-title { font-weight: 650; font-size: 13.5px; }
-.lg-sub { font-size: 12px; color: var(--text-3); display: flex; align-items: center; gap: 2px; }
-.lg-live { color: var(--g); font-weight: 650; }
-.lg-tabs { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0; }
-.lg-tabs span { font-size: 11px; padding: 2px 7px; border-radius: 6px; background: var(--surface-3); color: var(--text-2); }
+.lg-card { padding: 14px 14px 12px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); box-shadow: inset 3px 0 0 var(--g);
+  text-align: left; animation: rise .3s both; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.lg-card.live { border-color: color-mix(in srgb, var(--g) 40%, var(--line)); box-shadow: inset 3px 0 0 var(--g), 0 0 24px color-mix(in srgb, var(--g) 16%, transparent); }
+.lg-head { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.lg-ic { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 8px; background: var(--surface-3); }
+.lg-meta { flex: 1; min-width: 0; }
+.lg-title { font-weight: 650; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-sub { font-size: 12px; color: var(--text-3); }
+.lg-state { flex: none; display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 11px; font-size: 11px; font-weight: 600; color: var(--text-3); background: var(--surface-3); }
+.lg-state.on { color: var(--text); }
+.lg-state .orb { --size: 12px; }
+.lg-tabs { display: flex; flex-wrap: wrap; gap: 5px; }
+.lg-tabs span { max-width: 100%; font-size: 11px; padding: 3px 8px; border-radius: 6px; background: var(--surface-3); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lg-tabs span:not(.more) { flex: 0 1 auto; max-width: calc(50% - 3px); }
+.lg-card .imp-row { margin: 0; gap: 6px; }
 
 /* human mode: AI paused, it's just your browser */
 .human-pill { -webkit-app-region: no-drag; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 9px; font-size: 12.5px; font-weight: 650;

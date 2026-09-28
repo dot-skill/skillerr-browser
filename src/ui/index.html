@@ -21,6 +21,7 @@
       <form class="omni" id="omni" autocomplete="off">
         <button type="button" class="intent" id="intent" title="Tab to switch"></button>
         <input id="url" spellcheck="false" placeholder="Search, enter an address, or tell Skillerr what to do" />
+        <span class="url-show" id="urlShow" aria-hidden="true"><b></b><span></span></span>
         <span class="omni-hint" id="omniHint"></span>
         <button type="button" class="zoom-badge" id="zoomBadge" hidden title="Reset zoom  ⌘0"></button>
       </form>
@@ -33,6 +34,7 @@
       </div>
       <div class="popup-chip" id="popupChip" hidden></div>
       <div class="popup-chip passkey-chip" id="passkeyChip" hidden></div>
+      <div class="popup-chip update-chip" id="updateChip" hidden></div>
       <button class="ibtn dl-btn" id="dlBtn" hidden title="Downloads"></button>
       <button class="human-pill" id="humanPill" hidden title="AI is paused. You're browsing on your own; nothing is sent to an AI or added to research memory. Click to let AI act again  ⇧⌘P"><span class="hp-dot"></span>Human mode <span class="hp-resume">Resume AI</span></button>
       <button class="pilot-btn" id="togglePanel" title="Pilot panel  ⌘J"><span class="orb xs" id="miniOrb"></span>Pilot</button>
@@ -54,7 +56,7 @@
           <input id="hero" spellcheck="false" placeholder="Ask, search, or type a URL" />
           <button class="send" id="heroSend" type="submit"></button>
         </form>
-        <div class="hero-hint"><kbd>Tab</kbd> switches between <b>Ask</b>, <b>Search</b> and <b>Go</b></div>
+        <div class="hero-hint" id="heroHint"></div>
         <div class="ideas" id="ideas"></div>
 
         <div class="section-label" id="liveGroupsLabel" hidden>Research in progress</div>
@@ -95,7 +97,7 @@
           <label class="check"><input type="checkbox" data-r="memory" /> <span><b>Research memory and history</b><br /><span class="muted small">Sessions, pages, topics and links. Notes and skills files stay.</span></span></label>
           <label class="check"><input type="checkbox" data-r="bookmarks" /> <span><b>Bookmarks</b></span></label>
           <label class="check"><input type="checkbox" data-r="settings" /> <span><b>Settings</b><br /><span class="muted small">AI choice, appearance, switches.</span></span></label>
-          <label class="check"><input type="checkbox" data-r="everything" /> <span><b>Everything</b><br /><span class="muted small">All of the above, and sign out of Skillerr Pro.</span></span></label>
+          <label class="check"><input type="checkbox" data-r="everything" /> <span><b>Everything</b><br /><span class="muted small">All of the above, and sign out of your Skillerr account.</span></span></label>
         </div>
         <div class="imp-row"><button type="button" class="btn sm danger" id="dvReset">Clear selected</button><span class="small" id="dvResetMsg"></span></div>
       </div>
@@ -208,6 +210,7 @@
           <div class="box-left">
             <button type="button" class="model-pill" id="modelPill" title="Choose AI"></button>
             <button type="button" class="deep-btn" id="deepBtn" title="Deep research: read pages, follow their most relevant links, and keep going"></button>
+            <button type="button" class="deep-btn snap-btn" id="snapBtn" title="Capture this page and copy a line for your AI. Paste it into Claude (or any AI) and say what's wrong."></button>
             <select class="deep-depth" id="deepDepth" title="How many links deep to follow" hidden>
               <option value="1">depth 1</option><option value="2">depth 2</option><option value="3">depth 3</option><option value="4">depth 4</option><option value="5">depth 5</option>
             </select>
@@ -287,7 +290,6 @@
               <option value="google/gemini-3.5-flash">Gemini 3.5 Flash — low cost</option>
             </select>
           </label>
-          <div class="pro-account" id="proAccount"></div>
           <label class="field">Pro key <input id="proKey" type="password" spellcheck="false" placeholder="Paste your Skillerr Pro key" /></label>
           <div class="imp-row"><button type="button" class="btn primary sm" id="proActivate">Activate</button></div>
           <div class="small" id="proStatus"></div>
@@ -308,6 +310,7 @@
         </div>
 
         <div class="divider"></div>
+        <div class="account-row"><b>Account</b><div class="pro-account" id="proAccount"></div></div>
         <div class="theme-row"><b>Appearance</b>
           <div class="seg small-seg" id="themeSeg"><button type="button" data-t="system">System</button><button type="button" data-t="light">Light</button><button type="button" data-t="dark">Dark</button></div>
         </div>
@@ -322,6 +325,10 @@
         <label class="switch-row">
           <div><b>Sleep inactive tabs</b><span>Keeps Skillerr light: tabs you and your AI aren't using unload after a few minutes and wake instantly when you come back. What your AI read stays in research memory.</span></div>
           <input type="checkbox" id="sleepTabs" /><span class="switch"></span>
+        </label>
+        <label class="switch-row">
+          <div><b>Check for updates</b><span>Twice a day Skillerr asks skillerr.com if there's a newer version. It sends only its version and your platform.</span></div>
+          <input type="checkbox" id="updateChecks" /><span class="switch"></span>
         </label>
         <label class="switch-row">
           <div><b>Share skills with Claude Code</b><span>Skills Skillerr learns or installs also appear in Claude Code (~/.claude/skills), so your AI keeps them outside the browser too.</span></div>

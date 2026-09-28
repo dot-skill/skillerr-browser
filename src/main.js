@@ -77,6 +77,7 @@ if (!app.requestSingleInstanceLock()) app.quit();
 
 // skillerr:// links: skillerr.com hands the signed-in session back to the app after "Sign in with Google".
 const PRO_API = 'https://skillerr.com/api/pro/v1';
+const PRO_OPEN = false; // Skillerr Pro stays off until launch (skillerr.com enforces it too): signing in is just an account.
 if (store.PROFILE) {
   // test/demo profiles never claim skillerr:// links
 } else if (process.defaultApp) app.setAsDefaultProtocolClient('skillerr', process.execPath, [path.resolve(process.argv[1] || '.')]);
@@ -112,8 +113,8 @@ function handleDeepLink(url) {
 
 function signInWith(token) {
   const s = store.getSettings();
-  store.saveSettings({ ...s, proSession: token, pane: 'cloud', provider: 'openai-compatible', baseUrl: PRO_API, apiKey: token,
-    model: s.proModel || 'anthropic/claude-sonnet-5' });
+  store.saveSettings(PRO_OPEN ? { ...s, proSession: token, pane: 'cloud', provider: 'openai-compatible', baseUrl: PRO_API, apiKey: token,
+    model: s.proModel || 'anthropic/claude-sonnet-5' } : { ...s, proSession: token });
   ui('pro-account', { email: sessionInfo(token)?.email });
 }
 app.on('open-url', (e, url) => {
@@ -245,6 +246,8 @@ function attachView(tab) {
   // Pop-up blocker, like Chrome: allowed right after a click or key press, or for sites the user allowed.
   wc.on('input-event', (_e, ev) => {
     if (/^(mouseDown|mouseUp|keyDown|rawKeyDown|char|gestureTap)$/.test(ev.type)) tab.lastInput = tab.lastUsed = Date.now();
+    // Fleet view: clicking anywhere on a tile opens that tab (the tile's page guard swallows the click). AI clicks don't count.
+    if (ev.type === 'mouseDown' && mosaic?.includes(tab.id) && Date.now() - (wc.skillerrAiInputAt || 0) > 1000) setImmediate(() => switchTab(tab.id));
   });
   wc.setWindowOpenHandler(({ url: target }) => {
     let host = '';
@@ -258,7 +261,10 @@ function attachView(tab) {
   wc.on('context-menu', (_e, params) => showPageMenu(tab, params));
   // Passkeys need an Apple-notarized browser entitlement, which early builds don't have: when a site asks for one,
   // explain it and offer the site's other sign-in route instead of leaving the user stuck.
-  wc.on('dom-ready', () => wc.executeJavaScript(PASSKEY_WATCH_JS).catch(() => {}));
+  wc.on('dom-ready', () => {
+    wc.executeJavaScript(PASSKEY_WATCH_JS).catch(() => {});
+    if (mosaic?.includes(tab.id)) tileGuard(tab, true);
+  });
   wc.on('did-navigate', (_e, u) => /accounts\.google\.com\/.*\/challenge\/pk/.test(u || '') && passkeyHelp(tab));
   wc.on('console-message', (...a) => {
     const msg = typeof a[0] === 'object' && a[0]?.message !== undefined ? a[0].message : a[2];
@@ -337,11 +343,34 @@ function openInternal(kind) {
 }
 
 // ---------- fleet view: several live tabs side by side ----------
+// While a page is a fleet tile, the user's clicks on it open the tab instead of acting on the page.
+// Trusted clicks only, and not the AI's own clicks (tools.js stamps those with __skillerrAiAt).
+const TILE_GUARD_JS = (on) => `(() => {
+  if (!window.__skillerrTileGuard) {
+    window.__skillerrTileGuard = true;
+    const stop = (e) => {
+      if (!e.isTrusted || Date.now() - (window.__skillerrAiAt || 0) < 1500) return;
+      if (window.__skillerrTile && e.type === 'mousedown') window.__skillerrSwallowUntil = Date.now() + 800;
+      if (window.__skillerrTile || Date.now() < (window.__skillerrSwallowUntil || 0)) { e.preventDefault(); e.stopImmediatePropagation(); }
+    };
+    for (const t of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick', 'auxclick', 'contextmenu']) window.addEventListener(t, stop, true);
+  }
+  window.__skillerrTile = ${on};
+  let css = document.getElementById('__skillerr-tile-css');
+  if (${on} && !css) { css = document.createElement('style'); css.id = '__skillerr-tile-css'; css.textContent = '*{cursor:pointer!important}'; document.documentElement.appendChild(css); }
+  if (!${on} && css) css.remove();
+})()`;
+function tileGuard(tab, on) {
+  if (tab?.view && !tab.sleeping) tab.view.webContents.executeJavaScript(TILE_GUARD_JS(on)).catch(() => {});
+}
+
 function enterMosaic(ids) {
   const list = ids.filter((id) => getTab(id) && !getTab(id).isStart).slice(0, 9);
   for (const id of list) if (getTab(id).sleeping) wake(getTab(id)); // tiles must be live
   if (list.length < 2) return false;
+  for (const id of mosaic || []) if (!list.includes(id)) tileGuard(getTab(id), false);
   mosaic = list;
+  for (const id of list) tileGuard(getTab(id), true);
   if (!list.includes(activeTabId)) activeTabId = list[0];
   applyVisibility();
   pushTabs();
@@ -350,6 +379,7 @@ function enterMosaic(ids) {
 
 function exitMosaic() {
   if (!mosaic) return;
+  for (const id of mosaic) tileGuard(getTab(id), false);
   mosaic = null;
   for (const t of tabs) {
     if (t.zoom && t.view) {
@@ -569,6 +599,34 @@ function searchTemplateFor(engine = store.getSettings().searchEngine) {
 }
 
 // Right-click menu, like Chrome's, plus "Ask Skillerr".
+// ---------- screenshot for your AI ----------
+// One click saves what's on screen and copies a line to paste into any AI. Claude Code opens the file itself;
+// apps connected to Skillerr (Claude Desktop, Cursor…) call view_capture with the id and get the image.
+const CAPTURES_DIR = path.join(store.DIR, 'captures');
+const CAPTURE_KEEP = 40;
+async function captureForAi(tab = activeTab()) {
+  if (!tab?.view || tab.isStart) throw new Error('Open a page first.');
+  await browser.awake?.(tab);
+  const wc = tab.view.webContents;
+  const png = (await wc.capturePage()).toPNG();
+  fs.mkdirSync(CAPTURES_DIR, { recursive: true });
+  let id;
+  do id = require('crypto').randomBytes(2).toString('hex'); while (fs.existsSync(path.join(CAPTURES_DIR, `${id}.png`)));
+  const file = path.join(CAPTURES_DIR, `${id}.png`);
+  const url = wc.getURL();
+  let host = url;
+  try { host = new URL(url).hostname.replace(/^www\./, ''); } catch {}
+  fs.writeFileSync(file, png);
+  fs.writeFileSync(path.join(CAPTURES_DIR, `${id}.json`), JSON.stringify({ id, url, title: wc.getTitle(), at: new Date().toISOString() }));
+  // keep the newest few
+  const old = fs.readdirSync(CAPTURES_DIR).filter((f) => f.endsWith('.png'))
+    .map((f) => ({ f, t: fs.statSync(path.join(CAPTURES_DIR, f)).mtimeMs })).sort((a, b) => b.t - a.t).slice(CAPTURE_KEEP);
+  for (const { f } of old) for (const x of [f, f.replace(/\.png$/, '.json')]) fs.rmSync(path.join(CAPTURES_DIR, x), { force: true });
+  const line = `Here's my screen from Skillerr (capture ${id}, ${host}): ${file} `;
+  clipboard.writeText(line);
+  return { id, file, host, line };
+}
+
 function showPageMenu(tab, p) {
   const wc = tab.view.webContents;
   const sel = (p.selectionText || '').trim();
@@ -594,6 +652,7 @@ function showPageMenu(tab, p) {
       { label: 'Forward', enabled: wc.navigationHistory.canGoForward(), click: () => wc.navigationHistory.goForward() },
       { label: 'Reload', click: () => wc.reload() }, { type: 'separator' },
       { label: 'Ask Skillerr About This Page', click: () => { togglePanel(true); ui('prefill-task', 'Summarize this page and what matters most on it.'); } },
+      { label: 'Screenshot for Your AI', click: () => captureForAi(tab).then((r) => ui('captured', r)).catch(() => {}) },
       { label: 'Bookmark This Page', click: () => bookmarkActive() }, { label: 'Print…', click: () => wc.print() });
   }
   items.push({ type: 'separator' }, { label: 'Inspect Element', click: () => wc.inspectElement(p.x, p.y) });
@@ -745,7 +804,7 @@ function markActive(controller) {
 }
 
 // Never gated by "ask before every action": reading, narration, and local note/recording files.
-const READ_ONLY = new Set(['web_search', 'fetch_page', 'save_screenshot', 'open_view', 'snapshot', 'read_page', 'screenshot', 'list_tabs', 'wait', 'read_tabs', 'list_skills', 'use_skill', 'caption', 'record_stop', 'show_tabs', 'save_note', 'recall', 'tag_session', 'my_research', 'read_note']);
+const READ_ONLY = new Set(['view_capture', 'web_search', 'fetch_page', 'save_screenshot', 'open_view', 'snapshot', 'read_page', 'screenshot', 'list_tabs', 'wait', 'read_tabs', 'list_skills', 'use_skill', 'caption', 'record_stop', 'show_tabs', 'save_note', 'recall', 'tag_session', 'my_research', 'read_note']);
 const trunc = (s, n) => (String(s ?? '').length > n ? String(s).slice(0, n - 1) + '…' : String(s ?? ''));
 const NOTES_DIR = path.join(app.getPath('home'), 'Skillerr', store.PROFILE ? `notes-${store.PROFILE}` : 'notes');
 const RESEARCH_DIR = path.join(app.getPath('home'), 'Skillerr', store.PROFILE ? `research-${store.PROFILE}` : 'research');
@@ -796,6 +855,28 @@ function researchPrompt(f) {
   return `Using Skillerr, continue my research on "${f.path}": first call recall("${leaf}")` +
     (notes.length ? ` and read_note ${notes.join(', ')}` : '') +
     `, check the folder ${folderPathOf(f.path)}, then build on what's already there instead of starting over.`;
+}
+
+// Hand a research topic to any AI as a standard skill: a SKILL.md that says when it applies and where the
+// research lives. Skills are shared with Claude Code when that's on, and any skills-aware AI can load the folder.
+function researchSkill(f) {
+  writeResearchFolder(f);
+  const folder = folderPathOf(f.path);
+  const leaf = f.path.split(' > ').pop();
+  const slug = ('research-' + f.path.toLowerCase().replace(/[^a-z0-9]+/g, '-')).replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 64).replace(/-$/, '');
+  const notes = f.items.filter((i) => i.type === 'note').slice(0, 5).map((i) => `- ${i.label}`).join('\n');
+  return skills.learn({
+    name: slug,
+    description: `Use when the user asks about ${f.path.replace(/ > /g, ' › ')}: their own earlier research on it is saved on this computer.`,
+    instructions: `The user already researched "${f.path}". Build on it instead of starting over.\n\n` +
+      `1. Read ${path.join(folder, 'README.md')}: an index of the sessions, pages and notes on this topic.\n` +
+      `2. Read the notes in that folder${notes ? `:\n${notes}` : '.'}\n` +
+      `3. If Skillerr is connected, call recall("${leaf}") for related sessions and pages, and open_view with view "folders" to show them.\n` +
+      `4. Check dates: for anything time-sensitive (prices, rules, schedules), search again and say what changed.\n` +
+      `5. Cite the pages the research came from.`,
+    topics: [f.path],
+    by: 'you',
+  });
 }
 
 function targetTab(args) {
@@ -1060,6 +1141,23 @@ const BROWSER_TOOLS = {
     if (store.getSettings().shareSkillsWithClaudeCode) skills.shareWithClaudeCode();
     return { text: `${r.updated ? 'Updated' : 'Saved'} skill "${r.skill.name}" (${r.file}). It will be offered on future tasks that match its description.` };
   },
+  view_capture: async (args) => {
+    let id = String(args.id || '').trim().toLowerCase();
+    if (!id || id === 'latest') {
+      const pngs = fs.existsSync(CAPTURES_DIR) ? fs.readdirSync(CAPTURES_DIR).filter((f) => f.endsWith('.png')) : [];
+      pngs.sort((a, b) => fs.statSync(path.join(CAPTURES_DIR, b)).mtimeMs - fs.statSync(path.join(CAPTURES_DIR, a)).mtimeMs);
+      id = (pngs[0] || '').replace(/\.png$/, '');
+    }
+    const file = path.join(CAPTURES_DIR, `${id.replace(/[^a-f0-9]/g, '')}.png`);
+    if (!id || !fs.existsSync(file)) throw new Error(`No Skillerr capture "${args.id}". Ask the user to click "Screenshot for your AI" in Skillerr again.`);
+    let meta = {};
+    try { meta = JSON.parse(fs.readFileSync(file.replace(/\.png$/, '.json'), 'utf8')); } catch {}
+    const { nativeImage } = require('electron');
+    const img = nativeImage.createFromPath(file);
+    const view = img.getSize().width > 1600 ? img.resize({ width: 1600 }) : img;
+    return { text: `Capture ${id}: what the user saw in Skillerr${meta.url ? ` on ${meta.url} ("${meta.title || ''}")` : ''}${meta.at ? `, taken ${meta.at}` : ''}.`,
+      image: { data: view.toJPEG(85).toString('base64'), mimeType: 'image/jpeg' } };
+  },
   save_screenshot: async (args) => {
     const scope = ['page', 'full_page', 'window'].includes(args.scope) ? args.scope : 'page';
     let png;
@@ -1280,6 +1378,7 @@ async function runAgent(task) {
 
 function agentReady() {
   const s = store.getSettings();
+  if (s.builtinOff) return false; // switched off on the start page; its settings are kept for switching back on
   return s.provider === 'anthropic' ? !!s.apiKey : !!(s.baseUrl && s.model);
 }
 
@@ -1344,6 +1443,18 @@ function wireIpc() {
     if (url) newTab(url);
   });
   ipcMain.on('popup-open', (_e, url) => url && newTab(url));
+  ipcMain.handle('capture-for-ai', async () => {
+    try {
+      return { ok: true, ...(await captureForAi()) };
+    } catch (err) {
+      return { ok: false, message: err.message };
+    }
+  });
+  ipcMain.on('update-open', (_e, url) => trustedUpdateUrl(url) && shell.openExternal(url));
+  ipcMain.on('update-dismiss', (_e, id) => {
+    const s = store.getSettings();
+    store.saveSettings({ ...s, dismissedNotices: [...new Set([...(s.dismissedNotices || []), String(id)])].slice(-50) });
+  });
   // "Use another way": press the site's own alternative-sign-in button for the user.
   ipcMain.on('passkey-other-way', (_e, tabId) => {
     const t = getTab(Number(tabId)) || activeTab();
@@ -1452,6 +1563,7 @@ function wireIpc() {
   });
   ipcMain.handle('pro-activate', async (_e, key) => {
     key = String(key || '').trim();
+    if (!PRO_OPEN && !key.startsWith('sk1.')) return { ok: false, message: 'Skillerr Pro isn’t open yet.' };
     if (key.startsWith('sk1.')) {
       if (!sessionInfo(key)?.email) return { ok: false, message: 'That sign-in code isn’t valid.' };
       signInWith(key);
@@ -1489,6 +1601,17 @@ function wireIpc() {
     const text = researchPrompt(f);
     clipboard.writeText(text);
     return text;
+  });
+  ipcMain.handle('mem-folder-skill', (_e, id) => {
+    const f = findFolder(memory.taxonomy(), String(id));
+    if (!f) return { ok: false, message: 'That folder is gone.' };
+    try {
+      const r = researchSkill(f);
+      if (store.getSettings().shareSkillsWithClaudeCode) skills.shareWithClaudeCode();
+      return { ok: true, name: r.skill.name, file: r.file };
+    } catch (err) {
+      return { ok: false, message: err.message };
+    }
   });
   ipcMain.handle('mem-folders-root', () => {
     for (const f of memory.taxonomy()) writeResearchFolder(f);
@@ -1670,12 +1793,51 @@ function wireIpc() {
   });
 }
 
+// ---------------- updates and notices from skillerr.com ----------------
+// Asks skillerr.com/api/update (driven by site/updates.json) whether there's a newer version or a notice.
+// Sends only this version and the platform: no id, no usage. Early builds aren't signed, so we point to the
+// download instead of replacing the app in place.
+const UPDATE_API = process.env.SKILLERR_UPDATE_API || 'https://skillerr.com/api/update'; // env: test against staging or a local server
+const isNewer = (a, b) => {
+  const pa = String(a).split(/[.-]/).map((n) => parseInt(n, 10) || 0), pb = String(b).split(/[.-]/).map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] > pb[i];
+  return false;
+};
+const trustedUpdateUrl = (u) => { try { return /(^|\.)(skillerr\.com|github\.com)$/.test(new URL(u).hostname) && u.startsWith('https://'); } catch { return false; } };
+async function checkForUpdates(manual = false) {
+  if (!manual && store.getSettings().updateChecks === false) return;
+  const version = app.getVersion();
+  let d = null;
+  try {
+    const q = new URLSearchParams({ v: version, os: process.platform, arch: process.arch });
+    const r = await fetch(`${UPDATE_API}?${q}`, { signal: AbortSignal.timeout(10000) });
+    if (r.ok) d = await r.json();
+  } catch {}
+  const seen = manual ? [] : store.getSettings().dismissedNotices || [];
+  const update = d?.latest && isNewer(d.latest, version) && trustedUpdateUrl(d.url) && !seen.includes(`v${d.latest}`)
+    ? { id: `v${d.latest}`, version: d.latest, text: String(d.notes || '').slice(0, 200), url: d.url } : null;
+  const m = d?.message;
+  const notice = m?.id && m.text && !seen.includes(m.id) && (!m.below || isNewer(m.below, version)) && (!m.url || trustedUpdateUrl(m.url))
+    ? { id: String(m.id), text: String(m.text).slice(0, 200), url: m.url || '' } : null;
+  const show = update || notice;
+  if (show) ui('update', show);
+  if (manual && !update) {
+    dialog.showMessageBox(win, { type: 'info', message: d ? `Skillerr ${version} is the latest version.` : "Couldn't reach skillerr.com to check for updates.", buttons: ['OK'] });
+  }
+}
+
 // ---------------- app lifecycle ----------------
 
 function buildMenu() {
   const guard = (fn) => () => win && fn();
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    ...(process.platform === 'darwin' ? [{ role: 'appMenu', label: 'Skillerr' }] : []),
+    ...(process.platform === 'darwin' ? [{ label: 'Skillerr', submenu: [
+      { role: 'about' },
+      { label: 'Check for Updates…', click: () => checkForUpdates(true) },
+      { type: 'separator' }, { role: 'services' },
+      { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+      { type: 'separator' }, { role: 'quit' },
+    ] }] : []),
     {
       label: 'File',
       submenu: [
@@ -1740,6 +1902,7 @@ function buildMenu() {
       ],
     },
     { role: 'windowMenu' },
+    ...(process.platform === 'darwin' ? [] : [{ label: 'Help', submenu: [{ label: 'Check for Updates…', click: () => checkForUpdates(true) }] }]),
   ]));
 }
 
@@ -1801,6 +1964,8 @@ app.whenReady().then(async () => {
   win.on('closed', () => app.quit());
   wireIpc();
   buildMenu();
+  setTimeout(checkForUpdates, 15000); // after start-up settles, then twice a day
+  setInterval(checkForUpdates, 12 * 3600 * 1000);
   layout();
   await chrome.webContents.loadFile(path.join(__dirname, 'ui', 'index.html'));
   chrome.webContents.focus();
