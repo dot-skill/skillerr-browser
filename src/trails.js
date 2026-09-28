@@ -21,6 +21,7 @@ const CONTINUE_MS = 30 * 60 * 1000; // the same tab, used again within this long
 const SESSION_GAP_MS = 2 * HOUR; // coming back to a trail after this long counts as returning to it
 const MATCH_DAYS = 14; // a page can join a trail touched in the last two weeks
 const JOIN = 0.34; // how alike a page and a trail must be for the page to join it on topic alone
+const MEANING_WEIGHT = 0.8; // Scout's "same topic" (1.0) counts as a strong word match; a loose one stays under JOIN
 const PAGE_WORDS = 12;
 const TRAIL_WORDS = 60;
 const MAX_TRAILS = 300;
@@ -136,7 +137,10 @@ function chooseTabsToTuck(list, { now = Date.now(), keep = 5, idleMs = 12 * HOUR
 }
 
 class Trails {
-  constructor(dir, { now = Date.now } = {}) {
+  // meaning: optional, Scout (src/scout): { affinity(page, trail) → 0…1, rank(query, trails) → trails }.
+  // Without it, trails match by shared words only.
+  constructor(dir, { now = Date.now, meaning = null } = {}) {
+    this.meaning = meaning;
     this.dir = dir;
     this.file = path.join(dir, 'trails.json');
     this.now = now;
@@ -218,6 +222,7 @@ class Trails {
     for (const t of this.trails) {
       if (t.state !== 'active' || t.loose || at - t.lastAt > MATCH_DAYS * DAY) continue;
       let score = similarity(words, t);
+      if (this.meaning && !sensitive) score = Math.max(score, MEANING_WEIGHT * this.meaningOf(() => this.meaning.affinity({ title, h1, query }, t)));
       if (ctx.tabTrail === t.id && at - (ctx.tabAt || 0) < CONTINUE_MS) score += typed ? 0.15 : 0.6;
       if (ctx.openerTrail === t.id) score += 0.5;
       if (!query && t.hosts?.[host] && !this.everyday(host)) score += 0.12;
@@ -236,6 +241,18 @@ class Trails {
     this.saveSoon();
     return trail.id;
   }
+
+  // Scout must never break learning: any failure counts as "no opinion".
+  meaningOf(fn, fallback = 0) {
+    try {
+      const v = fn();
+      return v == null || Number.isNaN(v) ? fallback : v;
+    } catch {
+      return fallback;
+    }
+  }
+
+
 
   addTo(trail, { url, title, favicon, host, query, words, sensitive, at }) {
     if (at - trail.lastAt > SESSION_GAP_MS) trail.sessions++;
@@ -419,8 +436,16 @@ class Trails {
       const age = (now - t.lastAt) / DAY;
       return Math.pow(0.5, age / 3) * (1 + 0.4 * Math.min(t.sessions, 6) + 0.8 * Math.min(this.unfinished(t).length, 3) + (t.tucked.length ? 0.6 : 0));
     };
-    return this.trails
-      .filter((t) => (state === 'all' || t.state === state) && this.worth(t))
+    const shown = this.trails.filter((t) => (state === 'all' || t.state === state) && this.worth(t));
+    // With Scout, a search finds trails by meaning ("where to stay" finds "ryokan near Gion"), best match first.
+    if (query && this.meaning) {
+      const hits = this.meaningOf(() => this.meaning.rank(query, shown), null);
+      if (hits) {
+        const words = new Set(shown.filter((t) => q.length && (similarity(q, t) > 0 || q.some((w) => (t.title || '').toLowerCase().includes(w)))));
+        return [...new Set([...hits, ...words])].slice(0, limit).map((t) => this.summary(t));
+      }
+    }
+    return shown
       .filter((t) => !q.length || similarity(q, t) > 0 || q.some((w) => (t.title || '').toLowerCase().includes(w)))
       .sort((a, b) => (state === 'done' ? (b.doneAt || 0) - (a.doneAt || 0) : rank(b) - rank(a)))
       .slice(0, limit)

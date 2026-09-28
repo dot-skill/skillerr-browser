@@ -35,6 +35,7 @@ user visits a page (not an AI: tabs an AI drives or opened are research memory's
       ▼
 score every active trail touched in the last 14 days:
    words shared with the trail          share of the page's keywords (up to 4) among the trail's top 30 words
+   or, with Scout, closeness in meaning  0.8 × how close the page is to the trail's centre (docs/scout.md), if higher
  + same tab, within 30 min              +0.6 (link clicked)  /  +0.15 (typed address or a search: maybe a new thread)
  + opened from a tab on that trail      +0.5
  + same site as the trail's pages       +0.12 (not for everyday sites)
@@ -131,8 +132,8 @@ don't get these tools.
 
 ## Limits
 
-- **Keyword matching.** Two trails about the same thing in different words stay separate until merged. Recall by
-  meaning's local embeddings could join them later.
+- **Matching by meaning** (Scout) catches most differently worded pages, but not all: on held-out threads with no tab
+  hints, it groups 57% of the pairs that belong together (words alone: 30%), with 95% precision. Merge the rest.
 - **Chrome seeding** sees one row per page (last visit, visit count), not the order pages were opened in, so it groups
   by topic alone and only keeps groups of three or more from the last month.
 - **Single-page apps** that don't use `<form>` elements don't report unfinished forms.

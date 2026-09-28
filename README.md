@@ -154,6 +154,23 @@ See [docs/trails.md](docs/trails.md).
 
 </details>
 
+### Scout: Skillerr's own small AI
+
+<details>
+<summary><b>What you get</b></summary>
+
+- **Built in, tiny, fast.** One 7.9 MB file, about 26 µs per text in plain JavaScript. Nothing to install, nothing to
+  download, nothing leaves your computer.
+- **Knows your work by meaning.** Pages join the right trail even in different words, "Ask Scout" on the Trails page
+  finds "plane tickets to Japan" in a trail of Tokyo flights, and the start page says where you were and what's
+  unfinished.
+- **Recall by meaning, out of the box.** No Ollama needed any more.
+- **It doesn't make things up.** Scout chooses from the facts of your own trails; it never generates text.
+- **Ours.** Distilled from an open model (Apache-2.0) with a closed-form fit anyone can rerun on a laptop. See
+  [docs/scout.md](docs/scout.md).
+
+</details>
+
 ### Research memory and folders
 
 <table>
@@ -172,8 +189,8 @@ See [docs/trails.md](docs/trails.md).
   index and linked notes. Open a folder, or **Copy prompt for your AI** to hand the research to any AI.
 - **Continuity across AIs.** `recall`, `my_research` and `read_note` bring back past research. Notes and skills are
   also exposed as MCP resources, straight from disk.
-- **Recall by meaning.** With a local embedding model (`ollama pull nomic-embed-text`), recall matches by meaning as
-  well as by words. See [docs/recall-by-meaning.md](docs/recall-by-meaning.md).
+- **Recall by meaning.** Recall matches by meaning as well as by words, with Scout built in (or your own embeddings
+  endpoint). See [docs/recall-by-meaning.md](docs/recall-by-meaning.md).
 
 </details>
 
@@ -284,7 +301,7 @@ npm test                           # unit tests, including the recall quality ch
 ```
 
 Requires Node.js 22. More docs: [live view in Claude Desktop](docs/live-view.md), [passkeys](docs/passkeys.md),
-[recall by meaning](docs/recall-by-meaning.md), [trails](docs/trails.md), [benchmarks](docs/benchmarks.md).
+[recall by meaning](docs/recall-by-meaning.md), [trails](docs/trails.md), [Scout](docs/scout.md), [benchmarks](docs/benchmarks.md).
 
 <details>
 <summary><b>Project layout</b></summary>

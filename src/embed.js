@@ -1,13 +1,14 @@
 // Semantic recall: local embeddings so `recall` finds past research phrased differently ("lodging" ↔ "hotel").
-// Uses an OpenAI-compatible /embeddings endpoint on this computer (Ollama by default: `ollama pull nomic-embed-text`).
-// Only what memory already keeps is embedded (labels, summaries, keywords), never page text. If no local model is
-// running, recall stays keyword-only; nothing leaves the machine.
+// By default Skillerr's own Scout embeddings (src/scout), built in: nothing to install, microseconds per text, vectors kept
+// in memory only (re-making them is cheaper than reading them). If the user sets an OpenAI-compatible endpoint
+// (embedBaseUrl, e.g. Ollama with nomic-embed-text), that is used instead and its vectors are saved.
+// Only what memory already keeps is embedded (labels, summaries, keywords), never page text. Nothing leaves the machine.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const DEFAULT_BASE = 'http://127.0.0.1:11434/v1';
-const DEFAULT_MODEL = 'nomic-embed-text';
+const DEFAULT_MODEL = 'nomic-embed-text'; // for a user-set endpoint
+const SCOUT_MODEL = 'scout-embed-1';
 const RETRY_AFTER_MS = 10 * 60 * 1000; // after a failure (model not pulled, server off), try again later
 const BATCH = 32;
 const MIN_SIMILARITY = 0.55; // below this, a vector match is noise
@@ -26,8 +27,10 @@ function cosine(a, b) {
 
 class Embedder {
   // memory: the Memory instance; dir: where vectors.jsonl lives (next to the graph).
-  constructor({ memory, dir, getConfig = () => ({}), fetchImpl = fetch }) {
+  // builtin: () => an object with embed(text) → unit vector (Scout). Used when no endpoint is set.
+  constructor({ memory, dir, getConfig = () => ({}), fetchImpl = fetch, builtin = null }) {
     this.memory = memory;
+    this.builtin = builtin;
     this.file = path.join(dir, 'vectors.jsonl');
     this.getConfig = getConfig;
     this.fetch = fetchImpl;
@@ -43,7 +46,9 @@ class Embedder {
 
   config() {
     const c = this.getConfig() || {};
-    return { on: c.on !== false, baseUrl: String(c.baseUrl || DEFAULT_BASE).replace(/\/+$/, ''), model: c.model || DEFAULT_MODEL };
+    const baseUrl = String(c.baseUrl || '').replace(/\/+$/, '');
+    if (!baseUrl && this.builtin && c.builtin !== false) return { on: c.on !== false, builtin: true, baseUrl: '', model: SCOUT_MODEL };
+    return { on: c.on !== false, builtin: false, baseUrl: baseUrl || 'http://127.0.0.1:11434/v1', model: c.model || DEFAULT_MODEL };
   }
 
   load() {
@@ -63,6 +68,7 @@ class Embedder {
   }
 
   save() {
+    if (this.config().builtin) return; // Scout's vectors are re-made in milliseconds; nothing to keep on disk
     fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });
     const tmp = this.file + '.tmp';
     const lines = [...this.vectors.entries()].map(([id, r]) => JSON.stringify({ id, h: r.h, m: r.m, v: r.v }));
@@ -75,7 +81,11 @@ class Embedder {
   }
 
   async embed(texts) {
-    const { baseUrl, model } = this.config();
+    const { baseUrl, model, builtin } = this.config();
+    if (builtin) {
+      const e = this.builtin();
+      return texts.map((t) => e.embed(t) || new Float32Array(e.D)); // kept as compact Float32Arrays, never saved
+    }
     const res = await this.fetch(`${baseUrl}/embeddings`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -110,12 +120,15 @@ class Embedder {
       }
       for (const id of [...this.vectors.keys()]) if (!this.memory.nodes.has(id)) this.vectors.delete(id); // forgotten
       let done = 0;
+      const { builtin } = this.config();
+      const batchSize = builtin ? 256 : BATCH;
       try {
-        for (let i = 0; i < todo.length; i += BATCH) {
-          const batch = todo.slice(i, i + BATCH);
+        for (let i = 0; i < todo.length; i += batchSize) {
+          const batch = todo.slice(i, i + batchSize);
           const vs = await this.embed(batch.map((x) => x.t));
           batch.forEach((x, j) => this.vectors.set(x.id, { h: x.h, m: model, v: vs[j] }));
           done += batch.length;
+          if (builtin) await new Promise((r) => setImmediate(r)); // in slices, so a big memory never stalls the browser
         }
       } catch {
         this.failedAt = Date.now();
@@ -129,9 +142,10 @@ class Embedder {
   // Map of node id → similarity (0..1) for nodes close to the query, or null when semantic recall isn't available.
   async similar(query, { limit = 30 } = {}) {
     if (!this.available() || !String(query || '').trim()) return null;
-    this.index(); // catch up in the background; this query uses the vectors there are
+    const { model, builtin } = this.config();
+    if (builtin) await this.index(); // Scout's vectors live in memory: make them now (milliseconds)
+    else this.index(); // catch up in the background; this query uses the vectors there are
     if (!this.vectors.size) return null;
-    const { model } = this.config();
     let q;
     try {
       [q] = await this.embed([String(query).slice(0, 1000)]);
@@ -142,7 +156,8 @@ class Embedder {
     const scored = [];
     for (const [id, r] of this.vectors) {
       if (r.m !== model || r.v.length !== q.length) continue;
-      const s = cosine(q, r.v);
+      // Scout's raw cosines run lower than nomic's; map them onto the same scale so recall's thresholds hold.
+      const s = builtin ? scoutScale(cosine(q, r.v)) : cosine(q, r.v);
       if (s >= MIN_SIMILARITY) scored.push([id, s]);
     }
     return new Map(scored.sort((a, b) => b[1] - a[1]).slice(0, limit));
@@ -154,4 +169,8 @@ class Embedder {
   }
 }
 
-module.exports = { Embedder, cosine, MIN_SIMILARITY };
+// Scout cosine → the 0.5 (unrelated) … 1 (same thing) scale recall expects. LOW and HIGH come from src/scout.
+const { LOW, HIGH } = require('./scout/calibration');
+const scoutScale = (c) => 0.5 + 0.5 * Math.max(0, Math.min(1, (c - LOW) / (HIGH - LOW)));
+
+module.exports = { Embedder, cosine, MIN_SIMILARITY, SCOUT_MODEL, scoutScale };

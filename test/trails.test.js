@@ -199,3 +199,30 @@ test('Chrome history seeds trails from groups of related pages', () => {
   assert.strictEqual(t.pageCount, 3);
   assert.strictEqual(t.title, 'Mechanical keyboard switches');
 });
+
+test('with Scout, pages join trails by meaning and search finds by meaning', () => {
+  // A stand-in for Scout: two topics, known by a few words each.
+  const topic = (s) => (/kyoto|ryokan|gion|stay|lodging|japan/i.test(s) ? 'kyoto' : /desk|standing|ergonomic|chair/i.test(s) ? 'desk' : null);
+  const trailTopic = (t) => topic([...t.searches, ...t.pages.map((p) => p.title)].join(' '));
+  const meaning = {
+    affinity: (page, t) => (topic([page.query, page.title, page.h1].join(' ')) === trailTopic(t) && trailTopic(t) ? 0.9 : 0),
+    rank: (q, trails) => trails.filter((t) => topic(q) && trailTopic(t) === topic(q)),
+  };
+  const clock = { t: T0 };
+  const tr = new Trails(tmp(), { now: () => clock.t, meaning });
+  const a = tr.observe({ url: 'https://www.google.com/search?q=ryokan+near+gion' }, { typed: true });
+  clock.t += 5 * DAY;
+  // No shared words with "ryokan near gion", but the same topic: joins by meaning.
+  const b = tr.observe({ url: 'https://www.google.com/search?q=where+to+stay+in+japan' }, { typed: true });
+  assert.strictEqual(b, a);
+  tr.observe({ url: 'https://inn.example/hotel/8', title: 'Lodging 8' }, { tabTrail: a, tabAt: clock.t });
+  assert.strictEqual(tr.get(a).title, 'Ryokan near gion'); // named by its first search, as without Scout
+  const d = tr.observe({ url: 'https://www.google.com/search?q=standing+desk' }, { typed: true });
+  assert.notStrictEqual(d, a);
+  tr.observe({ url: 'https://desk.example/uplift', title: 'Uplift desk' }, { tabTrail: d, tabAt: clock.t });
+  assert.deepStrictEqual(tr.list({ query: 'somewhere to stay' }).map((t) => t.id), [a]);
+  // A broken Scout never breaks learning.
+  const broken = new Trails(tmp(), { meaning: { affinity: () => { throw new Error('x'); }, rank: () => { throw new Error('x'); } } });
+  assert.ok(broken.observe({ url: 'https://www.google.com/search?q=espresso' }, { typed: true }));
+  assert.deepStrictEqual(broken.list({ query: 'espresso' }).length, 0);
+});
