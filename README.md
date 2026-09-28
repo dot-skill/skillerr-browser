@@ -38,13 +38,14 @@ Your AI browses in real tabs you can watch, asks before anything that matters, a
 
 Skillerr is a desktop browser (macOS, Windows, Linux) that any AI can drive: Claude Desktop, Claude Code, Cursor and
 other MCP clients connect over a local MCP bridge, and a built-in agent runs local models (Ollama, LM Studio) or your
-own API keys. It rests on three ideas:
+own API keys. It rests on a few ideas:
 
 | | |
 |---|---|
 | **Visible** | Every page your AI reads opens as a real tab you can watch. Many at once, side by side, live. |
 | **Governed** | You pause, take over and undo. Payments, passwords, sign-ins and deletions wait for your approval. |
 | **Kept** | Its research stays on your computer: a research memory, topic folders and notes on disk, and reusable skills. Next time, it checks what you already know before it searches again. |
+| **Trails** | Skillerr learns what you're working on from how you browse. The 40 tabs you never close go into their trails, with what you left unfinished, and come back with one click. |
 | **Light & private** | Chrome's page speed with less memory, and **no telemetry**: nothing about your browsing leaves your computer. |
 
 ## Install
@@ -128,6 +129,27 @@ flowchart LR
 - Tabs for one task are **grouped and named** after the AI that opened them. Show them all or close them all in one click.
 - `web_search` and `fetch_page` stand in for your AI's own search and fetch, so its flow carries on as usual and the
   sources in its answer are pages you saw.
+
+</details>
+
+### Trails: pick up where you left off
+
+<details>
+<summary><b>What you get</b></summary>
+
+- **Threads of your work, learned.** Pages you visit are filed into trails like "Kyoto ryokan near Gion" by what they
+  were opened from, what you searched and what they're about. Nothing to set up.
+- **Unfinished work, noticed:** a form you typed into but never sent, an article you read partway, a cart you didn't
+  check out, a long video you stopped halfway.
+- **Tabs, tidied.** Tabs you haven't used for 12 hours are tucked into their trail once you have 9 or more open, and
+  **Tidy** in the tab strip does it now. Your 5 most recent tabs, forms you're typing, audio and pages you keep
+  coming back to always stay. Undo brings them all back.
+- **Pick up where you left off.** The start page shows your most relevant trails. **Continue** reopens a trail's tabs
+  (asleep until clicked) or the page you stopped at, scrolled to where you were. Quitting no longer loses your tabs.
+- **Yours to control:** rename, merge, mark done, forget, never learn from a site. Chrome history can seed the first
+  trails. AI apps see your trails (`my_trails`) only after you allow each one once.
+
+See [docs/trails.md](docs/trails.md).
 
 </details>
 
@@ -233,15 +255,18 @@ Measured against Chrome 152 on the same machine ([details](docs/benchmarks.md)):
 - **Sleeping tabs:** tabs nobody is using unload after a few minutes and wake instantly. With 50 tabs open, memory drops
   by about 60%.
 - **Parallel research:** your AI can read many pages at once in Fleet view, instead of one tab at a time.
-- **Nothing added to pages:** Skillerr's own work runs only when your AI asks for it.
+- **Almost nothing added to pages:** Skillerr's own work runs only when your AI asks for it. Trails adds one small
+  watcher (scroll depth, whether a form was typed into, video progress) in an isolated world pages can't see.
 
 ## Privacy
 
 Skillerr is local-first, and has **no telemetry**.
 
-- Everything it keeps stays on your computer: `~/.skillerr/browser` (settings, research memory, skills),
+- Everything it keeps stays on your computer: `~/.skillerr/browser` (settings, research memory, trails, skills),
   `~/Skillerr/notes` and `~/Skillerr/research`, and recordings and screenshots in your Movies and Pictures folders.
 - The local API listens on `127.0.0.1` only, needs a bearer token, and refuses requests from web pages.
+- Trails keep URLs, titles and a few keywords of the pages you visit, never page text or what you typed. Turn them
+  off, exclude sites, or forget them in ⋮ → Trails → Settings.
 - Update checks send only the app version and platform. You can turn them off in Settings.
 - Pages your AI reads go to your AI, the one you chose. With the built-in AI on a local model, nothing leaves your
   computer.
@@ -258,7 +283,7 @@ npm test                           # unit tests, including the recall quality ch
 ```
 
 Requires Node.js 22. More docs: [live view in Claude Desktop](docs/live-view.md), [passkeys](docs/passkeys.md),
-[recall by meaning](docs/recall-by-meaning.md), [benchmarks](docs/benchmarks.md).
+[recall by meaning](docs/recall-by-meaning.md), [trails](docs/trails.md), [benchmarks](docs/benchmarks.md).
 
 <details>
 <summary><b>Project layout</b></summary>

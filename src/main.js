@@ -14,6 +14,7 @@ const { Recorder } = require('./recorder');
 const store = require('./store');
 const { Memory, recallText, tokens } = require('./memory');
 const chrome_ = require('./chrome-import');
+const { Trails, chooseTabsToTuck, pageKey } = require('./trails');
 
 traceStartup('modules loaded');
 // Read on first use (or in the background once the window is up), never before the window: a big memory
@@ -273,7 +274,7 @@ function tabInfo(t) {
   const wc = t.view.webContents;
   return {
     id: t.id,
-    title: t.internal === 'memory' ? 'Research memory' : t.internal === 'data' ? 'History & Bookmarks' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
+    title: t.internal === 'memory' ? 'Research memory' : t.internal === 'data' ? 'History & Bookmarks' : t.internal === 'trails' ? 'Trails' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
     url: t.isStart ? '' : wc.getURL(),
     internal: t.internal || null,
     isStart: t.isStart,
@@ -342,7 +343,7 @@ function attachView(tab) {
     try {
       host = new URL(wc.getURL()).hostname;
     } catch {}
-    if (Date.now() - tab.lastInput < 1500 || store.getSettings().popupsAllowed?.[host]) newTab(target);
+    if (Date.now() - tab.lastInput < 1500 || store.getSettings().popupsAllowed?.[host]) newTab(target, { opener: tab.id });
     else ui('popup-blocked', { tabId: tab.id, host, url: target });
     return { action: 'deny' };
   });
@@ -351,11 +352,13 @@ function attachView(tab) {
   // site's other sign-in route instead of leaving the user stuck. See setupPasskeys.
   wc.on('dom-ready', () => {
     wc.executeJavaScript(PASSKEY_WATCH_JS).catch(() => {});
+    if (tab.trailPage) wc.executeJavaScriptInIsolatedWorld(TRAIL_WORLD, [{ code: TRAIL_WATCH_JS }]).catch(() => {});
     if (mosaic?.includes(tab.id)) tileGuard(tab, true);
   });
   wc.on('did-navigate', (_e, u) => passkeys === 'none' && /accounts\.google\.com\/.*\/challenge\/pk/.test(u || '') && passkeyHelp(tab));
   wc.on('console-message', (...a) => {
     const msg = typeof a[0] === 'object' && a[0]?.message !== undefined ? a[0].message : a[2];
+    if (typeof msg === 'string' && msg.startsWith(TRAIL_SENTINEL)) return trailReport(tab, msg);
     if (msg === '__skillerr_passkey__' && passkeys === 'none') passkeyHelp(tab, 'unsupported');
     else if (msg === '__skillerr_passkey_failed__' && passkeys !== 'none') passkeyHelp(tab, 'failed');
   });
@@ -372,6 +375,17 @@ function attachView(tab) {
     pushTabs();
   });
   for (const ev of ['did-stop-loading', 'page-title-updated', 'did-navigate', 'did-navigate-in-page']) wc.on(ev, pushTabs);
+  // Trails: what the user (not an AI) visits, and where they were on the page.
+  wc.on('did-navigate', (_e, u) => trailNavigated(tab, u));
+  wc.on('did-navigate-in-page', (_e, u, isMain) => isMain && trailNavigated(tab, u, true));
+  wc.on('did-stop-loading', () => {
+    if (tab.trailPage?.pending) trailObserve(tab);
+    if (tab.restoreScrollY) {
+      const y = tab.restoreScrollY;
+      tab.restoreScrollY = 0;
+      wc.executeJavaScript(`scrollTo(0, ${Number(y) || 0})`).catch(() => {});
+    }
+  });
   // Chromium remembers zoom per site; Skillerr keeps it per tab instead (fleet tiles zoom out, the user's zoom stays theirs).
   wc.on('did-navigate', () => wc.setZoomFactor(tab.zoom || tab.userZoom || 1));
   wc.on('page-favicon-updated', (_e, favicons) => {
@@ -382,8 +396,8 @@ function attachView(tab) {
   return view;
 }
 
-function newTab(url, { background = false } = {}) {
-  const tab = { id: nextTabId++, view: null, favicon: null, isStart: !url, userZoom: 1, lastInput: 0, lastUsed: Date.now() };
+function newTab(url, { background = false, opener = null } = {}) {
+  const tab = { id: nextTabId++, view: null, favicon: null, isStart: !url, userZoom: 1, lastInput: 0, lastUsed: Date.now(), openerId: opener };
   attachView(tab);
   const wc = tab.view.webContents;
   tabs.push(tab);
@@ -496,6 +510,7 @@ function closeTab(id) {
   const i = tabs.findIndex((t) => t.id === id);
   if (i < 0) throw new Error(`No tab ${id}`);
   const [tab] = tabs.splice(i, 1);
+  trailLeave(tab);
   if (!tab.isStart && !tab.internal) closedTabs.push(tab.sleeping ? tab.sleeping.url : tab.view.webContents.getURL());
   if (closedTabs.length > 25) closedTabs.shift();
   if (tab.view) win.contentView.removeChildView(tab.view);
@@ -649,6 +664,8 @@ function sleepTab(t) {
   const view = t.view;
   const wc = view.webContents;
   t.sleeping = { url: wc.getURL(), title: wc.getTitle() || wc.getURL(), favicon: t.favicon };
+  t.restoreScrollY = t.trailState?.y || 0; // back where the user was when it wakes
+  trailLeave(t);
   win.contentView.removeChildView(view);
   t.view = null;
   wc.close(); // frees the page's process; the tab keeps its title, icon and address
@@ -693,6 +710,291 @@ function sleepIdleTabs() {
   if (changed) pushTabs();
 }
 setInterval(sleepIdleTabs, 20000);
+
+// ---------- trails: the user's own ongoing work (src/trails.js) ----------
+// Pages the user visits are filed into trails. Tabs they haven't used in a while are tucked into their trail (closed,
+// with where they were), and come back with one click from the start page or the Trails view. Only what the user does:
+// pages an AI opens or drives are research memory's, not trails'.
+let trailStore = null;
+const trailsDb = () => trailStore || (trailStore = new Trails(path.join(store.DIR, 'trails')));
+const learningTrails = () => store.getSettings().trails !== false;
+const TRAIL_WORLD = 7701; // the page's own scripts can't see or fake-silence the watcher in this isolated world
+const TRAIL_SENTINEL = '__skillerr_trail__';
+const TUCK_KEEP = 5; // the tabs you're working in stay open
+const TUCK_IDLE_MS = 12 * 3600 * 1000;
+const TUCK_MIN_TABS = 9; // fewer open tabs than this are never tidied automatically
+// Watches how far the page was read, whether a form was typed into and not sent, and how much of a video was watched.
+// Reports only those facts, never what was typed.
+const TRAIL_WATCH_JS = `(() => {
+  if (window.__skillerrTrail) return;
+  const st = { scroll: 0, y: 0, long: false, form: undefined, video: undefined, videoLong: false };
+  let last = '', timer = 0;
+  const send = () => { const s = JSON.stringify(st); if (s !== last) { last = s; console.debug('${TRAIL_SENTINEL}' + s); } };
+  const soon = () => { if (!timer) timer = setTimeout(() => { timer = 0; send(); }, 1500); };
+  const measure = () => {
+    const el = document.scrollingElement || document.documentElement;
+    const room = el.scrollHeight - innerHeight;
+    st.y = Math.round(scrollY);
+    st.long = el.scrollHeight > innerHeight * 2.5 && (!!document.querySelector('article') || document.querySelectorAll('p').length >= 8);
+    if (room > 0) st.scroll = Math.max(st.scroll, Math.min(1, scrollY / room));
+  };
+  window.__skillerrTrail = { reset: () => { st.scroll = 0; st.y = 0; st.form = undefined; st.video = undefined; measure(); send(); } };
+  addEventListener('scroll', () => { measure(); soon(); }, { passive: true, capture: true });
+  const field = (t) => t && t.isContentEditable === false && t.closest && t.closest('form') && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) &&
+    !/^(password|search|hidden|submit|button|checkbox|radio)$/i.test(t.type || '') && !/(search|^q$|query)/i.test((t.name || '') + ' ' + (t.getAttribute('role') || ''));
+  addEventListener('input', (e) => { if (e.isTrusted && field(e.target) && st.form !== true) { st.form = true; send(); } }, true);
+  addEventListener('submit', () => { if (st.form) { st.form = false; send(); } }, true);
+  addEventListener('timeupdate', (e) => {
+    const v = e.target;
+    if (!(v instanceof HTMLMediaElement) || !(v.duration > 60) || !isFinite(v.duration)) return;
+    st.video = Math.round((v.currentTime / v.duration) * 100) / 100;
+    st.videoLong = v.duration > 180;
+    soon();
+  }, true);
+  addEventListener('pagehide', send);
+  document.addEventListener('visibilitychange', () => document.hidden && send());
+  measure();
+  send();
+})()`;
+const TRAIL_FACTS_JS = `(() => ({
+  h1: (document.querySelector('h1')?.innerText || '').slice(0, 200),
+  desc: (document.querySelector('meta[name=description], meta[property="og:description"]')?.content || '').slice(0, 300),
+  sensitive: ${SENSITIVE_PAGE_JS},
+}))()`;
+
+// A tab an AI is using isn't the user's browsing.
+const aiTab = (tab) => !!tab.groupId || (tab.aiUntil || 0) > Date.now();
+
+function trailNavigated(tab, url, inPage = false) {
+  if (inPage && tab.trailPage && pageKey(tab.trailPage.url) === pageKey(url)) return; // a jump within the page
+  trailLeave(tab);
+  tab.trailState = null;
+  clearTimeout(tab.trailTimer);
+  if (!learningTrails() || tab.isStart || tab.internal || aiTab(tab) || !/^https?:/.test(url || '')) return;
+  tab.trailPage = { url, at: Date.now(), pending: true, typed: Date.now() - (tab.typedAt || 0) < 8000 };
+  if (inPage) {
+    tab.view?.webContents.executeJavaScriptInIsolatedWorld(TRAIL_WORLD, [{ code: 'window.__skillerrTrail?.reset()' }]).catch(() => {});
+    tab.trailTimer = setTimeout(() => trailObserve(tab), 1500); // single-page apps set the title a moment later
+  } else tab.trailTimer = setTimeout(() => trailObserve(tab), 8000); // or when it finishes loading, whichever is first
+}
+
+async function trailObserve(tab) {
+  const page = tab.trailPage;
+  if (!page?.pending || !tab.view || tab.view.webContents.isDestroyed()) return;
+  page.pending = false;
+  clearTimeout(tab.trailTimer);
+  const wc = tab.view.webContents;
+  const facts = await wc.executeJavaScriptInIsolatedWorld(TRAIL_WORLD, [{ code: TRAIL_FACTS_JS }]).catch(() => ({ sensitive: true }));
+  if (tab.trailPage !== page) return; // moved on meanwhile
+  try {
+    const opener = !tab.trailId && tab.openerId ? getTab(tab.openerId)?.trailId : null;
+    const id = trailsDb().observe({ url: page.url, title: wc.getTitle(), favicon: tab.favicon, ...facts },
+      { tabTrail: tab.trailId, tabAt: tab.trailAt, openerTrail: opener, typed: page.typed });
+    page.trailId = id;
+    if (id) {
+      tab.trailId = id;
+      tab.trailAt = Date.now();
+    }
+    trailsChanged();
+  } catch {} // trails must never break browsing
+}
+
+// Leaving a page: note what was left unfinished on it.
+function trailLeave(tab) {
+  const page = tab.trailPage;
+  tab.trailPage = null;
+  if (!page?.trailId) return;
+  try {
+    trailsDb().leave(page.trailId, page.url, { ...(tab.trailState || {}), scrollY: tab.trailState?.y, dwellMs: Date.now() - page.at });
+  } catch {}
+}
+
+function trailReport(tab, msg) {
+  if (msg.length > 400) return;
+  try {
+    const st = JSON.parse(msg.slice(TRAIL_SENTINEL.length));
+    tab.trailState = { scroll: +st.scroll || 0, y: +st.y || 0, long: !!st.long, form: typeof st.form === 'boolean' ? st.form : undefined,
+      video: st.video == null ? undefined : +st.video, videoLong: !!st.videoLong };
+  } catch {}
+}
+
+let trailsTimer = null;
+function trailsChanged() {
+  if (trailsTimer) return;
+  trailsTimer = setTimeout(() => {
+    trailsTimer = null;
+    ui('trails-changed');
+  }, 1500);
+}
+
+// The trail an open tab belongs to, filing it now if it never was (open before trails learned, or a routine site).
+function trailForTab(t) {
+  const url = t.sleeping ? t.sleeping.url : t.view.webContents.getURL();
+  const db = trailsDb();
+  if (t.trailId && db.get(t.trailId)) return t.trailId;
+  return db.trailOfUrl(url) || db.observe({ url, title: t.sleeping ? t.sleeping.title : t.view.webContents.getTitle(), favicon: t.favicon }) || db.loose();
+}
+
+const tabUrl = (t) => (t.sleeping ? t.sleeping.url : t.view && !t.view.webContents.isDestroyed() ? t.view.webContents.getURL() : '');
+const userTabs = () => tabs.filter((t) => !t.isStart && !t.internal && /^https?:/.test(tabUrl(t)));
+
+// Never tucked: what's on screen, what an AI is using, a form being typed, sound playing, a page the user keeps coming
+// back to, a recording, and sites the user told trails to ignore.
+function tabProtected(t) {
+  const wc = t.view?.webContents;
+  return t.id === activeTabId || aiTab(t) || !!(mosaic && mosaic.includes(t.id)) || !!(recorder && recorder.isRecording(t)) ||
+    t.trailState?.form === true || !!(wc && !wc.isDestroyed() && wc.isCurrentlyAudible()) || trailsDb().isReference(tabUrl(t)) ||
+    !trailsDb().tuckable(tabUrl(t));
+}
+
+let lastTuck = null; // [{ trailId, url }] for undo
+function tuckTabs(list, why) {
+  const db = trailsDb();
+  const done = [];
+  for (const t of list) {
+    const url = tabUrl(t);
+    const trailId = trailForTab(t);
+    const title = t.sleeping ? t.sleeping.title : t.view.webContents.getTitle();
+    const scrollY = t.sleeping ? t.restoreScrollY : t.trailState?.y;
+    if (!db.tuck(trailId, [{ url, title, favicon: t.favicon, scrollY }], why)) continue;
+    done.push({ trailId, url });
+    closeTab(t.id);
+  }
+  if (!done.length) return null;
+  lastTuck = done;
+  const trailCount = new Set(done.map((d) => d.trailId)).size;
+  ui('trails-tucked', { count: done.length, trails: trailCount, auto: why === 'idle' });
+  trailsChanged();
+  return { count: done.length, trails: trailCount };
+}
+
+// "Tidy tabs": keep the tabs you're working in, tuck the rest into their trails.
+function tidyTabs({ force = false } = {}) {
+  if (!learningTrails()) return null;
+  const list = userTabs();
+  if (!force && list.length < TUCK_MIN_TABS) return null;
+  const ids = chooseTabsToTuck(list.map((t) => ({ id: t.id, lastUsed: t.lastUsed, protected: tabProtected(t) })),
+    { keep: TUCK_KEEP, idleMs: TUCK_IDLE_MS, force });
+  return tuckTabs(ids.map(getTab).filter(Boolean), force ? 'tidy' : 'idle');
+}
+setInterval(() => store.getSettings().trailsTuck !== false && tidyTabs(), 10 * 60 * 1000);
+
+// A tab that loads only when opened: reopening a trail's twenty tabs costs nothing until you click one.
+function sleepingTab({ url, title, favicon, scrollY = 0, trailId = null }) {
+  const tab = { id: nextTabId++, view: null, favicon: favicon || null, isStart: false, userZoom: 1, lastInput: 0, lastUsed: Date.now(),
+    sleeping: { url, title: title || url, favicon: favicon || null }, restoreScrollY: scrollY, trailId, trailAt: Date.now() };
+  tabs.push(tab);
+  return tab;
+}
+
+// Bring tucked tabs back; switch to the one the user was on (or the newest). Pages already open aren't opened twice.
+function reopenTucked(entries, trailId) {
+  const open = new Map(userTabs().map((t) => [pageKey(tabUrl(t)), t]));
+  let focus = null;
+  for (const e of entries) {
+    const t = open.get(pageKey(e.url)) || sleepingTab({ ...e, trailId: trailId || e.trailId });
+    open.set(pageKey(e.url), t);
+    if (!focus || e.active) focus = t;
+  }
+  if (focus) {
+    const start = activeTab()?.isStart ? activeTab() : null;
+    switchTab(focus.id);
+    if (start && tabs.length > 1) closeTab(start.id); // the new-tab page it was reopened from
+  } else pushTabs();
+  trailsChanged();
+  return entries.length;
+}
+
+function undoTuck() {
+  if (!lastTuck) return 0;
+  const db = trailsDb();
+  const back = [];
+  for (const { trailId, url } of lastTuck) back.push(...db.untuck(trailId, (x) => x.url === url).map((e) => ({ ...e, trailId })));
+  lastTuck = null;
+  return reopenTucked(back);
+}
+
+// "Continue": the trail's tucked tabs come back; with none, the page the user stopped at (scrolled where they were).
+function continueTrail(id) {
+  const db = trailsDb();
+  const t = db.detail(id);
+  if (!t) throw new Error(`No trail ${id}.`);
+  const tucked = db.untuck(id);
+  if (tucked.length) return { opened: reopenTucked(tucked, id), title: t.title };
+  const target = t.unfinished[0] ? t.pages.find((p) => p.url === t.unfinished[0].url) : t.pages[0];
+  if (!target) return { opened: 0, title: t.title };
+  reopenTucked([{ url: target.url, title: target.title, favicon: target.favicon, scrollY: target.scrollY || 0 }], id);
+  return { opened: 1, title: t.title };
+}
+
+// Quitting keeps every open tab in its trail, so "pick up where you left off" also brings back the last session.
+let quitSnapshotDone = false;
+function snapshotForQuit() {
+  if (quitSnapshotDone || !learningTrails()) return;
+  quitSnapshotDone = true;
+  try {
+    const db = trailsDb();
+    const list = userTabs();
+    if (!list.length) return;
+    const at = db.markQuit();
+    for (const t of list) {
+      trailLeave(t);
+      const title = t.sleeping ? t.sleeping.title : t.view.webContents.getTitle();
+      db.tuck(trailForTab(t), [{ url: tabUrl(t), title, favicon: t.favicon, scrollY: t.sleeping ? t.restoreScrollY : t.trailState?.y, active: t.id === activeTabId }], 'quit', at);
+    }
+    db.save();
+  } catch {}
+}
+
+function restoreLastSession() {
+  const db = trailsDb();
+  const at = db.data.quitAt;
+  const back = [];
+  for (const { trail } of db.lastSession()) back.push(...db.untuck(trail.id, (x) => x.why === 'quit' && x.at === at).map((e) => ({ ...e, trailId: trail.id })));
+  db.markQuit(0);
+  return reopenTucked(back);
+}
+
+function trailsHome() {
+  const s = store.getSettings();
+  if (s.trails === false) return { enabled: false, intro: false, trails: [], session: null };
+  const db = trailsDb();
+  const session = db.lastSession();
+  const all = db.list();
+  return {
+    enabled: true,
+    intro: !s.trailsIntroSeen,
+    session: session.length ? { tabs: session.reduce((n, x) => n + x.tabs.length, 0), trails: session.length, at: db.data.quitAt } : null,
+    trails: all.slice(0, 3),
+    total: all.length,
+  };
+}
+
+// For AI apps (my_trails), in plain words.
+function trailsText({ query = '', trail_id: id = '' } = {}) {
+  const db = trailsDb();
+  const ago = (t) => { const h = (Date.now() - t) / 3600000; return h < 1 ? 'just now' : h < 24 ? `${Math.round(h)} h ago` : `${Math.round(h / 24)} days ago`; };
+  const what = { form: 'a form typed into but not sent', read: 'read partway', cart: 'a cart not checked out', watch: 'a video watched partway' };
+  const unfinished = (u) => `${what[u.kind] || u.kind}${u.pct ? ` (${u.pct}%)` : ''}: ${u.title} — ${u.url}`;
+  if (id) {
+    const t = db.detail(String(id));
+    if (!t) throw new Error(`No trail ${id}. Call my_trails to list them.`);
+    return [`Trail “${t.title}” (${t.id}) — ${t.state}, last active ${ago(t.lastAt)}, ${t.sessions} session${t.sessions === 1 ? '' : 's'} over ${t.days} day${t.days === 1 ? '' : 's'}`,
+      t.searches.length ? `Searches: ${t.searches.join(' · ')}` : '',
+      t.unfinished.length ? `Unfinished:\n${t.unfinished.map((u) => `- ${unfinished(u)}`).join('\n')}` : '',
+      t.tuckedTabs.length ? `Tucked tabs (closed, kept here):\n${t.tuckedTabs.map((x) => `- ${x.title} — ${x.url}`).join('\n')}` : '',
+      `Pages, newest first:\n${t.pages.slice(0, 40).map((p) => `- ${p.title} — ${p.url} (${p.visits} visit${p.visits === 1 ? '' : 's'}, last ${ago(p.lastAt)})`).join('\n')}`,
+    ].filter(Boolean).join('\n\n');
+  }
+  const list = db.list({ query: String(query || ''), limit: 12 });
+  if (!list.length) return query ? `No trails match “${query}”.` : 'No trails yet: the user hasn\'t browsed enough in Skillerr for any to form.';
+  return ['The user\'s trails: their own ongoing work in Skillerr, most relevant first. Pass trail_id to my_trails for a trail\'s pages; continue_trail reopens one for the user.', '',
+    ...list.map((t, i) => [`${i + 1}. ${t.title} (trail_id ${t.id}) — last active ${ago(t.lastAt)}, ${t.pageCount} pages${t.sessions > 1 ? `, came back ${t.sessions - 1} time${t.sessions === 2 ? '' : 's'}` : ''}${t.tucked ? `, ${t.tucked} tucked tabs` : ''}`,
+      t.stoppedAt ? `   Stopped at: ${t.stoppedAt.title} — ${t.stoppedAt.url}` : '',
+      ...t.unfinished.slice(0, 3).map((u) => `   Unfinished: ${unfinished(u)}`),
+      t.searches.length ? `   Searched: ${t.searches.slice(0, 3).join(' · ')}` : '',
+    ].filter(Boolean).join('\n'))].join('\n');
+}
 
 // ---------- everyday browser features ----------
 const ZOOMS = [0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
@@ -848,7 +1150,9 @@ function wirePermissions(ses) {
 
 function loadInActive(input) {
   const tab = activeTab();
-  if (tab) tab.view.webContents.loadURL(toUrl(input)).catch(() => {});
+  if (!tab) return;
+  tab.typedAt = Date.now(); // typed in the address bar: maybe a new thread of work, not the next step of this one
+  tab.view.webContents.loadURL(toUrl(input)).catch(() => {});
 }
 
 function contentRect() {
@@ -909,7 +1213,10 @@ const browser = {
   active: activeTab,
   get: getTab,
   awake: async (t) => {
-    if (t?.sleeping) await wake(t);
+    if (t?.sleeping) {
+      t.aiUntil = Date.now() + IDLE_AFTER_MS; // an AI woke it: not a visit of the user's
+      await wake(t);
+    }
     else if (t?.waking) await t.waking;
   },
   isVisible: (t) => isShown(t) && win.isVisible() && !win.isMinimized(),
@@ -943,7 +1250,8 @@ function markActive(controller) {
 }
 
 // Never gated by "ask before every action": reading, narration, and local note/recording files.
-const READ_ONLY = new Set(['view_capture', 'web_search', 'fetch_page', 'save_screenshot', 'open_view', 'snapshot', 'read_page', 'screenshot', 'list_tabs', 'wait', 'read_tabs', 'list_skills', 'use_skill', 'caption', 'record_stop', 'show_tabs', 'save_note', 'recall', 'tag_session', 'my_research', 'read_note']);
+const READ_ONLY = new Set(['view_capture', 'web_search', 'fetch_page', 'save_screenshot', 'open_view', 'snapshot', 'read_page', 'screenshot', 'list_tabs', 'wait', 'read_tabs', 'list_skills', 'use_skill', 'caption', 'record_stop', 'show_tabs', 'save_note', 'recall', 'tag_session', 'my_research', 'read_note', 'my_trails']);
+const TRAIL_TOOL_NAMES = new Set(['my_trails', 'continue_trail']);
 const trunc = (s, n) => (String(s ?? '').length > n ? String(s).slice(0, n - 1) + '…' : String(s ?? ''));
 const NOTES_DIR = path.join(app.getPath('home'), 'Skillerr', store.PROFILE ? `notes-${store.PROFILE}` : 'notes');
 const RESEARCH_DIR = path.join(app.getPath('home'), 'Skillerr', store.PROFILE ? `research-${store.PROFILE}` : 'research');
@@ -1184,7 +1492,11 @@ async function execute(controller, name, args) {
   // Sensitive actions always need a human, even with approval mode off. Enforced here, not by the prompt.
   // A learned skill steers every future task, so a page can't be allowed to plant one unseen.
   if (name === 'save_skill') entry.target = String(args.name || '');
+  // Trails are the user's own browsing: each AI app asks once, and the answer is remembered.
+  const trailConsent = TRAIL_TOOL_NAMES.has(name) && controller.via === 'mcp' && !(store.getSettings().trailsAllowedClients || []).includes(controller.name);
+  if (trailConsent) entry.target = 'your trails';
   const reason = name === 'save_skill' ? `Skills change how AIs work on future tasks. “${trunc(args.description, 140)}”`
+    : trailConsent ? `${controller.name} wants to see your trails: the titles and pages of your ongoing work in Skillerr. If you allow it, it can see them from now on (you can take that back in Trails).`
     : info?.sensitive ? `This looks like ${info.sensitive}.`
     : status.requireApproval && !READ_ONLY.has(name) ? null : undefined;
   if (reason !== undefined) {
@@ -1194,6 +1506,10 @@ async function execute(controller, name, args) {
       throw new Error(ok === null
         ? 'This action needs the user\'s approval in Skillerr and nobody approved it in time. Ask the user to watch Skillerr and approve, then retry.'
         : 'The user declined this action. Do not retry it.');
+    }
+    if (trailConsent) {
+      const s = store.getSettings();
+      store.saveSettings({ ...s, trailsAllowedClients: [...new Set([...(s.trailsAllowedClients || []), controller.name])] });
     }
     markActive(controller);
   }
@@ -1292,6 +1608,15 @@ const BROWSER_TOOLS = {
         'Use recall to search it. The user can browse it in Skillerr → ⋮ → Research Memory.',
     ].join('\n') };
   },
+  my_trails: async (args) => {
+    if (!learningTrails()) return { text: 'The user has Trails turned off in Skillerr, so there are none to show.' };
+    return { text: trailsText(args) };
+  },
+  continue_trail: async (args) => {
+    if (!learningTrails()) return { text: 'The user has Trails turned off in Skillerr.' };
+    const r = continueTrail(String(args.trail_id || ''));
+    return { text: r.opened ? `Reopened “${r.title}” for the user (${r.opened} tab${r.opened === 1 ? '' : 's'}).` : `“${r.title}” has no pages to reopen.` };
+  },
   read_note: async (args) => {
     const want = String(args.title || '').replace(/\.md$/i, '').toLowerCase().trim();
     let files = [];
@@ -1355,7 +1680,9 @@ const BROWSER_TOOLS = {
   },
   open_view: async (args) => {
     const v = String(args.view || '');
-    if (v === 'memory' || v === 'folders' || v === 'history' || v === 'bookmarks') {
+    if (v === 'trails') {
+      openInternal('trails');
+    } else if (v === 'memory' || v === 'folders' || v === 'history' || v === 'bookmarks') {
       openInternal(v === 'memory' || v === 'folders' ? 'memory' : 'data');
       if (v === 'folders') setTimeout(() => ui('memory-mode', { mode: 'folders', query: args.query || '' }), 300);
       if (v === 'bookmarks') ui('data-tab', 'bookmarks');
@@ -1366,7 +1693,7 @@ const BROWSER_TOOLS = {
     } else if (v === 'panel') {
       togglePanel(true);
       ui('close-sheets');
-    } else throw new Error('view must be memory, folders, history, bookmarks, settings, skills, connect or panel.');
+    } else throw new Error('view must be memory, folders, trails, history, bookmarks, settings, skills, connect or panel.');
     return { text: `Showing ${v}.` };
   },
   show_tabs: async (args) => {
@@ -1493,7 +1820,7 @@ async function dispatch(controller, { instruction, tab_ids = [], urls = [] }) {
   if (!targets.length) throw new Error('Give tab_ids of open tabs and/or urls to open.');
   if (targets.length > MAX_WORKERS) throw new Error(`At most ${MAX_WORKERS} tabs per dispatch.`);
   enterMosaic(targets.map((t) => t.id));
-  const workerTools = TOOLS.filter((t) => !['list_tabs', 'new_tab', 'switch_tab', 'close_tab', 'open_tabs', 'read_tabs', 'dispatch', 'record_start', 'caption', 'record_stop', 'show_tabs', 'say', 'save_note', 'save_skill', 'recall', 'tag_session', 'deep_research', 'my_research', 'read_note', 'open_view', 'save_screenshot'].includes(t.name));
+  const workerTools = TOOLS.filter((t) => !['list_tabs', 'new_tab', 'switch_tab', 'close_tab', 'open_tabs', 'read_tabs', 'dispatch', 'record_start', 'caption', 'record_stop', 'show_tabs', 'say', 'save_note', 'save_skill', 'recall', 'tag_session', 'deep_research', 'my_research', 'read_note', 'open_view', 'save_screenshot', 'my_trails', 'continue_trail'].includes(t.name));
 
   const reports = await Promise.all(targets.map(async (t) => {
     const worker = new Agent({
@@ -1673,6 +2000,48 @@ function wireIpc() {
   ipcMain.on('open-memory', () => openInternal('memory'));
   ipcMain.on('open-data', () => openInternal('data'));
 
+  // Trails (see the trails section above).
+  const changed = (r) => (trailsChanged(), r);
+  ipcMain.on('open-trails', () => openInternal('trails'));
+  ipcMain.handle('trails-home', () => trailsHome());
+  ipcMain.handle('trails-list', (_e, { state = 'active', query = '' } = {}) => trailsDb().list({ state, query: String(query) }));
+  ipcMain.handle('trails-detail', (_e, id) => trailsDb().detail(String(id)));
+  ipcMain.handle('trails-continue', (_e, id) => continueTrail(String(id)));
+  ipcMain.handle('trails-restore-session', () => restoreLastSession());
+  ipcMain.handle('trails-dismiss-session', () => changed(trailsDb().markQuit(0)));
+  ipcMain.handle('trails-state', (_e, { id, state }) => changed(trailsDb().setState(String(id), state)));
+  ipcMain.handle('trails-rename', (_e, { id, title }) => changed(trailsDb().rename(String(id), title)));
+  ipcMain.handle('trails-merge', (_e, { into, from }) => changed(trailsDb().merge(String(into), String(from))));
+  ipcMain.handle('trails-forget', (_e, id) => changed(trailsDb().forget(String(id))));
+  ipcMain.handle('trails-remove-page', (_e, { id, url }) => changed(trailsDb().removePage(String(id), String(url))));
+  ipcMain.handle('trails-ignore', (_e, host) => changed(trailsDb().ignoreHost(host)));
+  ipcMain.handle('trails-unignore', (_e, host) => changed(trailsDb().unignoreHost(String(host))));
+  ipcMain.handle('trails-forget-all', () => changed(trailsDb().forgetAll()));
+  ipcMain.handle('trails-tidy', () => tidyTabs({ force: true }) || { count: 0 });
+  ipcMain.handle('trails-undo-tuck', () => undoTuck());
+  ipcMain.handle('trails-info', () => {
+    const s = store.getSettings();
+    return { enabled: s.trails !== false, tuck: s.trailsTuck !== false, ignored: trailsDb().data.ignoredHosts, everyday: trailsDb().everydaySites(),
+      clients: s.trailsAllowedClients || [], chrome: chrome_.available() ? chrome_.profiles() : [] };
+  });
+  ipcMain.handle('trails-revoke-client', (_e, name) => {
+    const s = store.getSettings();
+    store.saveSettings({ ...s, trailsAllowedClients: (s.trailsAllowedClients || []).filter((c) => c !== name) });
+    return true;
+  });
+  // A head start from Chrome's history: groups of related pages from the last month become trails.
+  ipcMain.handle('trails-seed', (_e, profile) => {
+    try {
+      const dir = profile || chrome_.profiles()[0]?.dir;
+      if (!dir) return { ok: false, message: 'Chrome wasn\'t found on this computer.' };
+      const n = trailsDb().seed(chrome_.history(dir));
+      trailsChanged();
+      return { ok: true, count: n, message: n ? `Found ${n} trail${n === 1 ? '' : 's'} in your Chrome history.` : 'No trails found in your recent Chrome history.' };
+    } catch (err) {
+      return { ok: false, message: /EACCES|EPERM/.test(err.message) ? 'macOS blocked access to Chrome\'s files. Allow Skillerr in System Settings → Privacy & Security → Full Disk Access, then try again.' : err.message };
+    }
+  });
+
   // History & bookmarks management, and resets.
   ipcMain.handle('data-history', (_e, q) => memory.history({ q: String(q || '') }));
   ipcMain.handle('data-delete-pages', (_e, ids) => {
@@ -1699,6 +2068,11 @@ function wireIpc() {
     if (what.memory) {
       memory.forgetAll();
       done.push('research memory');
+    }
+    if (what.trails) {
+      trailsDb().forgetAll();
+      trailsChanged();
+      done.push('trails');
     }
     if (what.bookmarks) {
       store.writeJson('bookmarks.json', []);
@@ -1838,6 +2212,7 @@ function wireIpc() {
       { label: 'Fleet View', accelerator: 'CmdOrCtrl+Shift+F', type: 'checkbox', checked: !!mosaic, click: () => (mosaic ? exitMosaic() : enterMosaic(tabs.map((t) => t.id))) },
       { type: 'separator' },
       { label: 'Research Memory', click: () => openInternal('memory') },
+      { label: 'Trails', click: () => openInternal('trails') },
       { label: 'History & Bookmarks', accelerator: 'CmdOrCtrl+Y', click: () => openInternal('data') },
       { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: () => bookmarkActive() },
       { label: 'Skills…', click: sheet('skills') },
@@ -2076,7 +2451,12 @@ async function uninstallSkillerr() {
     if (require('./prefer').isPreferred()) require('./prefer').setPrefer(false);
   } catch {}
   const userData = app.getPath('userData'); // cookies, cache and site data: removed after Skillerr has quit
-  if (purge) fs.rmSync(store.DIR, { recursive: true, force: true });
+  if (purge) {
+    quitSnapshotDone = true; // nothing is written back after the data is gone
+    clearTimeout(trailStore?.timer);
+    trailStore = null;
+    fs.rmSync(store.DIR, { recursive: true, force: true });
+  }
   const later = (cmd) => require('child_process').spawn('/bin/sh', ['-c', `sleep 2; ${cmd}`], { detached: true, stdio: 'ignore' }).unref();
   const q = (p) => `'${String(p).replace(/'/g, "'\\''")}'`;
   if (!app.isPackaged) {
@@ -2123,6 +2503,8 @@ function buildMenu() {
         { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', click: guard(() => closedTabs.length && newTab(closedTabs.pop())) },
         { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: guard(() => activeTab()?.view.webContents.print()) },
         { label: 'History & Bookmarks', accelerator: 'CmdOrCtrl+Y', click: guard(() => openInternal('data')) },
+        { label: 'Trails', accelerator: 'CmdOrCtrl+Shift+L', click: guard(() => openInternal('trails')) },
+        { label: 'Tidy Tabs into Trails', click: guard(() => tidyTabs({ force: true })) },
         { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: guard(() => bookmarkActive()) },
       ],
     },
@@ -2275,6 +2657,7 @@ app.whenReady().then(async () => {
   win.contentView.addChildView(chrome);
   win.on('resize', layout);
   win.on('focus', () => process.platform !== 'darwin' && win.flashFrame(false)); // stop the taskbar flash from a robot check
+  win.on('close', snapshotForQuit); // while the tabs still exist
   win.on('closed', () => app.quit());
   wireIpc();
   buildMenu();
@@ -2351,5 +2734,11 @@ app.on('second-instance', (_e, argv) => {
   }
 });
 
-app.on('will-quit', () => store.clearSession());
+app.on('before-quit', snapshotForQuit);
+app.on('will-quit', () => {
+  store.clearSession();
+  try {
+    if (trailStore?.timer) trailStore.save(); // write what was learned in the last moments
+  } catch {}
+});
 app.on('window-all-closed', () => app.quit());

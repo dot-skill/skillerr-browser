@@ -30,6 +30,10 @@ const DEFAULTS = {
   sitePermissions: {}, // origin → { permission: 'allow' | 'block' }
   popupsAllowed: {}, // host → true
   sleepTabs: true, // unload tabs nobody is using, to stay light
+  trails: true, // learn the user's ongoing work from their own browsing (src/trails.js)
+  trailsTuck: true, // tuck tabs unused for half a day into their trail (the 5 most recent always stay)
+  trailsIntroSeen: false,
+  trailsAllowedClients: [], // AI apps the user allowed to see their trails
   updateChecks: true, // ask skillerr.com if there's a newer version (sends only the version and platform)
   betaUpdates: false, // also take staging builds (prereleases from the develop branch)
   dismissedNotices: [], // update/notice ids the user closed

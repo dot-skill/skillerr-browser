@@ -22,7 +22,7 @@
   function showTab(name) {
     tab = name;
     document.querySelectorAll('#dvTabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
-    document.querySelectorAll('.dv-pane').forEach((p) => p.classList.toggle('on', p.dataset.pane === name));
+    document.querySelectorAll('#dataView .dv-pane').forEach((p) => p.classList.toggle('on', p.dataset.pane === name));
     refresh();
   }
 
@@ -118,7 +118,7 @@
     }
     b.dataset.armed = '';
     b.textContent = 'Clear selected';
-    if (what.everything) Object.assign(what, { browsing: true, memory: true, bookmarks: true, settings: true });
+    if (what.everything) Object.assign(what, { browsing: true, memory: true, trails: true, bookmarks: true, settings: true });
     $('dvResetMsg').textContent = await skillerr.invoke('data-reset', what);
     document.querySelectorAll('.dv-reset input').forEach((i) => (i.checked = false));
   };

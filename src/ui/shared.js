@@ -133,6 +133,8 @@ function describeStep(e) {
     case 'save_screenshot': return { icon: 'camera', text: a.scope === 'window' ? 'Screenshotting the Skillerr window' : a.scope === 'full_page' ? 'Screenshotting the whole page' : 'Taking a screenshot' };
     case 'open_view': return { icon: 'eye', text: a.view === 'memory' ? `Showing your research graph${a.query ? ` for “${trunc(a.query, 30)}”` : ''}` : `Showing ${a.view}` };
     case 'my_research': return { icon: 'folder', text: 'Checking your saved research' };
+    case 'my_trails': return { icon: 'layers', text: a.trail_id ? 'Looking at one of your trails' : a.query ? `Looking at your trails about “${trunc(a.query, 30)}”` : 'Looking at your trails' };
+    case 'continue_trail': return { icon: 'layers', text: 'Reopening one of your trails' };
     case 'read_note': return { icon: 'doc', text: `Reading your note “${trunc(a.title, 40)}”` };
     case 'recall': return { icon: 'clock', text: `Recalling past research on “${trunc(a.query, 44)}”` };
     case 'tag_session': return { icon: 'layers', text: (a.topics || []).length ? `Filing this research under ${trunc(a.topics.join(', '), 50)}` : 'Filing this research' };

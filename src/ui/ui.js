@@ -32,6 +32,7 @@ let pendingTask = null;
 
 // Static icons
 $('newtab').innerHTML = icon('plus', 16);
+$('tidyBtn').innerHTML = `${icon('layers', 13)}<span>Tidy</span>`;
 $('back').innerHTML = icon('left', 18);
 $('forward').innerHTML = icon('right', 18);
 $('reload').innerHTML = icon('reload', 15);
@@ -256,14 +257,24 @@ skillerr.on('tabs', (list) => {
   }
   renderMosaicLabels(list);
   renderGroupsOnStart(list);
+  // Many open tabs: offer to tidy them into their trails.
+  const pages = list.filter((t) => !t.isStart && !t.internal).length;
+  $('tidyBtn').hidden = pages < 9 || settings.trails === false;
+  $('tidyBtn').querySelector('span').textContent = `Tidy ${pages} tabs`;
   if (!currentTab) return;
   const memTab = currentTab.internal === 'memory';
   const dataTab = currentTab.internal === 'data';
-  $('start').hidden = !currentTab.isStart || memTab || dataTab || list.some((x) => x.tiled);
+  const trailsTab = currentTab.internal === 'trails';
+  const wasStart = !$('start').hidden;
+  $('start').hidden = !currentTab.isStart || memTab || dataTab || trailsTab || list.some((x) => x.tiled);
   $('memView').hidden = !memTab;
   $('dataView').hidden = !dataTab;
+  $('trailsView').hidden = !trailsTab;
   if (memTab) window.memoryView?.show();
   if (dataTab) window.dataView?.show();
+  if (trailsTab && $('trailsView').dataset.shown !== '1') window.trailsView?.show();
+  $('trailsView').dataset.shown = trailsTab ? '1' : '';
+  if (!$('start').hidden && !wasStart) renderTrailsHome();
   if (document.activeElement !== $('url')) omni.reset();
   $('back').disabled = !currentTab.canGoBack;
   $('forward').disabled = !currentTab.canGoForward;
@@ -276,6 +287,7 @@ skillerr.on('tabs', (list) => {
 });
 
 $('newtab').onclick = () => skillerr.send('new-tab');
+$('tidyBtn').onclick = () => skillerr.invoke('trails-tidy');
 $('back').onclick = () => skillerr.send('back');
 $('forward').onclick = () => skillerr.send('forward');
 $('reload').onclick = () => skillerr.send(currentTab && currentTab.loading ? 'stop-loading' : 'reload');
@@ -341,6 +353,120 @@ function renderGroupsOnStart(list) {
     box.appendChild(card);
   }
 }
+
+// ================= trails: pick up where you left off (start page) =================
+const UNFINISHED = {
+  form: () => 'Form not sent',
+  read: (u) => `Read ${u.pct || 0}%`,
+  cart: () => 'In your cart',
+  watch: (u) => `Watched ${u.pct || 0}%`,
+};
+function agoText(t) {
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 2) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const hr = Math.round(m / 60);
+  if (hr < 24) return `${hr} h ago`;
+  const d = Math.round(hr / 24);
+  return d === 1 ? 'yesterday' : d < 7 ? `${d} days ago` : new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+const favStack = (icons) => icons.length
+  ? icons.slice(0, 3).map((f) => `<img src="${esc(f)}">`).join('')
+  : icon('layers', 15);
+
+// One trail as a card: title, where you stopped, what's unfinished, and Continue.
+function trailCard(t, { onChange } = {}) {
+  const card = h('div', 'trail-card');
+  const badges = [
+    ...t.unfinished.slice(0, 2).map((u) => `<span class="tb warn" title="${esc(u.title)}">${esc((UNFINISHED[u.kind] || (() => u.kind))(u))}</span>`),
+    t.tucked ? `<span class="tb">${t.tucked} tab${t.tucked === 1 ? '' : 's'} tucked</span>` : '',
+    t.sessions > 1 ? `<span class="tb">Back ${t.sessions} times</span>` : '',
+    t.seeded ? '<span class="tb">From Chrome</span>' : '',
+  ].filter(Boolean).join('');
+  const stop = t.stoppedAt ? `Stopped at <b>${esc(trunc(t.stoppedAt.title, 60))}</b> · ${agoText(t.lastAt)}` : `${t.tucked} tabs · ${agoText(t.lastAt)}`;
+  card.innerHTML = `<div class="tc-ic">${favStack(t.favicons)}</div>
+    <div class="tc-meta"><div class="tc-title">${esc(t.title)}</div><div class="tc-sub">${stop}</div>${badges ? `<div class="tc-badges">${badges}</div>` : ''}</div>
+    <div class="tc-acts"></div>`;
+  const cont = btn(`${icon('play', 11)}Continue`, 'primary', () => skillerr.invoke('trails-continue', t.id));
+  const done = btn(icon('check', 13), 'ghost icon-only', async () => {
+    await skillerr.invoke('trails-state', { id: t.id, state: 'done' });
+    onChange?.();
+  });
+  done.title = 'Done with this: move it to Done';
+  card.querySelector('.tc-acts').append(cont, done);
+  const ic = card.querySelector('.tc-ic');
+  ic.querySelectorAll('img').forEach((img) => (img.onerror = () => {
+    img.remove();
+    if (!ic.querySelector('img')) ic.innerHTML = icon('layers', 15);
+  }));
+  return card;
+}
+
+async function renderTrailsHome() {
+  const home = await skillerr.invoke('trails-home');
+  const box = $('trailsHome');
+  box.hidden = !home.enabled || (!home.trails.length && !home.session && !home.intro);
+  if (box.hidden) return;
+  const intro = $('trailsIntro');
+  intro.hidden = !home.intro;
+  if (home.intro) {
+    intro.innerHTML = `<div class="ti-ic">${icon('layers', 16)}</div><div class="ti-text"><b>New: Trails.</b> Skillerr now files what you browse into threads of work,
+      notices what you leave unfinished, and tucks away tabs you haven't used for half a day, so the tabs you're working in stay in reach.
+      It all stays on this computer.</div>`;
+    const acts = h('div', 'ti-acts');
+    acts.append(btn('Got it', 'primary', async () => {
+      await saveSettings({ trailsIntroSeen: true });
+      renderTrailsHome();
+    }), btn('Turn off', 'ghost', async () => {
+      await saveSettings({ trailsIntroSeen: true, trails: false });
+      renderTrailsHome();
+    }));
+    intro.appendChild(acts);
+  }
+  const row = $('sessionRow');
+  row.hidden = !home.session;
+  if (home.session) {
+    const { tabs: n, trails: k } = home.session;
+    row.innerHTML = `<span class="sr-ic">${icon('reload', 14)}</span><span class="sr-text">You had <b>${n} tab${n === 1 ? '' : 's'}</b> open${k > 1 ? ` across ${k} trails` : ''} when Skillerr closed.</span>`;
+    const x = btn(icon('x', 12), 'ghost icon-only', async () => {
+      await skillerr.invoke('trails-dismiss-session');
+      renderTrailsHome();
+    });
+    x.title = 'Dismiss. They stay in their trails.';
+    row.append(btn('Reopen all', 'primary', () => skillerr.invoke('trails-restore-session')), x);
+  }
+  const cards = $('trailCards');
+  cards.innerHTML = '';
+  for (const t of home.trails) cards.appendChild(trailCard(t, { onChange: renderTrailsHome }));
+  $('allTrails').textContent = home.total > home.trails.length ? `All ${home.total} trails` : 'All trails';
+  box.querySelector('.section-row').hidden = !home.trails.length;
+}
+$('allTrails').onclick = () => skillerr.send('open-trails');
+$('manageTrails').onclick = (e) => {
+  e.preventDefault();
+  closeSheets();
+  skillerr.send('open-trails');
+};
+skillerr.on('trails-changed', () => {
+  if (!$('start').hidden) renderTrailsHome();
+  window.trailsView?.refresh();
+});
+
+// "Tucked 12 tabs into 4 trails": in the toolbar, where it can be seen over any page. Undo brings them all back.
+skillerr.on('trails-tucked', ({ count, trails: k, auto }) => {
+  const chip = $('trailsChip');
+  chip.hidden = false;
+  chip.innerHTML = `${icon('layers', 12)}<span>${auto ? 'Tucked away' : 'Tucked'} ${count} tab${count === 1 ? '' : 's'} into ${k} trail${k === 1 ? '' : 's'}</span>`;
+  chip.append(btn('Undo', 'ghost', () => {
+    skillerr.invoke('trails-undo-tuck');
+    chip.hidden = true;
+  }), btn('See trails', 'ghost', () => {
+    skillerr.send('open-trails');
+    chip.hidden = true;
+  }));
+  clearTimeout(chip.timer);
+  chip.timer = setTimeout(() => (chip.hidden = true), 15000);
+});
 
 // ================= intent-aware inputs (address bar + start page) =================
 
@@ -1072,6 +1198,7 @@ async function loadSettingsSheet({ setup } = {}) {
   $('semanticRecall').checked = s.semanticRecall !== false;
   $('shareSkills').checked = !!s.shareSkillsWithClaudeCode;
   $('sleepTabs').checked = s.sleepTabs !== false;
+  $('trailsOn').checked = s.trails !== false;
   $('updateChecks').checked = s.updateChecks !== false;
   $('betaUpdates').checked = s.betaUpdates === true;
   $('searchEngine').value = s.searchEngine || 'google';
@@ -1121,6 +1248,7 @@ $('saveSettings').onclick = async () => {
     semanticRecall: $('semanticRecall').checked,
     shareSkillsWithClaudeCode: $('shareSkills').checked,
     sleepTabs: $('sleepTabs').checked,
+    trails: $('trailsOn').checked,
     updateChecks: $('updateChecks').checked,
     betaUpdates: $('betaUpdates').checked,
     searchApi: $('searchApi').value,
@@ -1577,10 +1705,13 @@ async function showOnboarding() {
   paintTheme();
 
   box.querySelector('.ob-done').onclick = async () => {
-    await saveSettings({ onboarded: true, remember: $('obRemember').checked });
+    await saveSettings({ onboarded: true, remember: $('obRemember').checked, trails: $('obTrails').checked, trailsIntroSeen: true });
     if (available && $('obImport').checked) {
       const { profiles } = await skillerr.invoke('chrome-profiles');
-      if (profiles[0]) skillerr.invoke('chrome-import', { profile: profiles[0].dir, bookmarks: true, history: $('obRemember').checked });
+      if (profiles[0]) {
+        skillerr.invoke('chrome-import', { profile: profiles[0].dir, bookmarks: true, history: $('obRemember').checked });
+        if ($('obTrails').checked) skillerr.invoke('trails-seed', profiles[0].dir).then(() => renderTrailsHome());
+      }
     }
     box.classList.add('leaving');
     setTimeout(() => (box.hidden = true), 450);

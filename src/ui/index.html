@@ -11,6 +11,7 @@
     <div class="tabstrip">
       <div class="tabs" id="tabs"></div>
       <button class="ibtn newtab" id="newtab" title="New tab  ⌘T"></button>
+      <button class="tidy-btn" id="tidyBtn" hidden title="Keep the 5 tabs you're using and tuck the rest into their trails. One click brings them back."></button>
     </div>
     <div class="toolbar">
       <div class="navbtns">
@@ -35,6 +36,7 @@
       <div class="popup-chip" id="popupChip" hidden></div>
       <div class="popup-chip passkey-chip" id="passkeyChip" hidden></div>
       <div class="popup-chip update-chip" id="updateChip" hidden></div>
+      <div class="popup-chip trails-chip" id="trailsChip" hidden></div>
       <button class="ibtn dl-btn" id="dlBtn" hidden title="Downloads"></button>
       <button class="human-pill" id="humanPill" hidden title="AI is paused. You're browsing on your own; nothing is sent to an AI or added to research memory. Click to let AI act again  ⇧⌘P"><span class="hp-dot"></span>Human mode <span class="hp-resume">Resume AI</span></button>
       <button class="pilot-btn" id="togglePanel" title="Pilot panel  ⌘J"><span class="orb xs" id="miniOrb"></span>Pilot</button>
@@ -57,6 +59,12 @@
           <button class="send" id="heroSend" type="submit"></button>
         </form>
         <div class="hero-hint" id="heroHint"></div>
+        <div class="trails-home" id="trailsHome" hidden>
+          <div class="trails-intro" id="trailsIntro" hidden></div>
+          <div class="section-row"><div class="section-label">Pick up where you left off</div><button type="button" class="link-btn" id="allTrails">All trails</button></div>
+          <div class="session-row" id="sessionRow" hidden></div>
+          <div class="trail-cards" id="trailCards"></div>
+        </div>
         <div class="ideas" id="ideas"></div>
 
         <div class="section-label" id="liveGroupsLabel" hidden>Research in progress</div>
@@ -96,11 +104,41 @@
         <div class="dv-reset">
           <label class="check"><input type="checkbox" data-r="browsing" /> <span><b>Cookies and site data</b><br /><span class="muted small">Signs you out of websites.</span></span></label>
           <label class="check"><input type="checkbox" data-r="memory" /> <span><b>Research memory and history</b><br /><span class="muted small">Sessions, pages, topics and links. Notes and skills files stay.</span></span></label>
+          <label class="check"><input type="checkbox" data-r="trails" /> <span><b>Trails</b><br /><span class="muted small">Your trails and the tabs tucked into them.</span></span></label>
           <label class="check"><input type="checkbox" data-r="bookmarks" /> <span><b>Bookmarks</b></span></label>
           <label class="check"><input type="checkbox" data-r="settings" /> <span><b>Settings</b><br /><span class="muted small">AI choice, appearance, switches.</span></span></label>
           <label class="check"><input type="checkbox" data-r="everything" /> <span><b>Everything</b><br /><span class="muted small">All of the above, and sign out of your Skillerr account.</span></span></label>
         </div>
         <div class="imp-row"><button type="button" class="btn sm danger" id="dvReset">Clear selected</button><span class="small" id="dvResetMsg"></span></div>
+      </div>
+    </section>
+
+    <section class="dataview trailsview" id="trailsView" hidden>
+      <div class="dv-top">
+        <div>
+          <h2>Trails</h2>
+          <div class="muted small">Your ongoing work, learned from what you browse. Kept on this computer.</div>
+        </div>
+        <div class="tv-actions">
+          <button type="button" class="btn ghost sm" id="tvTidy">Tidy tabs now</button>
+          <div class="seg small-seg dv-tabs" id="tvTabs"><button type="button" data-tab="active" class="on">Ongoing</button><button type="button" data-tab="done">Done</button><button type="button" data-tab="settings">Settings</button></div>
+        </div>
+      </div>
+      <div class="dv-pane on" data-tvpane="list">
+        <div class="dv-bar"><input id="tvQ" spellcheck="false" placeholder="Search your trails" /></div>
+        <div class="tv-list" id="tvList"></div>
+      </div>
+      <div class="dv-pane" data-tvpane="settings">
+        <div class="tv-settings">
+          <label class="switch-row"><div><b>Learn my trails</b><span>Files the pages you visit into threads of work, and notices what you leave unfinished. Pages an AI opens aren't included. Nothing leaves this computer.</span></div><input type="checkbox" id="tvLearn" /><span class="switch"></span></label>
+          <label class="switch-row"><div><b>Tuck away idle tabs</b><span>Tabs you haven't used for 12 hours go into their trail once you have 9 or more open. Your 5 most recent tabs, forms you're typing, audio and pages you keep coming back to always stay.</span></div><input type="checkbox" id="tvTuck" /><span class="switch"></span></label>
+          <div class="tv-block" id="tvChrome"></div>
+          <div class="tv-block"><b>Never learn from these sites</b><div class="tv-hosts" id="tvIgnored"></div>
+            <form class="tv-add" id="tvIgnoreForm" autocomplete="off"><input id="tvIgnoreHost" spellcheck="false" placeholder="example.com" /><button type="submit" class="btn ghost sm">Add</button></form></div>
+          <div class="tv-block"><b>Everyday sites</b><span class="muted small">Sites you use most days. Their pages join a trail only when you get there from one.</span><div class="tv-hosts" id="tvEveryday"></div></div>
+          <div class="tv-block"><b>AI apps that can see your trails</b><div class="tv-hosts" id="tvClients"></div></div>
+          <div class="imp-row"><button type="button" class="btn sm danger" id="tvForgetAll">Forget all trails</button><span class="small muted" id="tvMsg"></span></div>
+        </div>
       </div>
     </section>
 
@@ -160,6 +198,7 @@
       <div class="ob-opts">
         <label class="switch-row" id="obImportRow"><div><b>Bring my Chrome bookmarks and history</b><span>Copied from Chrome on this computer, never from Google.</span></div><input type="checkbox" id="obImport" checked /><span class="switch"></span></label>
         <label class="switch-row"><div><b>Remember my research</b><span>A private map of what your AIs researched, so new questions build on old answers.</span></div><input type="checkbox" id="obRemember" checked /><span class="switch"></span></label>
+        <label class="switch-row"><div><b>Keep trails of my work</b><span>Groups what you browse into threads like “Kyoto trip”, tucks away tabs you've left, and shows what you didn't finish.</span></div><input type="checkbox" id="obTrails" checked /><span class="switch"></span></label>
         <div class="theme-row"><b>Search engine</b>
           <select id="searchEngine"><option value="google">Google (your country)</option><option value="duckduckgo">DuckDuckGo</option><option value="bing">Bing</option></select>
         </div>
@@ -337,6 +376,10 @@
           <input type="checkbox" id="semanticRecall" /><span class="switch"></span>
         </label>
         <label class="switch-row">
+          <div><b>Trails</b><span>Learns your ongoing work from what you browse and tucks away tabs you've left, on this computer only. <a href="#" id="manageTrails">Manage trails</a></span></div>
+          <input type="checkbox" id="trailsOn" /><span class="switch"></span>
+        </label>
+        <label class="switch-row">
           <div><b>Sleep inactive tabs</b><span>Keeps Skillerr light: tabs you and your AI aren't using unload after a few minutes and wake instantly when you come back. What your AI read stays in research memory.</span></div>
           <input type="checkbox" id="sleepTabs" /><span class="switch"></span>
         </label>
@@ -380,5 +423,6 @@
   <script src="ui.js"></script>
   <script src="memoryview.js"></script>
   <script src="dataview.js"></script>
+  <script src="trailsview.js"></script>
 </body>
 </html>
