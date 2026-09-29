@@ -8,6 +8,8 @@ call. It shows what the AI is doing in Skillerr right now, updated about once a 
 |---|---|---|
 | ![One tab](images/live-view-single.png) | ![Fleet](images/live-view-fleet.png) | ![Approval](images/live-view-approval.png) |
 
+- **Nothing empty.** A view stays out of sight (no height, no border) until there's a page to show or an approval to
+  ask for, so the chat never gets a blank "Connecting…" or "No page open yet" box before the search starts.
 - **Only this AI's pages.** The view shows the tabs this AI app opened or loaded pages in during its current research
   session (a new one starts after 15 minutes idle), never tabs the user had open, and never another AI app's.
   `web_search`, like `fetch_page`, opens its own tab rather than taking over a page the user has open.

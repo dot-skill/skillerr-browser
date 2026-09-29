@@ -11,7 +11,8 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif); }
-main { padding: 10px 12px 12px; }
+main { padding: 10px 12px 12px; border: 1px solid var(--line); border-radius: 12px; }
+main[hidden] { display: none; }
 .bar { display: flex; align-items: center; gap: 10px; min-height: 32px; }
 /* The Skillerr wheel, as in the browser: neutral when idle, the aurora spinning through it while the AI drives. */
 .mark { width: 22px; height: 22px; flex: none; background: var(--idle); transition: background .3s;

@@ -4,7 +4,7 @@ traceStartup('main.js running');
 const fs = require('fs');
 const path = require('path');
 const { app, BaseWindow, WebContentsView, ipcMain, Menu, clipboard, nativeTheme, dialog, shell } = require('electron');
-const { TOOLS, runTool, toUrl, setSearchTemplate, setSearchApi, inspectTarget, restoreValue } = require('./tools');
+const { TOOLS, runTool, toUrl, aiUrl, setSearchTemplate, setSearchApi, inspectTarget, restoreValue } = require('./tools');
 const { startApiServer } = require('./api-server');
 const { Agent } = require('./agent');
 const connectors = require('./connect');
@@ -1913,7 +1913,7 @@ function execute(controller, name, args) {
 // Page tools and what their success means for the Audit list.
 const AUDIT_STATE = { navigate: 'opened', new_tab: 'opened', web_search: 'opened', go_back: 'opened', go_forward: 'opened', fetch_page: 'read', read_page: 'read' };
 const requestedUrls = (name, args) => {
-  const safe = (u) => { try { return toUrl(u); } catch { return null; } };
+  const safe = (u) => { try { return aiUrl(u); } catch { return null; } };
   if (name === 'open_tabs') return (args.urls || []).slice(0, 10).map(safe).filter(Boolean);
   if (['navigate', 'new_tab', 'fetch_page'].includes(name) && args.url) return [safe(args.url)].filter(Boolean);
   if (name === 'web_search' && args.query) return [safe(String(args.query))].filter(Boolean);
@@ -2243,7 +2243,7 @@ async function deepResearch(controller, args) {
   const depth = Math.max(1, Math.min(5, Number(args.depth) || deepSettings().depth));
   const max = Math.max(3, Math.min(60, Number(args.max_pages) || 30));
   const keyOf = (u) => String(u).replace(/[#?].*$/, '').replace(/\/$/, '');
-  let frontier = (args.urls || []).slice(0, 6).map((u) => ({ url: toUrl(u), from: null, fromUrl: null }));
+  let frontier = (args.urls || []).slice(0, 6).map((u) => ({ url: aiUrl(u), from: null, fromUrl: null }));
   if (!frontier.length) {
     frontier = tabs.filter((t) => !t.isStart && !t.internal).map((t) => ({ url: t.sleeping ? t.sleeping.url : t.view.webContents.getURL(), from: null, fromUrl: null }));
     if (!frontier.length) throw new Error('Open a page first, or pass starting urls.');
@@ -2309,7 +2309,7 @@ async function dispatch(controller, { instruction, tab_ids = [], urls = [] }) {
   if (!agentReady()) {
     throw new Error("dispatch needs Skillerr's built-in AI (set it up in Skillerr's Settings). Without it: use open_tabs, act on each tab via tab_id, then read_tabs.");
   }
-  const targets = [...tab_ids.map((id) => getTab(Number(id))).filter(Boolean), ...urls.map((u) => newTab(toUrl(u), { background: true }))];
+  const targets = [...tab_ids.map((id) => getTab(Number(id))).filter(Boolean), ...urls.map((u) => newTab(aiUrl(u), { background: true }))];
   if (!targets.length) throw new Error('Give tab_ids of open tabs and/or urls to open.');
   if (targets.length > MAX_WORKERS) throw new Error(`At most ${MAX_WORKERS} tabs per dispatch.`);
   enterMosaic(targets.map((t) => t.id));

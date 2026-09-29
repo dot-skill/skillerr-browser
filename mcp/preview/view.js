@@ -32,6 +32,15 @@ function setState(name) {
   root.className = `state-${name}`;
 }
 
+// Nothing is shown until there's something to see: the host draws a view for the tool call before any page has
+// loaded, and an empty box with "Connecting…" or "No page open yet" is just noise in the chat. Hidden, the view
+// has no height and no border.
+let revealed = false;
+function reveal(on) {
+  if (on) revealed = true;
+  root.hidden = !revealed;
+}
+
 function applyContext(ctx) {
   if (!ctx) return;
   if (ctx.theme) applyDocumentTheme(ctx.theme);
@@ -100,6 +109,7 @@ function renderSteps(steps) {
 function render(f) {
   frame = f;
   if (f.offline) {
+    reveal(false); // only a view that already showed something says Skillerr closed
     setState('offline');
     $('who').textContent = 'Skillerr';
     $('state').textContent = 'Closed';
@@ -109,6 +119,7 @@ function render(f) {
   }
   renderCount(f.count);
   if (f.superseded) {
+    reveal(!!f.count); // an earlier view that never showed a page stays out of sight
     // One quiet line: the live view is the newest one, further down the chat. The Audit list still opens here.
     setState('superseded');
     $('who').textContent = '↓ Live view continues below';
@@ -132,6 +143,7 @@ function render(f) {
   // A pending approval is decided in Skillerr, next to the page, never from the chat.
   $('takeover').hidden = f.paused && !approval;
   $('takeover').textContent = approval ? 'Review in Skillerr' : 'Take over';
+  reveal(f.tiles.length > 0 || !!approval);
   renderTiles(f);
   renderSteps(f.steps || []);
   note(!f.tiles.length ? (f.count ? 'Its pages are closed now. Audit lists them all.' : 'No page open yet.') : approval ? 'Skillerr is waiting for you to allow or deny an action.' : '');
@@ -202,6 +214,7 @@ async function poll() {
     render(r.structuredContent || {});
     if (auditOpen) loadAudit();
   } catch (err) {
+    reveal(false);
     setState('offline');
     $('state').textContent = 'Not connected';
     note(`Can't reach Skillerr (${err.message}).`);
