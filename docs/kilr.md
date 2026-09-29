@@ -53,8 +53,8 @@ History (⌘Y) shows everything the user and their AI apps looked into as one ma
   meaning (recall) or by words.
 - **Click the orb** (or **Kilr** at the top) for Kilr's own panel: what it is, what it is doing right now (a live
   log), its size on disk, the memory it is using, how fast it is, that it runs only on this computer's processor with
-  no internet, what it has learned and from whose pages, **Learn now**, and the skills it suggests from research
-  that keeps coming back.
+  no internet, what it has learned and from whose pages, **Learn now**, and the skills it suggests from tasks done
+  the same way again and again (below).
 - With reduced motion on, the orb glows steadily and nothing animates.
 
 ## How it works

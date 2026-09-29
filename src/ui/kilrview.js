@@ -1,6 +1,6 @@
 /* global skillerr, icon, esc, trunc, learnResultText */
 // Kilr's own screen, over the History page: what Kilr is, what it's doing right now, and what it costs this
-// computer (disk, memory, speed), how it learns, and the skills it suggests from research that keeps coming back.
+// computer (disk, memory, speed), how it learns, and the skills it suggests from tasks done the same way again and again.
 // Opens from the orb or the Kilr button; while open it asks for kilr-status every two seconds.
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -51,7 +51,7 @@
       </section>
       <section class="kp-sec" id="kpSuggestSec" hidden>
         <h4>Skills Kilr suggests</h4>
-        <p class="kp-note">You keep coming back to these. Save one as a skill and any AI app can use what you found.</p>
+        <p class="kp-note">Things you (or your AIs) keep doing the same way. Save one as a skill and any AI app can do it your way next time.</p>
         <div id="kpSuggest"></div>
       </section>
       <section class="kp-sec">
@@ -148,7 +148,7 @@
         ${s.why ? `<div class="kp-note">${esc(s.why)}</div>` : ''}
         ${s.trails?.length ? `<div class="kp-chips">${s.trails.slice(0, 5).map((t) => `<span class="${t.by ? 'ai' : 'you'}" title="${t.by ? esc(`Researched by ${t.by}`) : 'Your trail'}">${esc(trunc(t.title, 32))}</span>`).join('')}</div>` : ''}
         ${s.preview ? `<details><summary>Preview</summary><pre>${esc(String(s.preview).slice(0, 1500))}</pre></details>` : ''}
-        <div class="kp-sug-acts"><button type="button" class="btn sm primary" data-a="save">${icon('sparkle', 12)}Save as a skill</button><button type="button" class="btn sm ghost" data-a="dismiss">Not useful</button></div>
+        <div class="kp-sug-acts"><button type="button" class="btn sm primary" data-a="save">${icon('sparkle', 12)}Save as a skill</button><button type="button" class="btn sm ghost" data-a="dismiss">Not now</button></div>
       </div>`).join('');
     $('kpSuggest').querySelectorAll('.kp-sug').forEach((el) => {
       const s = list[+el.dataset.i];
