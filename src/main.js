@@ -28,6 +28,8 @@ const memory = new Memory(path.join(store.DIR, 'memory'), { lazy: true });
 const freshData = !fs.existsSync(path.join(store.DIR, 'settings.json'));
 let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
+const { AsyncLocalStorage } = require('async_hooks');
+const { AiActivity, pickPreviewTabs } = require('./ai-activity');
 // Kilr: Skillerr's own small AI (src/kilr), built in. It knows trails and research by meaning. Loaded on first use.
 const KILR_DIR = path.join(__dirname, '..', 'assets', 'kilr'); // src/ and out/src/ alike
 const KILR_PERSONAL = path.join(store.DIR, 'kilr', 'personal.bin'); // what Kilr learned from this user's trails
@@ -227,6 +229,12 @@ function noteStep(e) {
   if (recentSteps.size > 40) recentSteps.delete(recentSteps.keys().next().value);
 }
 const previewViews = new Map(); // client → { viewId, createdAt } of its newest preview, the only one kept live
+// What each AI app opened or tried to open in its current session (the live view's tabs and its Audit list).
+const activity = new AiActivity();
+const aiCall = new AsyncLocalStorage(); // { client, session } while an AI's tool call runs: tabs it opens are its own
+// The last thumbnail sent to each client's live view, per tab: a page that hasn't changed isn't captured (or sent) again.
+const shots = new Map(); // client → { viewId, tabs: Map(tabId → { url, width, at }) }
+const RESHOOT_MS = 2000;
 
 async function thumb(tab, width) {
   const wc = tab?.view?.webContents;
@@ -245,29 +253,59 @@ async function previewFrame(client, { viewId = '', createdAt = 0 } = {}) {
   const newest = previewViews.get(client);
   if (!newest || createdAt >= newest.createdAt) previewViews.set(client, { viewId, createdAt });
   const superseded = previewViews.get(client).viewId !== viewId;
+  const count = activity.count(client);
+  // An earlier view in the chat is just a line pointing down to the live one: no tabs, no screenshots.
+  if (superseded) return { superseded, count, ts: Date.now() };
   const now = Date.now();
-  const recentAi = tabs.filter((t) => !t.isStart && t.aiUntil && now - (t.aiUntil - IDLE_AFTER_MS) < 30000)
-    .sort((a, b) => b.aiUntil - a.aiUntil);
-  // Fleet when the AI has tabs side by side, or has been working several tabs at once; otherwise its latest tab.
-  const fleetIds = mosaic?.length > 1 ? mosaic : recentAi.length > 1 ? recentAi.slice(0, 6).map((t) => t.id) : null;
-  const shown = fleetIds ? fleetIds.map(getTab).filter(Boolean) : [recentAi[0] || activeTab()].filter((t) => t && !t.isStart);
-  const width = fleetIds ? 480 : 720; // fleet tiles are about half the view's width, on high-density screens
-  const tiles = superseded ? [] : await Promise.all(shown.map(async (t) => {
+  const session = activity.current(client);
+  const pick = pickPreviewTabs(tabs, { client, session, mosaic, now, idleMs: IDLE_AFTER_MS });
+  const shown = pick.ids.map(getTab).filter(Boolean);
+  const width = pick.mode === 'fleet' ? 480 : 720; // fleet tiles are about half the view's width, on high-density screens
+  if (shots.get(client)?.viewId !== viewId) shots.set(client, { viewId, tabs: new Map() }); // a new view has no pictures yet
+  const sent = shots.get(client).tabs;
+  const tiles = await Promise.all(shown.map(async (t) => {
     const wc = t.view.webContents;
     const url = t.sleeping ? t.sleeping.url : wc.isDestroyed() ? '' : wc.getURL();
-    return { id: t.id, title: (t.sleeping ? t.sleeping.title : wc.getTitle()) || url, url, working: (t.aiUntil || 0) > now,
-      loading: !wc.isDestroyed() && wc.isLoading(), image: await thumb(t, width) };
+    const working = (t.aiUntil || 0) > now;
+    const loading = !wc.isDestroyed() && wc.isLoading();
+    // Same page, not loading or being worked on, and captured lately: the view keeps the picture it has.
+    const last = sent.get(t.id);
+    const fresh = last && last.url === url && last.width === width && (!(working || loading) || now - last.at < RESHOOT_MS);
+    let image = null;
+    if (!fresh) {
+      image = await thumb(t, width);
+      if (image) sent.set(t.id, { url, width, at: now });
+    }
+    return { id: t.id, title: (t.sleeping ? t.sleeping.title : wc.getTitle()) || url, url, working, loading, image, same: !!fresh };
   }));
-  const steps = [...recentSteps.values()].filter((e) => !client || e.controller === client).slice(-4)
+  for (const id of sent.keys()) if (!pick.ids.includes(id)) sent.delete(id); // a tile that comes back is captured again
+  const steps = [...recentSteps.values()].filter((e) => e.controller === client && e.session === session).slice(-4)
     .map((e) => ({ id: e.id, tool: e.tool, args: e.args, target: e.target, state: e.state, reason: e.reason, summary: e.summary, ts: e.ts }));
+  const deep = deepSettings();
   return {
-    superseded, mode: fleetIds ? 'fleet' : 'single', tiles, steps,
-    controller: status.controller?.name || null, live: !!(status.active || status.agentRunning), paused: status.paused,
+    superseded, mode: pick.mode, tiles, steps, count, deep: deep.on ? deep.depth : 0,
+    // The view is this app's: it's live while this app is the one at work, and says so by name.
+    controller: client || status.controller?.name || null, live: !!(status.active || status.agentRunning) && (!client || status.controller?.name === client), paused: status.paused,
     awaitingApproval: status.awaitingApproval, ts: now,
   };
 }
 
-function previewAction(client, { action, tabId } = {}) {
+// The Audit list: every page this client's current session opened, read or tried to, most recent first.
+function previewAudit(client) {
+  return { pages: activity.list(client).map(({ url, title, tool, state, reason, attempts, ts }) => ({ url, title, tool, state, reason, attempts, ts })) };
+}
+
+function previewAction(client, { action, tabId, url } = {}) {
+  if (action === 'open') { // from the Audit list: the AI's tab still showing that page, or a new tab
+    if (!/^https?:\/\//i.test(String(url || ''))) throw new Error('Only web pages can be opened from the live view.');
+    const session = activity.current(client);
+    const key = (u) => String(u || '').replace(/#.*$/, '').replace(/\/$/, '');
+    const t = tabs.find((x) => !x.isStart && x.aiBy === client && x.aiSession === session && key(tabUrl(x)) === key(url));
+    if (mosaic) exitMosaic();
+    if (t) switchTab(t.id);
+    else newTab(url);
+    action = 'focus';
+  }
   if (action === 'pause') setPaused(true);
   else if (action === 'resume') setPaused(false);
   else if (action === 'focus' || action === 'takeover') {
@@ -465,6 +503,11 @@ function attachView(tab) {
   wc.on('page-title-updated', (_e, title) => tab.historyId && history.update(tab.historyId, { title }));
   // Trails: what the user (not an AI) visits, and where they were on the page.
   wc.on('did-navigate', (_e, u) => trailNavigated(tab, u));
+  // The last main-frame load that failed (bad host, offline, refused): the Audit list counts it as a failed attempt.
+  wc.on('did-start-navigation', (e) => (e?.isMainFrame ?? true) && !e?.isSameDocument && (tab.loadFailed = null));
+  wc.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
+    if (isMainFrame && code !== -3) tab.loadFailed = { url, reason: desc ? `${desc.replace(/^ERR_/, '').replace(/_/g, ' ').toLowerCase()}` : "The page didn't load" }; // -3: aborted by a newer load
+  });
   wc.on('did-navigate-in-page', (_e, u, isMain) => isMain && trailNavigated(tab, u, true));
   wc.on('did-stop-loading', () => {
     if (tab.trailPage?.pending) trailObserve(tab);
@@ -488,6 +531,8 @@ function attachView(tab) {
 
 function newTab(url, { background = false, opener = null } = {}) {
   const tab = { id: nextTabId++, view: null, favicon: null, isStart: !url, userZoom: 1, lastInput: 0, lastUsed: Date.now(), openerId: opener };
+  const call = aiCall.getStore(); // opened during an AI's tool call: it's that AI session's tab
+  if (call) Object.assign(tab, { aiBy: call.client, aiSession: call.session });
   attachView(tab);
   const wc = tab.view.webContents;
   tabs.push(tab);
@@ -1857,7 +1902,26 @@ function flagInjection(controller, p) {
     `Skillerr removed it before ${controller.name} read the page. Payments, passwords, sign-ins and deletions still wait for your OK.` });
 }
 
-async function execute(controller, name, args) {
+// Every AI tool call runs inside its session (see ai-activity.js): tabs it opens are that session's, and the pages it
+// opens or tries to are listed in the live view's Audit. Calls a tool makes itself (deep_research) stay in the same one.
+function execute(controller, name, args) {
+  const outer = aiCall.getStore();
+  const session = outer?.client === controller.name ? outer.session : activity.touch(controller.name);
+  return aiCall.run({ client: controller.name, session }, () => executeInSession(controller, name, args, session));
+}
+
+// Page tools and what their success means for the Audit list.
+const AUDIT_STATE = { navigate: 'opened', new_tab: 'opened', web_search: 'opened', go_back: 'opened', go_forward: 'opened', fetch_page: 'read', read_page: 'read' };
+const requestedUrls = (name, args) => {
+  const safe = (u) => { try { return toUrl(u); } catch { return null; } };
+  if (name === 'open_tabs') return (args.urls || []).slice(0, 10).map(safe).filter(Boolean);
+  if (['navigate', 'new_tab', 'fetch_page'].includes(name) && args.url) return [safe(args.url)].filter(Boolean);
+  if (name === 'web_search' && args.query) return [safe(String(args.query))].filter(Boolean);
+  return [];
+};
+const tabTitle = (t) => (t?.sleeping ? t.sleeping.title : t?.view && !t.view.webContents.isDestroyed() ? t.view.webContents.getTitle() : '');
+
+async function executeInSession(controller, name, args, session) {
   if (!TOOLS.some((t) => t.name === name)) throw new Error(`Unknown tool: ${name}`);
   if (blocked(controller)) throw new Error(`The user has turned off ${controller.name} in Skillerr, so it can't use the browser. Ask them to turn it back on in Skillerr → Connected AI apps.`);
   if (status.paused) throw new Error('The user has paused AI control of the browser. Wait for them to resume.');
@@ -1871,14 +1935,23 @@ async function execute(controller, name, args) {
   const id = ++seq;
   // fetch_page opens its own tab (grouped with this AI's research) unless told which tab to use.
   if (name === 'fetch_page' && args.tab_id == null) args = { ...args, tab_id: newTab(undefined, { background: !activeTab()?.isStart }).id };
+  // So does web_search, rather than taking over a page the user has open (a blank tab or this AI's own is fine).
+  const mine = (t) => t && t.aiBy === controller.name && t.aiSession === session;
+  if (name === 'web_search' && args.tab_id == null && activeTab() && !activeTab().isStart && !mine(activeTab())) {
+    args = { ...args, tab_id: newTab(undefined, { background: true }).id };
+  }
   const tab = targetTab(args);
+  // A tab the AI loads pages in is its session's (the live view shows it); tabs it only looks at stay the user's.
+  if (tab && AUDIT_STATE[name] && !['read_page', 'new_tab'].includes(name)) Object.assign(tab, { aiBy: controller.name, aiSession: session });
+  const audit = (url, state, extra = {}) => activity.record(session, { url, tool: name, state, ...extra });
   if (tab?.sleeping || tab?.waking) await browser.awake(tab); // an AI touching a sleeping tab wakes it first
   const info = await inspectTarget(browser, name, args, id);
-  const entry = { id, ts: Date.now(), controller: controller.name, via: controller.via, tool: name, args, target: info?.label || '', tabId: tab?.id, state: 'running' };
+  const entry = { id, ts: Date.now(), controller: controller.name, via: controller.via, session, tool: name, args, target: info?.label || '', tabId: tab?.id, state: 'running' };
   if (name === 'record_start' || name === 'record_stop') entry.tabId = null; // not a page action, nothing to highlight
 
   if (['click', 'type', 'press_key'].includes(name) && (CHECK_FRAME.test(info?.frameUrl || '') || CHECK_LABEL.test(info?.label || ''))) {
     await humanCheck(controller, tab);
+    audit(tabUrl(tab), 'blocked', { title: tabTitle(tab), reason: 'Robot check: waiting for you', tabId: tab?.id });
     throw new Error('That is a robot check. Only the user may complete it: Skillerr has asked them to. Carry on with your other tabs meanwhile, then come back to this one and take a new snapshot.');
   }
 
@@ -1896,6 +1969,7 @@ async function execute(controller, name, args) {
     const ok = await requestApproval(entry, reason);
     if (!ok) {
       ui('log', { ...entry, state: 'error', summary: ok === null ? 'No one approved in time' : 'You declined this action' });
+      for (const u of requestedUrls(name, args)) audit(u, 'declined', { reason: ok === null ? 'No one approved in time' : 'You declined it' });
       throw new Error(ok === null
         ? 'This action needs the user\'s approval in Skillerr and nobody approved it in time. Ask the user to watch Skillerr and approve, then retry.'
         : 'The user declined this action. Do not retry it.');
@@ -1926,6 +2000,9 @@ async function execute(controller, name, args) {
     if (opened.length) assignGroup(controller, opened);
     if ((name === 'navigate' && tab && before.wasStart) || name === 'fetch_page') assignGroup(controller, [tab.id]);
     try {
+      auditResult(name, args, tab, opened, before, audit);
+    } catch {} // nor may the Audit list
+    try {
       researchNote(controller, name, args, getTab(opened[0]) || tab);
     } catch {} // research trails must never break a tool call
     if (['navigate', 'click', 'snapshot', 'new_tab', 'type', 'press_key'].includes(name) && (await humanCheck(controller, name === 'new_tab' ? activeTab() : tab))) {
@@ -1934,10 +2011,30 @@ async function execute(controller, name, args) {
     return result;
   } catch (err) {
     ui('log', { ...entry, state: 'error', summary: err.message });
+    for (const u of requestedUrls(name, args)) audit(u, 'failed', { reason: err.message, tabId: tab?.id });
     throw err;
   } finally {
     touchTab(tab);
     markActive(controller);
+  }
+}
+
+// What a successful call opened or read, for the Audit list. A page that didn't load counts as a failed attempt.
+function auditResult(name, args, tab, opened, before, audit) {
+  const note = (t, state) => (t.loadFailed ? audit(tabUrl(t), 'failed', { reason: t.loadFailed.reason, tabId: t.id }) : audit(tabUrl(t), state, { title: tabTitle(t), tabId: t.id }));
+  if (name === 'open_tabs' || name === 'new_tab') {
+    for (const t of opened.map(getTab).filter(Boolean)) note(t, 'opened');
+  } else if (name === 'read_tabs') {
+    const ids = args.tab_ids?.length ? args.tab_ids.map(Number) : tabs.filter((t) => !t.isStart).map((t) => t.id);
+    for (const t of ids.map(getTab).filter(Boolean)) note(t, 'read');
+  } else if (AUDIT_STATE[name] && tab) {
+    const url = tabUrl(tab);
+    if (!url || url === 'about:blank' || /^chrome-error:/.test(url) || tab.loadFailed) {
+      const urls = requestedUrls(name, args);
+      for (const u of urls.length ? urls : [url]) audit(u, 'failed', { reason: tab.loadFailed?.reason || "The page didn't load", tabId: tab.id });
+    } else note(tab, AUDIT_STATE[name]);
+  } else if (name === 'click' && tab && !tab.isStart && tabUrl(tab) !== before.url) {
+    note(tab, 'opened'); // a link the AI followed
   }
 }
 
@@ -3125,7 +3222,7 @@ app.whenReady().then(async () => {
     tools: TOOLS,
     onPreview: async (client, op, args) => {
       await ready;
-      return op === 'action' ? previewAction(client, args) : previewFrame(client, args);
+      return op === 'action' ? previewAction(client, args) : op === 'audit' ? previewAudit(client) : previewFrame(client, args);
     },
     onHello: (client) => ready.then(() => markActive({ name: client, via: 'mcp' })),
     onCall: async (client, name, args) => {

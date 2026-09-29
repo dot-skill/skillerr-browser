@@ -392,6 +392,11 @@
           </select>
         </label>
         <label class="field" id="searchApiKeyRow">Search API key <input id="searchApiKey" type="password" spellcheck="false" /></label>
+        <label class="field">Deep research <span class="muted small">Your AI reads the pages it finds and follows their most relevant links, this many hops deep. Slower, more thorough. For Skillerr's AI and the AI apps you connect.</span>
+          <select id="deepSetting">
+            <option value="0">Off</option><option value="1">1 hop</option><option value="2">2 hops</option><option value="3">3 hops</option><option value="4">4 hops</option><option value="5">5 hops</option>
+          </select>
+        </label>
         <label class="switch-row">
           <div><b>Ask before every action</b><span>Payments, passwords and deletions always ask, even when this is off.</span></div>
           <input type="checkbox" id="requireApproval" /><span class="switch"></span>

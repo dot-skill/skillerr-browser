@@ -58,8 +58,14 @@ const PREVIEW_TOOLS = [
   },
   {
     name: 'skillerr_preview_action',
-    description: "Skillerr's live view only: pause or resume the AI, or bring a tab to the front in Skillerr.",
-    inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['pause', 'resume', 'focus', 'takeover'] }, tabId: { type: 'integer' } }, required: ['action'] },
+    description: "Skillerr's live view only: pause or resume the AI, bring a tab to the front in Skillerr, or open a page there.",
+    inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['pause', 'resume', 'focus', 'takeover', 'open'] }, tabId: { type: 'integer' }, url: { type: 'string' } }, required: ['action'] },
+    _meta: { ui: { resourceUri: PREVIEW_URI, visibility: ['app'] } },
+  },
+  {
+    name: 'skillerr_preview_audit',
+    description: "Skillerr's live view only: every page the AI opened, read or tried to open in this research session.",
+    inputSchema: { type: 'object', properties: {} },
     _meta: { ui: { resourceUri: PREVIEW_URI, visibility: ['app'] } },
   },
 ];
@@ -193,7 +199,7 @@ async function main() {
   async function previewCall(name, args) {
     const s = readSession();
     if (!(await alive(s))) return { offline: true };
-    const op = name === 'skillerr_preview_action' ? 'action' : 'frame';
+    const op = name === 'skillerr_preview_action' ? 'action' : name === 'skillerr_preview_audit' ? 'audit' : 'frame';
     return api(s, 'POST', '/preview', { client: clientName(server), op, args });
   }
 

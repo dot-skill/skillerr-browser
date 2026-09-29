@@ -54,4 +54,34 @@ button svg { display: block; }
 .steps li.error i { color: var(--err); }
 .steps li.approval { color: var(--warn); font-weight: 600; }
 .note { margin: 10px 0 0; color: var(--text-2); font-size: 12px; }
-.state-superseded .stage, .state-offline .stage { opacity: 0.55; }
+.state-offline .stage { opacity: 0.55; }
+button.who { flex: 1; min-width: 0; height: auto; padding: 2px 4px; margin-left: -4px; border: 0; background: none; text-align: left; font-size: 13px; font-weight: 400; }
+button.who:hover { background: var(--surface); }
+.pill.deep { color: var(--accent); }
+.pill[hidden] { display: none; }
+#audit[aria-expanded="true"] { background: var(--surface); }
+/* An earlier view in the chat: one quiet line pointing down to the live one. No screenshots, nothing to act on
+   except the Audit list. */
+main.state-superseded { padding: 4px 10px; }
+.state-superseded .bar { min-height: 28px; }
+.state-superseded .mark { width: 16px; height: 16px; opacity: .6; }
+.state-superseded #who { font-weight: 500; color: var(--text-2); }
+.state-superseded .stage, .state-superseded .steps, .state-superseded .note, .state-superseded #deep { display: none; }
+.state-superseded .who { cursor: default; }
+.state-superseded .who:hover { background: none; }
+.audit { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.audit[hidden] { display: none; }
+.audit-head { margin: 0 0 6px; color: var(--text-2); font-size: 12px; }
+.audit ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 280px; overflow-y: auto; }
+.audit li button { width: 100%; height: auto; min-height: 30px; display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 0; border-radius: 6px; background: none; text-align: left; font-weight: 400; }
+.audit li button:hover { background: var(--surface); }
+.audit li i { font-style: normal; width: 14px; flex: none; text-align: center; font-weight: 700; }
+.audit .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.audit .t b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.audit .t span { color: var(--text-2); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.audit time { color: var(--text-2); font-size: 11px; flex: none; }
+.audit .read i { color: var(--ok); }
+.audit .opened i { color: var(--accent); }
+.audit .failed i { color: var(--err); }
+.audit .blocked i, .audit .declined i { color: var(--warn); }
+.audit .empty { color: var(--text-2); font-size: 12px; padding: 4px 6px; }

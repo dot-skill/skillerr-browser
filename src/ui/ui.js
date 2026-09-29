@@ -1354,20 +1354,25 @@ function showCaptured(r) {
 $('snapBtn').onclick = snapForAi;
 skillerr.on('captured', (r) => showCaptured({ ok: true, ...r }));
 
-// Deep research toggle: applies to the built-in AI and to connected AIs (they're told when it's on).
+// Deep research: off, or on with a depth of 1–5 hops (3 unless the user picked another). One setting, shown in the
+// composer and in Settings; applies to the built-in AI and to connected AIs (they're told when it's on).
+const deepDepthOf = (s) => Math.max(1, Math.min(5, Number(s.deepDepth) || 3));
+const deepValue = (s) => (s.deepResearch ? deepDepthOf(s) : 0); // 0 = off
+const deepPatch = (v) => (Number(v) > 0 ? { deepResearch: true, deepDepth: Math.min(5, Number(v)) } : { deepResearch: false });
 function renderDeep() {
   const on = !!settings.deepResearch;
   $('deepBtn').className = 'deep-btn' + (on ? ' on' : '');
   $('deepBtn').innerHTML = `${icon('layers', 12)}<span>Deep</span>`;
   $('deepDepth').hidden = !on;
-  $('deepDepth').value = String(settings.deepDepth || 3);
+  $('deepDepth').value = String(deepDepthOf(settings));
+  $('deepSetting').value = String(deepValue(settings));
 }
 $('deepBtn').onclick = async () => {
-  await saveSettings({ deepResearch: !settings.deepResearch });
+  await saveSettings(deepPatch(settings.deepResearch ? 0 : deepDepthOf(settings)));
   renderDeep();
 };
 $('deepDepth').onchange = async () => {
-  await saveSettings({ deepDepth: Number($('deepDepth').value) });
+  await saveSettings(deepPatch($('deepDepth').value));
   renderDeep();
 };
 
@@ -1496,6 +1501,7 @@ async function loadSettingsSheet({ setup } = {}) {
   $('searchApi').value = s.searchApi || '';
   $('searchApiKey').value = s.searchApiKey || '';
   $('searchApiKeyRow').hidden = !$('searchApi').value;
+  $('deepSetting').value = String(deepValue(s));
   document.querySelectorAll('#themeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.t === (s.theme || 'system')));
   renderMemStats();
   loadImportBox();
@@ -1544,6 +1550,7 @@ $('saveSettings').onclick = async () => {
     betaUpdates: $('betaUpdates').checked,
     searchApi: $('searchApi').value,
     searchApiKey: $('searchApiKey').value.trim(),
+    ...deepPatch($('deepSetting').value),
     claudeModel: $('claudeModel').value,
     anthropicKey: $('claudeKey').value.trim(),
     otherPreset: $('otherPreset').value,
@@ -1560,6 +1567,7 @@ $('saveSettings').onclick = async () => {
   else if (localChoice) active = { provider: 'openai-compatible', baseUrl: localChoice.baseUrl, model: localChoice.model, apiKey: '', localModel: localChoice.model, localBaseUrl: localChoice.baseUrl };
   else active = {};
   await saveSettings({ ...common, ...active });
+  renderDeep();
   $('saved').textContent = 'Saved ✓';
   setTimeout(() => ($('saved').textContent = ''), 1500);
   renderAiCards();

@@ -125,7 +125,8 @@ flowchart LR
 - **Fleet view** (⇧⌘F) shows every tab your AI is working in, side by side and live. Click a tile to step in.
 - **The Pilot panel** logs every step in plain English ("Opening jal.co.jp", "Reading several tabs"), with **Pause**,
   **Take over** (Human mode) and **Undo** on actions that can be undone.
-- **Deep research** follows the links that matter, 1 to 5 hops from the first pages.
+- **Deep research** follows the links that matter, 1 to 5 hops from the first pages. Off by default; turn it on in
+  Settings (3 hops unless you pick another) or with the Deep button.
 - Tabs for one task are **grouped and named** after the AI that opened them. Show them all or close them all in one click.
 - `web_search` and `fetch_page` stand in for your AI's own search and fetch, so its flow carries on as usual and the
   sources in its answer are pages you saw.
@@ -241,8 +242,8 @@ See [docs/trails.md](docs/trails.md).
 - **The built-in AI** runs local models (Ollama, LM Studio) for free, or Claude and any OpenAI-compatible endpoint with
   your own key.
 - **Live view in Claude Desktop.** In Claude Desktop and other [MCP Apps](https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/)
-  hosts, a live view appears next to the tool call: the AI's tab, or a grid of tabs, its latest steps, and Pause /
-  Take over. See [docs/live-view.md](docs/live-view.md).
+  hosts, one live view follows the AI in the chat: only the tabs it opened, its latest steps, Pause / Take over, and
+  an **Audit** list of every page it opened or tried to. See [docs/live-view.md](docs/live-view.md).
 - **Screenshot for your AI.** Capture the page you're on, paste the one line it copies into any AI and say what's
   wrong. The AI opens exactly what you saw with `view_capture`.
 

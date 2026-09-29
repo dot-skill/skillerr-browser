@@ -19,11 +19,14 @@ const SVG = {
   inline: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
 };
 const MARK = { ok: '✓', error: '✕', approval: '✋', running: '…' };
+const AUDIT_MARK = { read: '✓', opened: '↗', failed: '✕', blocked: '✋', declined: '⊘' };
+const AUDIT_WORD = { read: 'Read', opened: 'Opened', failed: "Couldn't open", blocked: 'Blocked', declined: 'Not allowed' };
 
 let timer = null;
 let lastActivity = Date.now();
 let frame = null;
 let busy = false;
+let auditOpen = false;
 
 function setState(name) {
   root.className = `state-${name}`;
@@ -36,8 +39,8 @@ function applyContext(ctx) {
   if (ctx.styles?.css?.fonts) applyHostFonts(ctx.styles.css.fonts);
   const modes = ctx.availableDisplayModes || [];
   const mode = ctx.displayMode || 'inline';
-  $('pip').hidden = !modes.includes('pip') || mode === 'pip';
-  $('full').hidden = !modes.includes('fullscreen');
+  $('pip').hidden = !modes.includes('pip') || mode === 'pip' || !!frame?.superseded;
+  $('full').hidden = !modes.includes('fullscreen') || !!frame?.superseded;
   $('full').innerHTML = mode === 'fullscreen' ? SVG.inline : SVG.full;
   $('full').title = $('full').ariaLabel = mode === 'fullscreen' ? 'Back to the chat' : 'Expand';
 }
@@ -104,16 +107,23 @@ function render(f) {
     note('Skillerr is closed. It opens again the next time your AI browses.');
     return;
   }
+  renderCount(f.count);
   if (f.superseded) {
+    // One quiet line: the live view is the newest one, further down the chat. The Audit list still opens here.
     setState('superseded');
-    $('state').textContent = 'Earlier';
-    $('pause').hidden = $('takeover').hidden = true;
-    note('The live view continues further down the chat.');
+    $('who').textContent = '↓ Live view continues below';
+    $('state').textContent = f.count ? `${f.count} page${f.count === 1 ? '' : 's'} so far` : 'Earlier';
+    $('pause').hidden = $('takeover').hidden = $('pip').hidden = $('full').hidden = true;
+    $('stage').replaceChildren();
+    $('steps').replaceChildren();
+    note('');
     stop();
     return;
   }
   const name = f.controller || 'Your AI';
   $('who').textContent = `${name} in Skillerr`;
+  $('deep').hidden = !f.deep;
+  $('deep').textContent = f.deep ? `Deep · depth ${f.deep}` : '';
   const approval = f.awaitingApproval;
   setState(approval ? 'approval' : f.paused ? 'paused' : f.live ? 'live' : 'idle');
   $('state').textContent = approval ? 'Needs your OK' : f.paused ? 'Paused' : f.live ? (f.mode === 'fleet' ? `Working · ${f.tiles.length} tabs` : 'Working') : 'Idle';
@@ -124,8 +134,58 @@ function render(f) {
   $('takeover').textContent = approval ? 'Review in Skillerr' : 'Take over';
   renderTiles(f);
   renderSteps(f.steps || []);
-  note(!f.tiles.length ? 'No page open yet.' : approval ? 'Skillerr is waiting for you to allow or deny an action.' : '');
+  note(!f.tiles.length ? (f.count ? 'Its pages are closed now. Audit lists them all.' : 'No page open yet.') : approval ? 'Skillerr is waiting for you to allow or deny an action.' : '');
   if (f.live || approval) lastActivity = Date.now();
+}
+
+function renderCount(n) {
+  $('audit').hidden = !n && !auditOpen;
+  $('audit').textContent = n ? `Audit · ${n}` : 'Audit';
+}
+
+function ago(ts) {
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  return s < 60 ? 'now' : s < 3600 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`;
+}
+
+function renderAudit(pages) {
+  const list = $('auditList');
+  if (!pages.length) {
+    list.innerHTML = '<li class="empty">Nothing opened yet in this research.</li>';
+    return;
+  }
+  list.innerHTML = pages.map((p, i) => {
+    const why = p.reason ? ` · ${p.reason}` : '';
+    const tries = p.attempts > 1 ? ` · ${p.attempts} tries` : '';
+    return `<li class="${esc(p.state)}"><button type="button" data-i="${i}" title="${esc(`${AUDIT_WORD[p.state] || ''}${why}${tries}\n${p.url}\nOpen in Skillerr`)}">` +
+      `<i>${AUDIT_MARK[p.state] || '·'}</i><span class="t"><b>${esc(p.title || hostOf(p.url) || p.url)}</b><span>${esc(hostOf(p.url) || p.url)}${p.state === 'failed' || p.state === 'blocked' || p.state === 'declined' ? ` · ${esc(AUDIT_WORD[p.state])}` : ''}</span></span>` +
+      `<time>${ago(p.ts)}</time></button></li>`;
+  }).join('');
+  list.querySelectorAll('button[data-i]').forEach((b) => {
+    b.onclick = () => act('open', null, pages[Number(b.dataset.i)].url);
+  });
+}
+
+async function loadAudit() {
+  try {
+    const r = await app.callServerTool({ name: 'skillerr_preview_audit', arguments: {} });
+    const sc = r.structuredContent || {};
+    if (sc.offline) {
+      $('auditList').innerHTML = '<li class="empty">Skillerr is closed.</li>';
+      return;
+    }
+    renderAudit(sc.pages || []);
+    renderCount((sc.pages || []).length);
+  } catch (err) {
+    $('auditList').innerHTML = `<li class="empty">Can't reach Skillerr (${esc(err.message)}).</li>`;
+  }
+}
+
+function toggleAudit() {
+  auditOpen = !auditOpen;
+  $('auditPanel').hidden = !auditOpen;
+  $('audit').setAttribute('aria-expanded', String(auditOpen));
+  if (auditOpen) loadAudit();
 }
 
 function note(text) {
@@ -140,6 +200,7 @@ async function poll() {
     const r = await app.callServerTool({ name: 'skillerr_preview_frame', arguments: { viewId, createdAt } });
     if (r.isError) throw new Error(r.content?.[0]?.text || 'error');
     render(r.structuredContent || {});
+    if (auditOpen) loadAudit();
   } catch (err) {
     setState('offline');
     $('state').textContent = 'Not connected';
@@ -171,15 +232,19 @@ function wake() {
   poll();
 }
 
-async function act(action, tabId) {
+async function act(action, tabId, url) {
   try {
-    await app.callServerTool({ name: 'skillerr_preview_action', arguments: tabId != null ? { action, tabId } : { action } });
+    await app.callServerTool({ name: 'skillerr_preview_action', arguments: { action, ...(tabId != null ? { tabId } : {}), ...(url ? { url } : {}) } });
   } catch {}
+  if (frame?.superseded) return; // an earlier view stays a quiet line
   wake();
 }
 
 $('pause').onclick = () => act(frame?.paused ? 'resume' : 'pause');
 $('takeover').onclick = () => act(frame?.awaitingApproval ? 'focus' : 'takeover', frame?.tiles?.find((t) => t.working)?.id ?? frame?.tiles?.[0]?.id);
+$('audit').onclick = toggleAudit;
+// The header opens Skillerr on what the AI is working on.
+$('open').onclick = () => !frame?.superseded && act('focus', frame?.tiles?.find((t) => t.working)?.id ?? frame?.tiles?.[0]?.id);
 $('pip').innerHTML = SVG.pip;
 $('pip').onclick = () => app.requestDisplayMode({ mode: 'pip' }).then((r) => applyContext({ ...app.getHostContext(), displayMode: r.mode })).catch(() => {});
 $('full').onclick = () => {
