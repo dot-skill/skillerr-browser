@@ -155,13 +155,15 @@ See [docs/trails.md](docs/trails.md).
 
 </details>
 
-### Skillerr Orb: Skillerr's own small AI
+### Your Orb: your own AI model
 
 <details>
 <summary><b>What you get</b></summary>
 
-- **Built in, tiny, fast.** One 7.9 MB file, about 26 µs per text in plain JavaScript. Runs on your CPU, no GPU
-  needed, works offline. Nothing to install, nothing leaves your computer.
+- **Yours, not ours.** The Orb is your own AI model: it runs on your computer, learns from your browsing there, and
+  sends nothing to Skillerr or anyone else. It works offline.
+- **Tiny and fast.** One 7.9 MB file, about 26 µs per text in plain JavaScript. Runs on your CPU, no GPU needed,
+  nothing to install.
 - **Knows your work by meaning.** Pages join the right trail even in different words, "Ask the Orb" on the Trails page
   finds "plane tickets to Japan" in a trail of Tokyo flights, and the start page says where you were and what's
   unfinished.
@@ -179,16 +181,16 @@ See [docs/trails.md](docs/trails.md).
   out from your trails and your AIs', with no AI model writing it.
 - **Recall by meaning, out of the box.** No Ollama needed any more.
 - **It doesn't make things up.** The Orb chooses from the facts of your own trails; it never generates text.
-- **Ours.** Distilled from an open model (Apache-2.0) with a closed-form fit anyone can rerun on a laptop. See
+- **Open.** Distilled from an open model (Apache-2.0) with a closed-form fit anyone can rerun on a laptop. See
   [docs/orb.md](docs/orb.md).
 
 </details>
 
-### Skillerr Orb, history and folders
+### Your Orb, history and folders
 
 <table>
 <tr>
-<td width="50%"><img alt="Skillerr Orb: a glowing cracked orb at the centre, with the research of Claude Code, Claude Desktop and Cursor coming out of it as threads of light" src=".github/assets/orb.png"></td>
+<td width="50%"><img alt="Your Orb: a glowing cracked orb at the centre, with the research of Claude Code, Claude Desktop and Cursor coming out of it as threads of light" src=".github/assets/orb.png"></td>
 <td width="50%"><img alt="The Orb's panel: what it is doing, its size and memory, runs on your CPU with no GPU and no internet, learning and suggested skills" src=".github/assets/orb-panel.png"></td>
 </tr>
 <tr>
@@ -200,7 +202,7 @@ See [docs/trails.md](docs/trails.md).
 <details>
 <summary><b>What you get</b></summary>
 
-- **Skillerr Orb (⇧⌘Y)** is everything you and your AIs looked into, as one map around the Orb: your pages on the warm end of
+- **Your Orb (⇧⌘Y)** is everything you and your AIs looked into, as one map around the Orb: your pages on the warm end of
   the spectrum, your AIs' on the cool end (one colour per app), pages you both touched in green. The Orb glows brighter
   as your history grows. Click the Orb to see what it's doing on your computer: its size, memory, speed, what it learned
   and the skills it suggests.

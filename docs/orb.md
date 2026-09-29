@@ -1,7 +1,8 @@
-# Skillerr Orb
+# Your Orb
 
-Skillerr Orb (the Orb) is Skillerr's own small AI: the glowing orb at the centre of the Skillerr Orb page. It's built into
-the browser, runs on the user's computer, and knows their work by
+The Orb is the user's own AI model, not Skillerr's: the glowing orb at the centre of the Your Orb page. It comes with
+Skillerr, runs on the user's computer (and, later, their phone), learns from their own browsing there, and sends
+nothing to Skillerr or anyone else. It knows their work by
 meaning: which trail a page belongs to, which trails a search is about, where they were with something. There's
 nothing to install and nothing to download, and nothing leaves the computer.
 
@@ -11,7 +12,7 @@ nothing to install and nothing to download, and nothing leaves the computer.
   about 26 µs: some 39,000 texts a second on one core, in plain JavaScript with no native code.
 - **No text generation.** The Orb embeds and then *chooses*. What it says is built from the facts of the user's own
   trails, so it can't make things up.
-- **Built from an open model, by us.** Distilled from `all-MiniLM-L6-v2` (Apache-2.0) with a closed-form fit that runs
+- **Built from an open model.** Distilled from `all-MiniLM-L6-v2` (Apache-2.0) with a closed-form fit that runs
   on a laptop CPU in minutes (below). The whole pipeline is in `scripts/kilr/`.
 - **Replaces Ollama for recall by meaning.** Recall matches past research by meaning out of the box. An
   OpenAI-compatible endpoint (`embedBaseUrl`) still takes over when set.
@@ -32,11 +33,11 @@ nothing to install and nothing to download, and nothing leaves the computer.
 | **Recall by meaning** | `recall` and the research memory search match by meaning with the Orb's vectors, kept in memory (re-making them is faster than reading them). |
 | **AI apps** | `my_trails` with a `query` finds trails by meaning. |
 
-Trails settings → **Skillerr Orb** turns it off. Trails then match by shared words, and recall by words (or an endpoint if set).
+Trails settings → **Your Orb** turns it off. Trails then match by shared words, and recall by words (or an endpoint if set).
 
-## The Skillerr Orb page
+## The Your Orb page
 
-⋮ → **Skillerr Orb** (⇧⌘Y) shows everything the user and their AI apps looked into as one map, with the Orb at the
+⋮ → **Your Orb** (⇧⌘Y) shows everything the user and their AI apps looked into as one map, with the Orb at the
 centre (`src/ui/memoryview.js`, data from `src/history-graph.js`). The plain list of pages visited is History (⌘Y), in
 History & Bookmarks, with Clear browsing data.
 
@@ -228,8 +229,8 @@ Inside the code the Orb is still called `kilr` (its earlier name): `src/kilr/`, 
 | `src/kilr/train.js`, `train-worker.js` | Learning from the user's trails; runs in a worker thread |
 | `src/embed.js` | Recall by meaning: the Orb built in, or an endpoint |
 | `src/trails.js` | Uses the Orb (`meaning`) when given, words otherwise |
-| `src/history-graph.js`, `src/ui/memoryview.js` | The Skillerr Orb page: one graph of memory and trails, drawn as light coming out of the Orb |
-| `src/ui/kilrview.js` | The Orb's panel on the Skillerr Orb page (status from `kilr-status`, polled every 2 s while open) |
+| `src/history-graph.js`, `src/ui/memoryview.js` | The Your Orb page: one graph of memory and trails, drawn as light coming out of the Orb |
+| `src/ui/kilrview.js` | The Orb's panel on the Your Orb page (status from `kilr-status`, polled every 2 s while open) |
 | `assets/kilr/` | The model (`kilr-embed.bin`, `vocab.txt`) and its provenance |
 | `scripts/kilr/` | Building, calibrating, benchmarking and evaluating it |
 | `test/kilr-suggest.test.js` | Suggested skills from simulated browsing |

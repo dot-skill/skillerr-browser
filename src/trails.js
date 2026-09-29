@@ -2,7 +2,7 @@
 //
 // A trail is one journey on the web, like "Kyoto trip" or "Standing desk": the pages opened for it, mostly in one
 // sitting. A page joins the trail of the tab it was opened in, the tab it was opened from, or a trail it's about that's
-// going on right now (shared words, or the Skillerr Orb's sense of meaning). Nothing is tucked while the user browses:
+// going on right now (shared words, or the Orb's sense of meaning). Nothing is tucked while the user browses:
 // when Skillerr quits, the tabs still open are put away in their trails, and the next launch starts with a clean tab
 // strip. Continue brings a trail's tabs back; pages the user closed are done with and never come back. Trails remember
 // what was left unfinished (a form typed into but never sent, an article read partway, a cart not checked out, a

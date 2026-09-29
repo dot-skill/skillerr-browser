@@ -159,7 +159,7 @@ function howSkill(kind, group, h) {
   lines.push(`${step++}. They usually look at about ${plural(Math.max(2, h.pages), 'page')}${h.sessions > 1 ? ` over ${plural(h.sessions, 'sitting')}` : ''} before deciding. Be as thorough, not more.`);
   lines.push(`${step++}. ${kind.finish}`);
   lines.push(`${step++}. If Skillerr is connected, call my_trails with a query about the thing at hand first: they may have started on it already.`);
-  lines.push('', `Written by Skillerr Orb, Skillerr's on-device model, from ${plural(group.length, 'trail')} (${who.you ? `${who.you} by the user` : ''}${who.you && who.ai ? ', ' : ''}${who.ai ? `${who.ai} by ${who.bys.join(', ')}` : ''}). Nothing here left the user's computer.`);
+  lines.push('', `Written by the user's Orb, their own on-device model, from ${plural(group.length, 'trail')} (${who.you ? `${who.you} by the user` : ''}${who.you && who.ai ? ', ' : ''}${who.ai ? `${who.ai} by ${who.bys.join(', ')}` : ''}). Nothing here left the user's computer.`);
   return {
     kind: 'how',
     id: `how:${kind.key}`,

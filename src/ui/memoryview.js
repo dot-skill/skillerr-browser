@@ -1168,7 +1168,7 @@
       tip.innerHTML = `<b>${esc(trunc(n.label, 70))}</b><span><i style="background:hsl(${n.hue},100%,66%)"></i>${TYPE_LABEL[n.type] || 'Page'} · ${esc(whose(n))}${n.at ? ` · ${esc(n.at)}` : ''}</span>`;
     } else if (orb) {
       tip.hidden = false;
-      tip.innerHTML = `<b>Skillerr Orb</b><span>Skillerr's own small AI, on this computer. Click to see what it's doing.</span>`;
+      tip.innerHTML = `<b>Your Orb</b><span>Your own AI model, on this computer. Nothing is sent anywhere. Click to see what it's doing.</span>`;
     } else tip.hidden = true;
     if (!tip.hidden) {
       const tw = tip.offsetWidth;

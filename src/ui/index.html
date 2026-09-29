@@ -109,7 +109,7 @@
           <label class="check"><input type="checkbox" data-r="history" checked /> <span><b>Browsing history</b><br /><span class="muted small">The pages you and your AIs opened, as listed under History.</span></span></label>
           <label class="check"><input type="checkbox" data-r="browsing" /> <span><b>Cookies and site data</b><br /><span class="muted small">Signs you out of most websites. All time, whatever the range.</span></span></label>
           <label class="check"><input type="checkbox" data-r="cache" checked /> <span><b>Cached images and files</b><br /><span class="muted small">Some sites load a little slower next time. All time, whatever the range.</span></span></label>
-          <label class="check"><input type="checkbox" data-r="memory" /> <span><b>Research memory</b><br /><span class="muted small">What your AIs looked into and learned: sessions, pages, topics and links (the Skillerr Orb map). Notes and skill files stay.</span></span></label>
+          <label class="check"><input type="checkbox" data-r="memory" /> <span><b>Research memory</b><br /><span class="muted small">What your AIs looked into and learned: sessions, pages, topics and links (the map on the Your Orb page). Notes and skill files stay.</span></span></label>
           <label class="check"><input type="checkbox" data-r="trails" /> <span><b>Trails</b><br /><span class="muted small">Your trails and the tabs waiting in them.</span></span></label>
           <label class="check"><input type="checkbox" data-r="bookmarks" /> <span><b>Bookmarks</b></span></label>
           <label class="check"><input type="checkbox" data-r="settings" /> <span><b>Settings</b><br /><span class="muted small">AI choice, appearance, switches.</span></span></label>
@@ -138,7 +138,7 @@
       <div class="dv-pane" data-tvpane="settings">
         <div class="tv-settings">
           <label class="switch-row"><div><b>Learn my trails</b><span>Files the pages you visit into threads of work, and notices what you leave unfinished. Pages your AI apps open go into trails of their own (below). Nothing leaves this computer.</span></div><input type="checkbox" id="tvLearn" /><span class="switch"></span></label>
-          <label class="switch-row"><div><b>Skillerr Orb</b><span>Skillerr's own small AI, built in. It matches pages to trails and finds your and your AIs' research by meaning, and answers “where was I?” from your own pages. Runs on this computer in microseconds, with nothing to download.</span></div><input type="checkbox" id="tvKilr" /><span class="switch"></span></label>
+          <label class="switch-row"><div><b>Your Orb</b><span>Your own AI model, running on this computer. It matches pages to trails, finds your and your AIs' research by meaning, and answers “where was I?” from your own pages. Nothing it sees or learns is sent to Skillerr or anyone else.</span></div><input type="checkbox" id="tvKilr" /><span class="switch"></span></label>
           <label class="switch-row"><div><b>Keep your AIs' research as trails</b><span>When Claude Desktop, Cursor or another AI app researches in Skillerr, its pages become a trail of their own ("Research by Claude Desktop"), named after what it was looking into, that you can continue later.</span></div><input type="checkbox" id="tvResearch" /><span class="switch"></span></label>
           <label class="switch-row"><div><b>Suggest skills from what you keep doing</b><span>When you (or your AIs) do the same kind of task again and again, like choosing what to buy or fixing errors, the Orb writes down how you do it as a skill your AI can follow: your searches, the sites you trust, in your order. Worked out on this computer from your trails; nothing is sent anywhere.</span></div><input type="checkbox" id="tvSkills" /><span class="switch"></span></label>
           <label class="switch-row"><div><b>Start with a clean tab strip</b><span>When you quit, the tabs still open wait in their trails, next to the address bar. Nothing is ever tucked while you're working. Turn this off to have them all reopen at launch instead.</span></div><input type="checkbox" id="tvFresh" /><span class="switch"></span></label>
@@ -169,7 +169,7 @@
     <section class="memview hv-map" id="memView" hidden>
       <div class="mv-top">
         <div class="hv-title">
-          <h2>Skillerr Orb</h2>
+          <h2>Your Orb</h2>
           <div class="muted small" id="mvStats"></div>
         </div>
         <div class="seg small-seg mv-mode" id="mvMode"><button type="button" data-m="map" class="on">Map</button><button type="button" data-m="folders">Folders</button></div>
@@ -188,7 +188,7 @@
           <p class="muted">Every page you visit, and every page your AI apps read for you, comes out of it as a thread of light. The more you and your AIs look into, the brighter it burns.</p>
           <button type="button" class="btn ghost sm" data-sheet="settings">Bring in your Chrome history</button>
         </div>
-        <aside class="kp" id="kilrPanel" hidden aria-label="Skillerr Orb"></aside>
+        <aside class="kp" id="kilrPanel" hidden aria-label="Your Orb"></aside>
       </div>
       <div class="mv-folders" id="mvFolders" hidden>
         <nav class="fd-tree" id="fdTree"></nav>
@@ -406,7 +406,7 @@
           <input type="checkbox" id="remember" /><span class="switch"></span>
         </label>
         <label class="switch-row">
-          <div><b>Recall by meaning</b><span>Finds past research even when it was worded differently, with Skillerr Orb, Skillerr's own small AI, built in. Stays on this computer; off, recall matches words.</span></div>
+          <div><b>Recall by meaning</b><span>Finds past research even when it was worded differently, with your Orb, your own AI model on this computer. Nothing is sent anywhere; off, recall matches words.</span></div>
           <input type="checkbox" id="semanticRecall" /><span class="switch"></span>
         </label>
         <label class="switch-row">

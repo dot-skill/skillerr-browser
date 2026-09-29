@@ -1,4 +1,4 @@
-// Kilr: Skillerr's own small AI, running inside the browser. It knows the user's work (trails) by meaning.
+// Kilr (the Orb): the user's own AI model, running on their computer. It knows the user's work (trails) by meaning.
 //
 // Kilr doesn't generate text. It embeds (src/kilr/embed.js: distilled static embeddings, microseconds per text) and
 // then chooses: the trail a page belongs to, the trails a search means, the trail a question is about. What it says is

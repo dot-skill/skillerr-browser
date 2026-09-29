@@ -30,7 +30,7 @@ let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
 const { AsyncLocalStorage } = require('async_hooks');
 const { AiActivity, pickPreviewTabs } = require('./ai-activity');
-// Kilr: Skillerr's own small AI (src/kilr), built in. It knows trails and research by meaning. Loaded on first use.
+// Kilr (the user's Orb): their own AI model (src/kilr), running on their computer. It knows trails and research by meaning. Loaded on first use.
 const KILR_DIR = path.join(__dirname, '..', 'assets', 'kilr'); // src/ and out/src/ alike
 const KILR_PERSONAL = path.join(store.DIR, 'kilr', 'personal.bin'); // what Kilr learned from this user's trails
 try { // staging builds called it Wenlo
@@ -337,7 +337,7 @@ function baseTabInfo(t) {
   const wc = t.view.webContents;
   return {
     id: t.id,
-    title: t.internal === 'memory' ? 'Skillerr Orb' : t.internal === 'data' ? 'History & Bookmarks' : t.internal === 'trails' ? 'Trails' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
+    title: t.internal === 'memory' ? 'Your Orb' : t.internal === 'data' ? 'History & Bookmarks' : t.internal === 'trails' ? 'Trails' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
     url: t.isStart ? '' : wc.getURL(),
     internal: t.internal || null,
     isStart: t.isStart,
@@ -1386,7 +1386,7 @@ function kilrSaveSuggestion(id) {
   const x = kilrSuggestions().find((y) => y.id === id);
   if (!x) return { ok: false, message: 'That suggestion is gone.' };
   try {
-    const r = skills.learn({ name: x.slug, description: x.description, instructions: x.instructions, topics: x.topics, by: 'Skillerr Orb' });
+    const r = skills.learn({ name: x.slug, description: x.description, instructions: x.instructions, topics: x.topics, by: 'your Orb' });
     const s = store.getSettings();
     store.saveSettings({ ...s, kilrSkillsSaved: { ...(s.kilrSkillsSaved || {}), [id]: x.count } });
     if (s.shareSkillsWithClaudeCode) skills.shareWithClaudeCode();
@@ -2095,7 +2095,7 @@ const BROWSER_TOOLS = {
       '',
       `Research folders (one folder per topic, with an index and the notes): ${RESEARCH_DIR}`,
       `Research memory: ${st.session} sessions, ${st.page} pages, ${st.topic} topics, stored on this computer in ${path.join(store.DIR, 'memory')}. ` +
-        'Use recall to search it. The user can browse it in Skillerr → ⋮ → Skillerr Orb.',
+        'Use recall to search it. The user can browse it in Skillerr → ⋮ → Your Orb.',
     ].join('\n') };
   },
   my_trails: async (args) => {
@@ -2748,7 +2748,7 @@ function wireIpc() {
       { label: 'Fleet View', accelerator: 'CmdOrCtrl+Shift+F', type: 'checkbox', checked: !!mosaic, click: () => (mosaic ? exitMosaic() : enterMosaic(tabs.map((t) => t.id))) },
       { type: 'separator' },
       { label: 'History', accelerator: 'CmdOrCtrl+Y', click: () => { openInternal('data'); ui('data-tab', 'history'); } },
-      { label: 'Skillerr Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: () => openInternal('memory') },
+      { label: 'Your Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: () => openInternal('memory') },
       { label: 'Trails', click: () => openInternal('trails') },
       { label: 'Bookmarks', click: () => { openInternal('data'); ui('data-tab', 'bookmarks'); } },
       { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: () => bookmarkActive() },
@@ -3044,7 +3044,7 @@ function buildMenu() {
         { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', click: guard(() => closedTabs.length && newTab(closedTabs.pop())) },
         { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: guard(() => activeTab()?.view.webContents.print()) },
         { label: 'History', accelerator: 'CmdOrCtrl+Y', click: guard(() => { openInternal('data'); ui('data-tab', 'history'); }) },
-        { label: 'Skillerr Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: guard(() => openInternal('memory')) },
+        { label: 'Your Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: guard(() => openInternal('memory')) },
         { label: 'Bookmarks', click: guard(() => { openInternal('data'); ui('data-tab', 'bookmarks'); }) },
         { label: 'Trails', accelerator: 'CmdOrCtrl+Shift+L', click: guard(() => openInternal('trails')) },
         { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: guard(() => bookmarkActive()) },

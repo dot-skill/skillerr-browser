@@ -1,5 +1,5 @@
 // Semantic recall: local embeddings so `recall` finds past research phrased differently ("lodging" ↔ "hotel").
-// By default Skillerr's own Kilr embeddings (src/kilr), built in: nothing to install, microseconds per text, vectors kept
+// By default the user's Orb (Kilr) embeddings (src/kilr), built in: nothing to install, microseconds per text, vectors kept
 // in memory only (re-making them is cheaper than reading them). If the user sets an OpenAI-compatible endpoint
 // (embedBaseUrl, e.g. Ollama with nomic-embed-text), that is used instead and its vectors are saved.
 // Only what memory already keeps is embedded (labels, summaries, keywords), never page text. Nothing leaves the machine.
