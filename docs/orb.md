@@ -24,6 +24,7 @@ nothing to install and nothing to download, and nothing leaves the computer.
 | **Find anything by meaning** | Type what you remember in the address bar ("newborn feeding", "train from tokyo to kyoto"): open tabs, waiting tabs and trail pages appear above web search. ↵ switches to the tab, or brings a waiting or visited page back where you were. |
 | **Suggests skills** | When you (or your AIs) keep doing the same kind of task, like choosing what to buy, the Orb offers to save how you do it as a skill your AI can follow. Below. |
 | **Learns your words, and your AI's** | Weekly (by default it asks first), the Orb retrains on your trails and your AIs' research so your jargon joins the right trail. Below. |
+| **Moving over from Chrome** | Sorts your open Chrome tabs into journeys: tabs opened in one sitting stay together, sittings on different days join when they're about the same thing, and inboxes and plain chat pages aren't journeys. Titles that say nothing ("Log In") are read as their site. See docs/trails.md. |
 | **Trails: filing pages** | A page joins the journey going on by meaning as well as by shared words. "hotels in japan for october" joins a trail of "cheap flights to tokyo" opened an hour ago. |
 | **Trails: search** | The Trails page search box is "Ask the Orb": "plane tickets to Japan" finds the Tokyo flights trail. |
 | **Start page** | One line above the trail cards: the latest trail, where you stopped and what's unfinished, with **Continue**. |

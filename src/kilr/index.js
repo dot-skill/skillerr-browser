@@ -4,6 +4,7 @@
 // then chooses: the trail a page belongs to, the trails a search means, the trail a question is about. What it says is
 // built from the facts of the user's own trails, so it can't make things up.
 const { KilrEmbed, cosine, centroid, decodePersonal } = require('./embed');
+const { readableTitle } = require('./journeys');
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
@@ -95,7 +96,7 @@ class Kilr {
     const hit = this.trailCache.get(t.id);
     if (hit && hit.key === key) return hit.vec;
     const recent = [...t.pages].sort((a, b) => b.lastAt - a.lastAt).slice(0, 24);
-    const texts = [...t.searches.slice(0, 8), ...t.searches.slice(0, 8), ...recent.map((p) => p.title), ...(t.titleByUser ? [t.title, t.title] : [])];
+    const texts = [...t.searches.slice(0, 8), ...t.searches.slice(0, 8), ...recent.map((p) => readableTitle(p)), ...(t.titleByUser ? [t.title, t.title] : [])];
     const vec = centroid(texts.map((x) => this.vec(x)));
     this.trailCache.set(t.id, { key, vec });
     return vec;
@@ -103,7 +104,8 @@ class Kilr {
 
   // How much a page (title, heading, description, or a search) is about a trail: 0…1.
   pageAffinity(page, t) {
-    const pv = this.vec(page.query || [page.title, page.h1].filter(Boolean).join('. '));
+    // A title that says nothing ("Log In", "Render Dashboard") is read as its site.
+    const pv = this.vec(page.query || [page.url ? readableTitle(page) : page.title, page.h1].filter(Boolean).join('. '));
     return this.closeness(cosine(pv, this.trailVec(t)));
   }
 

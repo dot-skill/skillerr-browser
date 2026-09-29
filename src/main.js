@@ -1034,43 +1034,40 @@ function reopenTuckedTab(id, url) {
 }
 
 // ---------- moving over from Chrome: its open tabs, sorted into trails ----------
-// All the tabs are grouped at once (average-linkage clustering on the Orb's meaning plus shared keywords; settings
-// chosen on scripts/kilr/eval-trails.js), then each group is filed as one trail, joining an existing trail when it's
-// about the same thing. They all wait on the shelf, like the tabs of a last session: the tab strip stays clean, and
-// Continue brings a journey back. Nothing is closed in Chrome.
-const IMPORT_CLUSTER = { threshold: 0.2, wordBonus: 0.1 };
+// The Orb sorts them on this computer, with no other AI (src/kilr/journeys.js): tabs opened in one sitting stay
+// together, sittings on different days join when they're about the same thing, and everyday pages (an inbox, a plain
+// AI chat page) aren't a journey. Each journey is filed as one trail, led by the tab that says most about it (the
+// trail is named after it), joining an existing trail when it's about the same thing. Everything waits on the shelf,
+// like the tabs of a last session: the tab strip stays clean, and Continue brings a journey back. Nothing is closed
+// in Chrome.
 function importChromeTabs(profile) {
   const db = trailsDb();
-  const seen = new Set(userTabs().map((t) => pageKey(tabUrl(t))));
+  const seen = new Set(userTabs().map((t) => tabUrl(t)));
   const list = [];
   for (const t of chrome_.openTabs(profile)) {
-    const key = pageKey(t.url);
-    if (seen.has(key) || !db.tuckable(t.url)) continue;
-    seen.add(key);
+    if (seen.has(t.url) || !db.tuckable(t.url)) continue; // a mail thread isn't its inbox: same page means same URL
+    seen.add(t.url);
     list.push({ ...t, title: t.title || t.url });
   }
-  const { pageWords, cleanTitle } = require('./trails');
-  const vecs = list.map((t) => (kilrOn() ? kilr.vec(cleanTitle(t.title)) : null)); // without the site's name, as Trails compares titles
-  const words = list.map((t) => new Set(pageWords({ url: t.url, title: t.title })));
-  const sim = (i, j) => {
-    const shared = [...words[i]].filter((w) => words[j].has(w)).length;
-    return (vecs[i] && vecs[j] ? kilrCosine(vecs[i], vecs[j]) : 0) + IMPORT_CLUSTER.wordBonus * Math.min(shared, 2);
-  };
-  const groupsOfTabs = require('./trails').clusterItems(list.length, sim, { threshold: IMPORT_CLUSTER.threshold });
+  const { groupTabs } = require('./kilr/journeys');
+  const { journeys, everyday } = groupTabs(list, kilrOn() ? { vec: (x) => kilr.vec(x), cosine: kilrCosine } : null);
   const at = Date.now();
   const tucked = new Map(); // trail id → tabs
-  for (const g of groupsOfTabs) {
+  const put = (trailId, t) => (tucked.get(trailId) || tucked.set(trailId, []).get(trailId)).push({ url: t.url, title: t.title });
+  for (const g of journeys) {
     let trailId = null;
     for (const i of g) {
       const t = list[i];
       trailId = db.observe({ url: t.url, title: t.title }, trailId ? { tabTrail: trailId, tabAt: at } : { typed: true }) || trailId || db.loose();
-      (tucked.get(trailId) || tucked.set(trailId, []).get(trailId)).push({ url: t.url, title: t.title });
+      put(trailId, t);
     }
   }
+  for (const i of everyday) put(db.loose(), list[i]);
   for (const [trailId, tabsOf] of tucked) db.tuck(trailId, tabsOf, 'chrome');
   trailsChanged();
-  kilrDid(`Sorted ${list.length} tabs from Chrome into ${tucked.size} trails`);
-  return { count: list.length, open: 0, trails: tucked.size };
+  const trailCount = [...tucked.keys()].filter((id) => !db.get(id)?.loose).length;
+  kilrDid(`Sorted ${list.length} tabs from Chrome into ${trailCount} trails${everyday.length ? `, and ${everyday.length} everyday pages` : ''}`);
+  return { count: list.length, open: 0, trails: trailCount };
 }
 
 // "Continue": the tabs the trail was put away with come back up to the tab strip, scrolled where the user was. Pages

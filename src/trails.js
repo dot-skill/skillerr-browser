@@ -245,7 +245,7 @@ class Trails {
       // An AI's research trail takes the user's pages only when they carry on from it (same tab, or opened from it).
       if (t.research && !own) continue;
       let score = similarity(words, t);
-      if (this.meaning && !sensitive) score = Math.max(score, MEANING_WEIGHT * this.meaningOf(() => this.meaning.affinity({ title, h1, query }, t)));
+      if (this.meaning && !sensitive) score = Math.max(score, MEANING_WEIGHT * this.meaningOf(() => this.meaning.affinity({ url, title, h1, query }, t)));
       if (ctx.tabTrail === t.id && at - (ctx.tabAt || 0) < CONTINUE_MS) score += typed ? 0.15 : 0.6;
       if (ctx.openerTrail === t.id) score += 0.5;
       if (!query && t.hosts?.[host] && !this.everyday(host)) score += 0.12;

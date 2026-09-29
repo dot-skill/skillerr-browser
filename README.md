@@ -147,7 +147,8 @@ flowchart LR
 - **Closed means done.** A page you closed never comes back with its trail.
 - **Unfinished work, noticed:** a form you typed into but never sent, an article you read partway, a cart you didn't
   check out, a long video you stopped halfway.
-- **Move over from Chrome in one click.** Your open Chrome tabs come over sorted into trails, waiting on the shelf.
+- **Move over from Chrome in one click.** Your open Chrome tabs come over sorted into journeys by the Orb (what you
+  opened together, and what it's about across days), waiting on the shelf.
 - **Yours to control:** rename, merge, mark done, forget, never learn from a site. AI apps see your trails (`my_trails`) only after you allow each one once.
 
 See [docs/trails.md](docs/trails.md).
