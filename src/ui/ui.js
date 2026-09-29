@@ -1582,7 +1582,7 @@ function openSheet(name, opts = {}) {
   closeSheets();
   $('sheet-' + name).classList.add('open');
   if (name === 'connect') renderConnectSheet();
-  if (name === 'settings') loadSettingsSheet(opts);
+  if (name === 'settings') loadSettingsSheet(opts).then(() => opts.pane && showPane(opts.pane));
   if (name === 'skills') renderSkillsSheet();
 }
 function closeSheets() {
@@ -1593,7 +1593,7 @@ document.addEventListener('click', (e) => {
   const sheetLink = e.target.closest('[data-sheet]');
   if (sheetLink) {
     e.preventDefault();
-    openSheet(sheetLink.dataset.sheet);
+    openSheet(sheetLink.dataset.sheet, sheetLink.dataset.pane ? { pane: sheetLink.dataset.pane } : {});
   }
   const link = e.target.closest('[data-url]');
   if (link) {
