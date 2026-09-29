@@ -9,17 +9,17 @@ local text embeddings.
 
 - **What it adds:** a second signal to recall. Besides shared words, recall now counts *closeness in meaning*, measured
   by a local embedding model.
-- **Where it runs:** on the user's computer. By default it uses **Kilr**, Skillerr's own built-in embeddings
-  ([docs/kilr.md](kilr.md)): nothing to install, microseconds per text, vectors kept in memory only. Setting
+- **Where it runs:** on the user's computer. By default it uses **The Orb**, Skillerr's own built-in embeddings
+  ([docs/orb.md](kilr.md)): nothing to install, microseconds per text, vectors kept in memory only. Setting
   `embedBaseUrl` switches to any OpenAI-compatible `/embeddings` endpoint instead (Ollama with `nomic-embed-text`, LM
   Studio, llama.cpp server, a remote endpoint if the user chooses), and the rest of this page describes that path.
 - **What gets embedded:** only what research memory already keeps: titles, goals, summaries, topic and entity names,
   and page keywords. **Never page text**, and nothing for pages with password or payment fields, because memory never
   stores those in the first place.
-- **If Kilr is off and there's no endpoint:** recall works exactly as before (words only). Nothing breaks and nothing
+- **If the Orb is off and there's no endpoint:** recall works exactly as before (words only). Nothing breaks and nothing
   is sent anywhere.
-- **Setup:** none with Kilr. For an endpoint: `ollama pull nomic-embed-text` (about 270 MB) and set `embedBaseUrl`.
-- **Scale:** Kilr's raw cosines run lower than nomic's, so they're mapped onto the same scale (`kilrScale` in
+- **Setup:** none with the Orb. For an endpoint: `ollama pull nomic-embed-text` (about 270 MB) and set `embedBaseUrl`.
+- **Scale:** The Orb's raw cosines run lower than nomic's, so they're mapped onto the same scale (`kilrScale` in
   `src/embed.js`, from its calibration) and recall's thresholds below hold for both.
 
 ## How it works

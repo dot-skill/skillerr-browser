@@ -1,6 +1,6 @@
-# Building Kilr's embeddings
+# Building the Orb's embeddings
 
-Kilr's model is a table: one small vector per word piece of the `all-MiniLM-L6-v2` vocabulary (30,522 pieces × 256
+The Orb's model is a table: one small vector per word piece of the `all-MiniLM-L6-v2` vocabulary (30,522 pieces × 256
 numbers, int8). A text's embedding is the average of its pieces' vectors. This folder rebuilds that table from scratch
 on a laptop CPU in well under an hour. No GPU, no training loop.
 
@@ -33,7 +33,7 @@ on a laptop CPU in well under an hour. No GPU, no training loop.
 - word bags drawn from the vocabulary (covers modern words the books lack)
 - short spans cut from the sentences (page titles and searches are 2–8 words)
 
-What Kilr learns comes from the teacher's embedding of each text, so the texts only need to be varied.
+What the Orb learns comes from the teacher's embedding of each text, so the texts only need to be varied.
 
 ## Run it
 

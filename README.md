@@ -137,57 +137,57 @@ flowchart LR
 <details>
 <summary><b>What you get</b></summary>
 
-- **Threads of your work, learned.** Pages you visit are filed into trails like "Kyoto ryokan near Gion" by what they
-  were opened from, what you searched and what they're about. Nothing to set up.
+- **Your journeys, learned.** Pages you visit are filed into trails like "Kyoto ryokan near Gion": one journey each,
+  from what they were opened from, what you searched and what they're about, in the same sitting. Nothing to set up.
+- **Your tabs are left alone while you work.** Nothing is tucked, grouped or moved.
+- **A clean start every time.** When you quit, the tabs still open wait in their trails. Next launch starts with one
+  new tab, and each waiting journey sits between reload and the address bar with its tabs' icons and how far through
+  it you are. Click one for its tabs; **Continue** brings them back up, scrolled to where you were.
+- **Closed means done.** A page you closed never comes back with its trail.
 - **Unfinished work, noticed:** a form you typed into but never sent, an article you read partway, a cart you didn't
   check out, a long video you stopped halfway.
-- **Tabs, tidied.** Tabs you haven't used for 12 hours are tucked into their trail once you have 9 or more open, and
-  **Tidy** in the tab strip does it now. Your 5 most recent tabs, forms you're typing, audio and pages you keep
-  coming back to always stay. Undo brings them all back. Tucked tabs stay in sight: each trail sits at the start of
-  the tab strip with its tabs' icons, and unfolds into them with a click.
-- **Pick up where you left off.** The start page shows your most relevant trails. **Continue** reopens a trail's tabs
-  (asleep until clicked) or the page you stopped at, scrolled to where you were. Quitting no longer loses your tabs.
-- **Move over from Chrome in one click.** Your open Chrome tabs come over sorted into trails: the ones you had in front
-  open, the rest tucked in their trails. Chrome history can seed trails too.
+- **Move over from Chrome in one click.** Your open Chrome tabs come over sorted into trails, waiting on the shelf.
 - **Yours to control:** rename, merge, mark done, forget, never learn from a site. AI apps see your trails (`my_trails`) only after you allow each one once.
 
 See [docs/trails.md](docs/trails.md).
 
 </details>
 
-### Kilr: Skillerr's own small AI
+### Skillerr Orb: Skillerr's own small AI
 
 <details>
 <summary><b>What you get</b></summary>
 
 - **Built in, tiny, fast.** One 7.9 MB file, about 26 µs per text in plain JavaScript. Runs on your CPU, no GPU
   needed, works offline. Nothing to install, nothing leaves your computer.
-- **Knows your work by meaning.** Pages join the right trail even in different words, "Ask Kilr" on the Trails page
+- **Knows your work by meaning.** Pages join the right trail even in different words, "Ask the Orb" on the Trails page
   finds "plane tickets to Japan" in a trail of Tokyo flights, and the start page says where you were and what's
   unfinished.
-- **Your tabs sort themselves** into named trail groups as you browse, and **the address bar finds anything by
-  meaning**: type "newborn feeding" and the tucked "How often to feed a newborn" comes back, scrolled where you were.
-- **Learns your words, and your AI's.** Every week (it asks first, or runs on its own when you're away), Kilr retrains
+- **Knows what's one journey.** It decides which pages belong together from what they're about, when they were
+  opened and from where, and how far through each journey you are.
+- **The address bar finds anything by meaning**: type "newborn feeding" and the waiting "How often to feed a newborn"
+  comes back, scrolled where you were.
+- **Learns your words, and your AI's.** Every week (it asks first, or runs on its own when you're away), the Orb retrains
   on your trails and your AIs' research in about a second, on this computer, and keeps the result only if it files
   pages better. Each source can be switched off.
 - **Your AI's research is kept too.** What Claude Desktop or Cursor researches in Skillerr becomes its own trail, named
   after what it was looking into, that you can see, search and continue.
 - **Suggests skills from what you keep doing.** Research products the same way three times (the same searches, the
-  same review sites) and Kilr offers to save how you do it as a skill, so your AI does it your way next time. Worked
+  same review sites) and the Orb offers to save how you do it as a skill, so your AI does it your way next time. Worked
   out from your trails and your AIs', with no AI model writing it.
 - **Recall by meaning, out of the box.** No Ollama needed any more.
-- **It doesn't make things up.** Kilr chooses from the facts of your own trails; it never generates text.
+- **It doesn't make things up.** The Orb chooses from the facts of your own trails; it never generates text.
 - **Ours.** Distilled from an open model (Apache-2.0) with a closed-form fit anyone can rerun on a laptop. See
-  [docs/kilr.md](docs/kilr.md).
+  [docs/orb.md](docs/orb.md).
 
 </details>
 
-### History, Kilr and folders
+### Skillerr Orb, history and folders
 
 <table>
 <tr>
-<td width="50%"><img alt="History: Kilr as a glowing cracked orb at the centre, with the research of Claude Code, Claude Desktop and Cursor coming out of it as threads of light" src=".github/assets/history.png"></td>
-<td width="50%"><img alt="Kilr panel: what Kilr is doing, its size and memory, runs on your CPU with no GPU and no internet, learning and suggested skills" src=".github/assets/kilr.png"></td>
+<td width="50%"><img alt="Skillerr Orb: a glowing cracked orb at the centre, with the research of Claude Code, Claude Desktop and Cursor coming out of it as threads of light" src=".github/assets/orb.png"></td>
+<td width="50%"><img alt="The Orb's panel: what it is doing, its size and memory, runs on your CPU with no GPU and no internet, learning and suggested skills" src=".github/assets/orb-panel.png"></td>
 </tr>
 <tr>
 <td width="50%"><img alt="Research folders: Travel, Japan, Flights, with sessions, notes and pages read, and a Copy prompt for your AI button" src=".github/assets/folders.png"></td>
@@ -198,17 +198,19 @@ See [docs/trails.md](docs/trails.md).
 <details>
 <summary><b>What you get</b></summary>
 
-- **History (⌘Y)** is everything you and your AIs looked into, as one map around Kilr: your pages on the warm end of
-  the spectrum, your AIs' on the cool end (one colour per app), pages you both touched in green. Kilr glows brighter
-  as your history grows. Click Kilr to see what it's doing on your computer: its size, memory, speed, what it learned
+- **Skillerr Orb (⇧⌘Y)** is everything you and your AIs looked into, as one map around the Orb: your pages on the warm end of
+  the spectrum, your AIs' on the cool end (one colour per app), pages you both touched in green. The Orb glows brighter
+  as your history grows. Click the Orb to see what it's doing on your computer: its size, memory, speed, what it learned
   and the skills it suggests.
+- **History (⌘Y)** is the plain list of pages you and your AIs opened, by day, with search, delete and **Clear
+  browsing data** by time range.
 - **A local knowledge graph** of sessions, pages, notes, skills, topics and entities. Co-visits, backlinks and topics
   build up as you browse.
 - **Research folders.** The topic taxonomy becomes a tree, and real folders in `~/Skillerr/research` with a README
   index and linked notes. Open a folder, or **Copy prompt for your AI** to hand the research to any AI.
 - **Continuity across AIs.** `recall`, `my_research` and `read_note` bring back past research. Notes and skills are
   also exposed as MCP resources, straight from disk.
-- **Recall by meaning.** Recall matches by meaning as well as by words, with Kilr built in (or your own embeddings
+- **Recall by meaning.** Recall matches by meaning as well as by words, with the Orb built in (or your own embeddings
   endpoint). See [docs/recall-by-meaning.md](docs/recall-by-meaning.md).
 
 </details>
@@ -271,7 +273,7 @@ See [docs/trails.md](docs/trails.md).
 - **In-place updates.** Windows, the Linux AppImage and signed Mac builds update themselves ("Restart to update").
   Other Mac builds get a download link. **Settings → Beta updates** opts in to prereleases.
 - Tab groups per research task, tab sleeping to stay light, per-tab zoom, a pop-up blocker, site permission prompts,
-  find in page, downloads, a context menu with "Ask Skillerr", history and bookmarks, Chrome import, and light and
+  find in page, downloads, a context menu with "Ask Skillerr", history with Clear browsing data, bookmarks, Chrome import, and light and
   dark themes.
 - Recordings of a tab or the window with captions, and screenshots, saved to your Movies and Pictures folders.
 
@@ -320,7 +322,7 @@ npm test                           # unit tests, including the recall quality ch
 ```
 
 Requires Node.js 22. More docs: [live view in Claude Desktop](docs/live-view.md), [passkeys](docs/passkeys.md),
-[recall by meaning](docs/recall-by-meaning.md), [trails](docs/trails.md), [Kilr](docs/kilr.md), [benchmarks](docs/benchmarks.md).
+[recall by meaning](docs/recall-by-meaning.md), [trails](docs/trails.md), [the Orb](docs/orb.md), [benchmarks](docs/benchmarks.md).
 
 <details>
 <summary><b>Project layout</b></summary>
@@ -340,7 +342,7 @@ src/
   chrome-import.js Chrome bookmarks and history import (local profile only)
   api-server.js    Local control API (127.0.0.1, bearer token; browser-origin requests refused)
   store.js         Settings and session files in ~/.skillerr/browser
-  ui/              Browser chrome, Pilot panel, start page, History map and Kilr panel, folders, HUD, captions
+  ui/              Browser chrome, Pilot panel, start page, History map and the Orb panel, folders, HUD, captions
 mcp/bridge.js      MCP stdio server that forwards to the running app (and serves notes, skills and the live view)
 mcp/preview/       Live view shown inside AI apps' chats (MCP Apps), built into mcp/preview.html
 mcp/setup.js       Connects AI apps and, if asked, makes Skillerr their web browser

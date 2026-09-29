@@ -1,5 +1,5 @@
 /* global skillerr, icon, esc, trunc, learnResultText */
-// Kilr's own screen, over the History page: what Kilr is, what it's doing right now, and what it costs this
+// The Orb's own panel, over the Skillerr Orb page: what the Orb is, what it's doing right now, and what it costs this
 // computer (disk, memory, speed), how it learns, and the skills it suggests from tasks done the same way again and again.
 // Opens from the orb or the Kilr button; while open it asks for kilr-status every two seconds.
 (() => {
@@ -90,7 +90,7 @@
       tile('Memory now', m.loaded ? `${s.memoryMB}<small> MB</small>` : '0<small> MB</small>', m.loaded ? `woke in ${fmt(m.loadMs)} ms` : 'asleep until it\'s needed', 'layers'),
       tile('Knows', `${fmt(m.words)}<small> words</small>`, `each as ${m.dims} numbers of meaning`, 'book'),
       tile('Speed', s.avgMicros != null ? `${fmt(s.avgMicros)}<small> µs</small>` : '–', s.texts ? `per text · ${fmt(s.texts)} read since Skillerr started` : 'per text · nothing read yet', 'clock'),
-      tile('Finds by meaning', `${fmt(s.recallVectors)}`, 'things in your History it can recall', 'search'),
+      tile('Finds by meaning', `${fmt(s.recallVectors)}`, 'things in research memory it can recall', 'search'),
       tile('Trails', `${fmt(s.trails?.you)}<small> yours</small> · ${fmt(s.trails?.ai)}<small> AIs'</small>`, 'threads of work it keeps filed', 'list'),
     ].join('');
     const r = s.runsOn || {};
