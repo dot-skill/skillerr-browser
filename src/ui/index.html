@@ -9,10 +9,8 @@
 <body>
   <header class="top">
     <div class="tabstrip">
-      <div class="shelf" id="shelf" hidden></div>
       <div class="tabs" id="tabs"></div>
       <button class="ibtn newtab" id="newtab" title="New tab  ⌘T"></button>
-      <button class="tidy-btn" id="tidyBtn" hidden title="Keep the 5 tabs you're using and tuck the rest into their trails. One click brings them back."></button>
     </div>
     <div class="toolbar">
       <div class="navbtns">
@@ -20,6 +18,7 @@
         <button class="ibtn" id="forward" title="Forward  ⌘]"></button>
         <button class="ibtn" id="reload" title="Reload  ⌘R"></button>
       </div>
+      <div class="shelf" id="shelf" hidden></div>
       <form class="omni" id="omni" autocomplete="off">
         <button type="button" class="intent" id="intent" title="Tab to switch"></button>
         <input id="url" spellcheck="false" placeholder="Search, enter an address, or tell Skillerr what to do" />
@@ -37,7 +36,6 @@
       <div class="popup-chip" id="popupChip" hidden></div>
       <div class="popup-chip passkey-chip" id="passkeyChip" hidden></div>
       <div class="popup-chip update-chip" id="updateChip" hidden></div>
-      <div class="popup-chip trails-chip" id="trailsChip" hidden></div>
       <button class="ibtn dl-btn" id="dlBtn" hidden title="Downloads"></button>
       <button class="human-pill" id="humanPill" hidden title="AI is paused. You're browsing on your own; nothing is sent to an AI or added to research memory. Click to let AI act again  ⇧⌘P"><span class="hp-dot"></span>Human mode <span class="hp-resume">Resume AI</span></button>
       <button class="pilot-btn" id="togglePanel" title="Pilot panel  ⌘J"><span class="orb xs" id="miniOrb"></span>Pilot</button>
@@ -108,7 +106,7 @@
         <div class="dv-reset">
           <label class="check"><input type="checkbox" data-r="browsing" /> <span><b>Cookies and site data</b><br /><span class="muted small">Signs you out of websites.</span></span></label>
           <label class="check"><input type="checkbox" data-r="memory" /> <span><b>History</b><br /><span class="muted small">What you and your AIs looked into: sessions, pages, topics and links. Notes and skills files stay.</span></span></label>
-          <label class="check"><input type="checkbox" data-r="trails" /> <span><b>Trails</b><br /><span class="muted small">Your trails and the tabs tucked into them.</span></span></label>
+          <label class="check"><input type="checkbox" data-r="trails" /> <span><b>Trails</b><br /><span class="muted small">Your trails and the tabs waiting in them.</span></span></label>
           <label class="check"><input type="checkbox" data-r="bookmarks" /> <span><b>Bookmarks</b></span></label>
           <label class="check"><input type="checkbox" data-r="settings" /> <span><b>Settings</b><br /><span class="muted small">AI choice, appearance, switches.</span></span></label>
           <label class="check"><input type="checkbox" data-r="everything" /> <span><b>Everything</b><br /><span class="muted small">All of the above, and sign out of your Skillerr account.</span></span></label>
@@ -124,7 +122,6 @@
           <div class="muted small">Your ongoing work, learned from what you browse. Kept on this computer.</div>
         </div>
         <div class="tv-actions">
-          <button type="button" class="btn ghost sm" id="tvTidy">Tidy tabs now</button>
           <div class="seg small-seg dv-tabs" id="tvTabs"><button type="button" data-tab="active" class="on">Ongoing</button><button type="button" data-tab="done">Done</button><button type="button" data-tab="settings">Settings</button></div>
         </div>
       </div>
@@ -140,7 +137,7 @@
           <label class="switch-row"><div><b>Kilr</b><span>Skillerr's own small AI, built in. It matches pages to trails and finds your and your AIs' research by meaning, and answers “where was I?” from your own pages. Runs on this computer in microseconds, with nothing to download.</span></div><input type="checkbox" id="tvKilr" /><span class="switch"></span></label>
           <label class="switch-row"><div><b>Keep your AIs' research as trails</b><span>When Claude Desktop, Cursor or another AI app researches in Skillerr, its pages become a trail of their own ("Research by Claude Desktop"), named after what it was looking into, that you can continue later.</span></div><input type="checkbox" id="tvResearch" /><span class="switch"></span></label>
           <label class="switch-row"><div><b>Suggest skills from what you keep doing</b><span>When you (or your AIs) do the same kind of task again and again, like choosing what to buy or fixing errors, Kilr writes down how you do it as a skill your AI can follow: your searches, the sites you trust, in your order. Worked out on this computer from your trails; nothing is sent anywhere.</span></div><input type="checkbox" id="tvSkills" /><span class="switch"></span></label>
-          <label class="switch-row"><div><b>Tuck away idle tabs</b><span>Tabs you haven't used for 12 hours go into their trail once you have 9 or more open. Your 5 most recent tabs, forms you're typing, audio and pages you keep coming back to always stay.</span></div><input type="checkbox" id="tvTuck" /><span class="switch"></span></label>
+          <label class="switch-row"><div><b>Start with a clean tab strip</b><span>When you quit, the tabs still open wait in their trails, next to the address bar. Nothing is ever tucked while you're working. Turn this off to have them all reopen at launch instead.</span></div><input type="checkbox" id="tvFresh" /><span class="switch"></span></label>
           <div class="tv-block" id="tvLearnBlock">
             <b>Kilr learns from your trails</b>
             <span class="muted small">Kilr teaches itself the words you and your AIs use (the places, products and jargon in your trails and their research) so it files new pages where they belong. On your computer, in a few seconds. No GPU needed, light on memory. A new version is kept only if it files your pages better.</span>
@@ -201,6 +198,7 @@
   </main>
 
   <div class="jump" id="jump" hidden></div>
+  <div class="shelf-pop" id="shelfPop" hidden></div>
   <div class="mosaic-layer" id="mosaic"></div>
 
   <!-- First launch: three screens, then out of the way for good. -->
@@ -225,7 +223,7 @@
       <div class="ob-opts">
         <label class="switch-row" id="obImportRow"><div><b>Bring my Chrome tabs, bookmarks and history</b><span>Your open tabs come over sorted into trails. Copied from Chrome on this computer, never from Google.</span></div><input type="checkbox" id="obImport" checked /><span class="switch"></span></label>
         <label class="switch-row"><div><b>Remember my research</b><span>A private map of what your AIs researched, so new questions build on old answers.</span></div><input type="checkbox" id="obRemember" checked /><span class="switch"></span></label>
-        <label class="switch-row"><div><b>Keep trails of my work</b><span>Groups what you browse into threads like “Kyoto trip”, tucks away tabs you've left, and shows what you didn't finish.</span></div><input type="checkbox" id="obTrails" checked /><span class="switch"></span></label>
+        <label class="switch-row"><div><b>Keep trails of my work</b><span>Groups what you browse into journeys like “Kyoto trip”. When you quit, open tabs wait in their trails, so every launch starts clean and you can pick any journey back up.</span></div><input type="checkbox" id="obTrails" checked /><span class="switch"></span></label>
         <div class="theme-row"><b>Search engine</b>
           <select id="searchEngine"><option value="google">Google (your country)</option><option value="duckduckgo">DuckDuckGo</option><option value="bing">Bing</option></select>
         </div>
@@ -403,7 +401,7 @@
           <input type="checkbox" id="semanticRecall" /><span class="switch"></span>
         </label>
         <label class="switch-row">
-          <div><b>Trails</b><span>Learns your ongoing work from what you browse and tucks away tabs you've left, on this computer only. <a href="#" id="manageTrails">Manage trails</a></span></div>
+          <div><b>Trails</b><span>Learns your journeys from what you browse; tabs still open when you quit wait in their trails. On this computer only. <a href="#" id="manageTrails">Manage trails</a></span></div>
           <input type="checkbox" id="trailsOn" /><span class="switch"></span>
         </label>
         <label class="switch-row">

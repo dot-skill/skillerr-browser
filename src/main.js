@@ -14,7 +14,7 @@ const { Recorder } = require('./recorder');
 const store = require('./store');
 const { Memory, recallText, tokens } = require('./memory');
 const chrome_ = require('./chrome-import');
-const { Trails, chooseTabsToTuck, pageKey } = require('./trails');
+const { Trails, pageKey } = require('./trails');
 const { buildHistoryGraph } = require('./history-graph');
 const { Kilr } = require('./kilr');
 const { cosine: kilrCosine } = require('./kilr/embed');
@@ -288,26 +288,7 @@ function previewAction(client, { action, tabId } = {}) {
 
 // ---------------- tabs ----------------
 
-// Tabs sort themselves: open tabs of the same trail show as one named group in the tab strip (2 or more tabs).
-const TRAIL_COLORS = ['#3de0c0', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#34d399', '#fb923c', '#38bdf8'];
-const trailColor = (id) => TRAIL_COLORS[[...String(id)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % TRAIL_COLORS.length];
-function trailGroupCounts() {
-  const counts = new Map();
-  if (!trailStore) return counts;
-  for (const t of tabs) if (t.trailId && !t.groupId && !t.isStart && !t.internal) counts.set(t.trailId, (counts.get(t.trailId) || 0) + 1);
-  for (const id of [...counts.keys()]) {
-    const tr = trailStore.get(id);
-    if (!tr || tr.loose || counts.get(id) < 2) counts.delete(id);
-  }
-  return counts;
-}
-function tabInfo(t, counts = null) {
-  const info = baseTabInfo(t);
-  if (counts && counts.has(t.trailId) && !info.group) {
-    info.trailGroup = { id: `trail:${t.trailId}`, trailId: t.trailId, title: trailStore.get(t.trailId)?.title || 'Trail', color: trailColor(t.trailId), count: counts.get(t.trailId) };
-  }
-  return info;
-}
+const tabInfo = (t) => baseTabInfo(t);
 function baseTabInfo(t) {
   if (t.sleeping) {
     return { id: t.id, title: t.sleeping.title, url: t.sleeping.url, internal: null, isStart: false, loading: false, favicon: t.sleeping.favicon,
@@ -420,21 +401,7 @@ function pruneGroups() {
   for (const id of groups.keys()) if (!groupTabs(id).length) groups.delete(id);
 }
 
-const pushTabs = () => {
-  const counts = trailGroupCounts();
-  ui('tabs', tabs.map((t) => tabInfo(t, counts)));
-};
-
-// A tab that just joined a trail moves next to that trail's other tabs, so the strip stays sorted by trail.
-function moveNextToTrail(tab) {
-  if (!tab.trailId || tab.groupId) return;
-  const i = tabs.indexOf(tab);
-  let last = -1;
-  tabs.forEach((t, j) => t !== tab && t.trailId === tab.trailId && !t.groupId && (last = j));
-  if (last < 0 || last === i - 1 || (i > 0 && tabs[i - 1].trailId === tab.trailId)) return;
-  tabs.splice(i, 1);
-  tabs.splice(last < i ? last + 1 : last, 0, tab);
-}
+const pushTabs = () => ui('tabs', tabs.map(tabInfo));
 
 // A tab's web view, with everything wired. Also used to wake a sleeping tab (its old view was closed to free memory).
 function attachView(tab) {
@@ -626,7 +593,16 @@ function closeTab(id) {
   const i = tabs.findIndex((t) => t.id === id);
   if (i < 0) throw new Error(`No tab ${id}`);
   const [tab] = tabs.splice(i, 1);
+  const trailId = tab.trailPage?.trailId || tab.trailId;
+  const url = tabUrl(tab);
   trailLeave(tab);
+  // Closing a tab means being done with that page: it never comes back with its trail. (Not when Skillerr is quitting:
+  // then open tabs are put away in their trails, not closed.)
+  if (trailId && !quitSnapshotDone && !tab.isStart && !tab.internal && !aiTab(tab) && learningTrails()) {
+    try {
+      if (trailsDb().closePage(trailId, url)) trailsChanged();
+    } catch {}
+  }
   if (!tab.isStart && !tab.internal) closedTabs.push(tab.sleeping ? tab.sleeping.url : tab.view.webContents.getURL());
   if (closedTabs.length > 25) closedTabs.shift();
   if (tab.view) win.contentView.removeChildView(tab.view);
@@ -828,9 +804,9 @@ function sleepIdleTabs() {
 setInterval(sleepIdleTabs, 20000);
 
 // ---------- trails: the user's own ongoing work (src/trails.js) ----------
-// Pages the user visits are filed into trails. Tabs they haven't used in a while are tucked into their trail (closed,
-// with where they were), and come back with one click from the start page or the Trails view. Only what the user does:
-// pages an AI opens or drives are research memory's, not trails'.
+// Pages the user visits are filed into trails, one journey each. Nothing is tucked while they work: when Skillerr quits,
+// the tabs still open wait in their trails (with where they were), on the shelf next to the address bar, and come back
+// with Continue. Only what the user does: pages an AI opens or drives are research memory's, not trails'.
 let trailStore = null;
 const trailsDb = () => trailStore || (trailStore = new Trails(path.join(store.DIR, 'trails'), { meaning: kilrOn() ? kilrMeaning : null }));
 // What Trails asks Kilr: how close a page is to a trail, and which trails a search means.
@@ -841,9 +817,6 @@ const kilrMeaning = {
 const learningTrails = () => store.getSettings().trails !== false;
 const TRAIL_WORLD = 7701; // the page's own scripts can't see or fake-silence the watcher in this isolated world
 const TRAIL_SENTINEL = '__skillerr_trail__';
-const TUCK_KEEP = 5; // the tabs you're working in stay open
-const TUCK_IDLE_MS = 12 * 3600 * 1000;
-const TUCK_MIN_TABS = 9; // fewer open tabs than this are never tidied automatically
 // Watches how far the page was read, whether a form was typed into and not sent, and how much of a video was watched.
 // Reports only those facts, never what was typed.
 const TRAIL_WATCH_JS = `(() => {
@@ -916,8 +889,6 @@ async function trailObserve(tab) {
     if (id) {
       tab.trailId = id;
       tab.trailAt = Date.now();
-      moveNextToTrail(tab);
-      pushTabs();
     }
     trailsChanged();
   } catch {} // trails must never break browsing
@@ -944,7 +915,7 @@ function trailReport(tab, msg) {
 
 let trailsTimer = null;
 let lastShelf = '';
-// The trail shelf in the tab strip: tucked tabs stay visible by their icons, grouped by trail.
+// The trail shelf between reload and the address bar: journeys waiting, by their tabs' icons.
 function pushShelf() {
   const shelf = learningTrails() ? trailsDb().shelf() : { trails: [], more: 0 };
   const json = JSON.stringify(shelf);
@@ -976,64 +947,6 @@ function trailForTab(t) {
 const tabUrl = (t) => (t.sleeping ? t.sleeping.url : t.view && !t.view.webContents.isDestroyed() ? t.view.webContents.getURL() : '');
 const userTabs = () => tabs.filter((t) => !t.isStart && !t.internal && /^https?:/.test(tabUrl(t)));
 
-// Never tucked: what's on screen, what an AI is using, a form being typed, sound playing, a page the user keeps coming
-// back to, a recording, and sites the user told trails to ignore.
-// An AI's tab is protected while it's working there (the last half hour); after that it can be tucked into its research.
-const aiWorking = (t) => (t.aiUntil || 0) > Date.now() - 30 * 60 * 1000;
-function tabProtected(t) {
-  const wc = t.view?.webContents;
-  return t.id === activeTabId || aiWorking(t) || !!(mosaic && mosaic.includes(t.id)) || !!(recorder && recorder.isRecording(t)) ||
-    t.trailState?.form === true || !!(wc && !wc.isDestroyed() && wc.isCurrentlyAudible()) || trailsDb().isReference(tabUrl(t)) ||
-    !trailsDb().tuckable(tabUrl(t));
-}
-
-let lastTuck = null; // [{ trailId, url }] for undo
-function tuckTabs(list, why, { dupes = 0 } = {}) {
-  const db = trailsDb();
-  const done = [];
-  for (const t of list) {
-    const url = tabUrl(t);
-    const trailId = trailForTab(t);
-    const title = t.sleeping ? t.sleeping.title : t.view.webContents.getTitle();
-    const scrollY = t.sleeping ? t.restoreScrollY : t.trailState?.y;
-    if (!db.tuck(trailId, [{ url, title, favicon: t.favicon, scrollY }], why)) continue;
-    done.push({ trailId, url });
-    closeTab(t.id);
-  }
-  if (!done.length) return null;
-  lastTuck = done;
-  const trailCount = new Set(done.map((d) => d.trailId)).size;
-  ui('trails-tucked', { count: done.length, trails: trailCount, dupes, auto: why === 'idle' });
-  trailsChanged();
-  return { count: done.length, trails: trailCount };
-}
-
-// "Tidy tabs": keep the tabs you're working in, tuck the rest into their trails.
-function tidyTabs({ force = false } = {}) {
-  if (!learningTrails()) return null;
-  // The same page open twice: the older copies close (a tidy the user asked for only); the one used last stays.
-  let dupes = 0;
-  if (force) {
-    const byPage = new Map();
-    for (const t of [...userTabs()].sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0))) {
-      const k = pageKey(tabUrl(t));
-      if (!byPage.has(k)) byPage.set(k, t);
-      else if (!tabProtected(t) && !t.groupId) {
-        closeTab(t.id);
-        dupes++;
-      }
-    }
-  }
-  const list = userTabs();
-  if (!force && list.length < TUCK_MIN_TABS) return null;
-  const ids = chooseTabsToTuck(list.map((t) => ({ id: t.id, lastUsed: t.lastUsed, protected: tabProtected(t) })),
-    { keep: TUCK_KEEP, idleMs: TUCK_IDLE_MS, force });
-  const r = tuckTabs(ids.map(getTab).filter(Boolean), force ? 'tidy' : 'idle', { dupes });
-  if (!r && dupes) ui('trails-tucked', { count: 0, trails: 0, dupes, auto: false });
-  return r || (dupes ? { count: 0, trails: 0, dupes } : null);
-}
-setInterval(() => store.getSettings().trailsTuck !== false && tidyTabs(), 10 * 60 * 1000);
-
 // A tab that loads only when opened: reopening a trail's twenty tabs costs nothing until you click one.
 function sleepingTab({ url, title, favicon, scrollY = 0, trailId = null }) {
   const tab = { id: nextTabId++, view: null, favicon: favicon || null, isStart: false, userZoom: 1, lastInput: 0, lastUsed: Date.now(),
@@ -1060,15 +973,6 @@ function reopenTucked(entries, trailId) {
   return entries.length;
 }
 
-function undoTuck() {
-  if (!lastTuck) return 0;
-  const db = trailsDb();
-  const back = [];
-  for (const { trailId, url } of lastTuck) back.push(...db.untuck(trailId, (x) => x.url === url).map((e) => ({ ...e, trailId })));
-  lastTuck = null;
-  return reopenTucked(back);
-}
-
 // One tucked tab back, from the shelf or a trail card.
 function reopenTuckedTab(id, url) {
   const back = trailsDb().untuck(id, (x) => x.url === url);
@@ -1076,10 +980,10 @@ function reopenTuckedTab(id, url) {
 }
 
 // ---------- moving over from Chrome: its open tabs, sorted into trails ----------
-// All the tabs are grouped at once (average-linkage clustering on Kilr's meaning plus shared keywords; settings chosen
-// on scripts/kilr/eval-trails.js), then each group is filed as one trail, joining an existing trail when it's about the
-// same thing. The tab in front in each Chrome window, and pinned tabs, come over open (asleep until clicked); the rest are
-// tucked into their trails, one click away. Nothing is lost and the tab strip stays calm.
+// All the tabs are grouped at once (average-linkage clustering on the Orb's meaning plus shared keywords; settings
+// chosen on scripts/kilr/eval-trails.js), then each group is filed as one trail, joining an existing trail when it's
+// about the same thing. They all wait on the shelf, like the tabs of a last session: the tab strip stays clean, and
+// Continue brings a journey back. Nothing is closed in Chrome.
 const IMPORT_CLUSTER = { threshold: 0.2, wordBonus: 0.1 };
 function importChromeTabs(profile) {
   const db = trailsDb();
@@ -1100,44 +1004,29 @@ function importChromeTabs(profile) {
   };
   const groupsOfTabs = require('./trails').clusterItems(list.length, sim, { threshold: IMPORT_CLUSTER.threshold });
   const at = Date.now();
-  const open = [];
   const tucked = new Map(); // trail id → tabs
   for (const g of groupsOfTabs) {
     let trailId = null;
     for (const i of g) {
       const t = list[i];
       trailId = db.observe({ url: t.url, title: t.title }, trailId ? { tabTrail: trailId, tabAt: at } : { typed: true }) || trailId || db.loose();
-      if (t.active || t.pinned) open.push({ url: t.url, title: t.title, trailId, order: [t.window, t.index] });
-      else (tucked.get(trailId) || tucked.set(trailId, []).get(trailId)).push({ url: t.url, title: t.title });
+      (tucked.get(trailId) || tucked.set(trailId, []).get(trailId)).push({ url: t.url, title: t.title });
     }
   }
   for (const [trailId, tabsOf] of tucked) db.tuck(trailId, tabsOf, 'chrome');
-  open.sort((a, b) => a.order[0] - b.order[0] || a.order[1] - b.order[1]);
-  for (const x of open) sleepingTab(x);
-  if (open.length) {
-    const start = activeTab()?.isStart ? activeTab() : null;
-    const first = tabs.find((t) => t.sleeping && pageKey(t.sleeping.url) === pageKey(open[0].url));
-    if (first) switchTab(first.id);
-    if (start && tabs.length > 1) closeTab(start.id);
-  }
-  pushTabs();
   trailsChanged();
-  const trailIds = new Set([...tucked.keys(), ...open.map((x) => x.trailId)]);
-  kilrDid(`Sorted ${list.length} tabs from Chrome into ${trailIds.size} trails`);
-  return { count: list.length, open: open.length, trails: trailIds.size };
+  kilrDid(`Sorted ${list.length} tabs from Chrome into ${tucked.size} trails`);
+  return { count: list.length, open: 0, trails: tucked.size };
 }
 
-// "Continue": the trail's tucked tabs come back; with none, the page the user stopped at (scrolled where they were).
+// "Continue": the tabs the trail was put away with come back up to the tab strip, scrolled where the user was. Pages
+// the user closed are done with and don't come back.
 function continueTrail(id) {
   const db = trailsDb();
   const t = db.detail(id);
   if (!t) throw new Error(`No trail ${id}.`);
   const tucked = db.untuck(id);
-  if (tucked.length) return { opened: reopenTucked(tucked, id), title: t.title };
-  const target = t.unfinished[0] ? t.pages.find((p) => p.url === t.unfinished[0].url) : t.pages[0];
-  if (!target) return { opened: 0, title: t.title };
-  reopenTucked([{ url: target.url, title: target.title, favicon: target.favicon, scrollY: target.scrollY || 0 }], id);
-  return { opened: 1, title: t.title };
+  return { opened: tucked.length ? reopenTucked(tucked, id) : 0, title: t.title };
 }
 
 // Quitting keeps every open tab in its trail, so "pick up where you left off" also brings back the last session.
@@ -1173,7 +1062,8 @@ function trailsHome() {
   if (s.trails === false) return { enabled: false, intro: false, trails: [], session: null };
   const db = trailsDb();
   const session = db.lastSession();
-  const all = db.list();
+  // Pick up where you left off: journeys with tabs still waiting. Ones whose pages were all closed are finished.
+  const all = db.list().filter((t) => t.tucked > 0);
   return {
     enabled: true,
     intro: !s.trailsIntroSeen,
@@ -1476,14 +1366,14 @@ function trailsText({ query = '', trail_id: id = '' } = {}) {
     return [`Trail “${t.title}” (${t.id}) — ${t.state}, last active ${ago(t.lastAt)}, ${t.sessions} session${t.sessions === 1 ? '' : 's'} over ${t.days} day${t.days === 1 ? '' : 's'}`,
       t.searches.length ? `Searches: ${t.searches.join(' · ')}` : '',
       t.unfinished.length ? `Unfinished:\n${t.unfinished.map((u) => `- ${unfinished(u)}`).join('\n')}` : '',
-      t.tuckedTabs.length ? `Tucked tabs (closed, kept here):\n${t.tuckedTabs.map((x) => `- ${x.title} — ${x.url}`).join('\n')}` : '',
+      t.tuckedTabs.length ? `Tabs waiting (open when the user last quit; Continue brings them back):\n${t.tuckedTabs.map((x) => `- ${x.title} — ${x.url}`).join('\n')}` : '',
       `Pages, newest first:\n${t.pages.slice(0, 40).map((p) => `- ${p.title} — ${p.url} (${p.visits} visit${p.visits === 1 ? '' : 's'}, last ${ago(p.lastAt)})`).join('\n')}`,
     ].filter(Boolean).join('\n\n');
   }
   const list = db.list({ query: String(query || ''), limit: 12 });
   if (!list.length) return query ? `No trails match “${query}”.` : 'No trails yet: the user hasn\'t browsed enough in Skillerr for any to form.';
   return ['The user\'s trails: their own ongoing work in Skillerr, most relevant first. Pass trail_id to my_trails for a trail\'s pages; continue_trail reopens one for the user.', '',
-    ...list.map((t, i) => [`${i + 1}. ${t.title} (trail_id ${t.id})${t.by ? ` — research by ${t.by}${t.researchSummary ? `: ${t.researchSummary}` : ''}` : ''} — last active ${ago(t.lastAt)}, ${t.pageCount} pages${t.sessions > 1 ? `, came back ${t.sessions - 1} time${t.sessions === 2 ? '' : 's'}` : ''}${t.tucked ? `, ${t.tucked} tucked tabs` : ''}`,
+    ...list.map((t, i) => [`${i + 1}. ${t.title} (trail_id ${t.id})${t.by ? ` — research by ${t.by}${t.researchSummary ? `: ${t.researchSummary}` : ''}` : ''} — last active ${ago(t.lastAt)}, ${t.pageCount} pages${t.sessions > 1 ? `, came back ${t.sessions - 1} time${t.sessions === 2 ? '' : 's'}` : ''}${t.tucked ? `, ${t.tucked} tabs waiting` : ''}, ${Math.round((t.progress || 0) * 100)}% through`,
       t.stoppedAt ? `   Stopped at: ${t.stoppedAt.title} — ${t.stoppedAt.url}` : '',
       ...t.unfinished.slice(0, 3).map((u) => `   Unfinished: ${unfinished(u)}`),
       t.searches.length ? `   Searched: ${t.searches.slice(0, 3).join(' · ')}` : '',
@@ -2479,7 +2369,7 @@ function wireIpc() {
     try {
       if (openTabs && learningTrails()) {
         const r = importChromeTabs(profile);
-        if (r.count) done.push(`${r.count} open tabs, sorted into ${r.trails} trail${r.trails === 1 ? '' : 's'} (${r.open} open, the rest tucked in their trails)`);
+        if (r.count) done.push(`${r.count} open tabs, sorted into ${r.trails} trail${r.trails === 1 ? '' : 's'}, waiting next to the address bar`);
         else done.push('no open tabs found');
       }
       if (bookmarks) {
@@ -2528,10 +2418,6 @@ function wireIpc() {
   });
   ipcMain.on('jump-open', (_e, c) => c && jumpOpen(c));
   // A trail's group in the tab strip: × puts all its tabs away in the trail (they stay one click away).
-  ipcMain.on('trail-group-tuck', (_e, trailId) => {
-    const list = userTabs().filter((t) => t.trailId === trailId && !t.groupId && t.trailState?.form !== true); // a form being typed stays
-    if (list.length) tuckTabs(list, 'tidy');
-  });
   ipcMain.on('chrome-on-top', (_e, on) => {
     if (chromeOnTop === !!on) return;
     chromeOnTop = !!on;
@@ -2572,11 +2458,9 @@ function wireIpc() {
   ipcMain.handle('trails-ignore', (_e, host) => changed(trailsDb().ignoreHost(host)));
   ipcMain.handle('trails-unignore', (_e, host) => changed(trailsDb().unignoreHost(String(host))));
   ipcMain.handle('trails-forget-all', () => changed(trailsDb().forgetAll()));
-  ipcMain.handle('trails-tidy', () => tidyTabs({ force: true }) || { count: 0 });
-  ipcMain.handle('trails-undo-tuck', () => undoTuck());
   ipcMain.handle('trails-info', () => {
     const s = store.getSettings();
-    return { enabled: s.trails !== false, tuck: s.trailsTuck !== false, kilr: s.kilr !== false, ignored: trailsDb().data.ignoredHosts, everyday: trailsDb().everydaySites(),
+    return { enabled: s.trails !== false, fresh: s.trailsFresh !== false, kilr: s.kilr !== false, ignored: trailsDb().data.ignoredHosts, everyday: trailsDb().everydaySites(),
       clients: s.trailsAllowedClients || [], chrome: chrome_.available() ? chrome_.profiles() : [] };
   });
   ipcMain.handle('trails-revoke-client', (_e, name) => {
@@ -2584,19 +2468,6 @@ function wireIpc() {
     store.saveSettings({ ...s, trailsAllowedClients: (s.trailsAllowedClients || []).filter((c) => c !== name) });
     return true;
   });
-  // A head start from Chrome's history: groups of related pages from the last month become trails.
-  ipcMain.handle('trails-seed', (_e, profile) => {
-    try {
-      const dir = profile || chrome_.profiles()[0]?.dir;
-      if (!dir) return { ok: false, message: 'Chrome wasn\'t found on this computer.' };
-      const n = trailsDb().seed(chrome_.history(dir));
-      trailsChanged();
-      return { ok: true, count: n, message: n ? `Found ${n} trail${n === 1 ? '' : 's'} in your Chrome history.` : 'No trails found in your recent Chrome history.' };
-    } catch (err) {
-      return { ok: false, message: /EACCES|EPERM/.test(err.message) ? 'macOS blocked access to Chrome\'s files. Allow Skillerr in System Settings → Privacy & Security → Full Disk Access, then try again.' : err.message };
-    }
-  });
-
   // History & bookmarks management, and resets.
   ipcMain.handle('data-history', (_e, q) => memory.history({ q: String(q || '') }));
   ipcMain.handle('data-delete-pages', (_e, ids) => {
@@ -3064,7 +2935,6 @@ function buildMenu() {
         { label: 'History', accelerator: 'CmdOrCtrl+Y', click: guard(() => openInternal('memory')) },
         { label: 'Bookmarks & Data', click: guard(() => openInternal('data')) },
         { label: 'Trails', accelerator: 'CmdOrCtrl+Shift+L', click: guard(() => openInternal('trails')) },
-        { label: 'Tidy Tabs into Trails', click: guard(() => tidyTabs({ force: true })) },
         { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: guard(() => bookmarkActive()) },
       ],
     },
@@ -3271,6 +3141,13 @@ app.whenReady().then(async () => {
   });
 
   newTab();
+  // Each launch starts with a clean tab strip; last time's tabs wait in their trails (on the shelf). Unless the user
+  // asked for them back every time.
+  if (store.getSettings().trailsFresh === false && learningTrails()) {
+    try {
+      restoreLastSession();
+    } catch {}
+  }
   traceStartup('first tab open');
   markReady();
   reconciling.then((removed) => removed.length && ui('connections-reset', removed));

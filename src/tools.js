@@ -284,20 +284,20 @@ const TRAIL_TOOLS = [
   {
     name: 'my_trails',
     description: 'The user\'s trails: threads of their own ongoing work in Skillerr (e.g. "Kyoto trip", "Standing desk"), learned from what ' +
-      'they browse. Each says where they stopped, what they left unfinished (a form not sent, an article read partway, a cart), and which ' +
-      'tabs they tucked away. Use it when the user asks what they were doing, wants to pick something back up, or refers to earlier browsing ' +
+      'they browse. Each says where they stopped, what they left unfinished (a form not sent, an article read partway, a cart), how far ' +
+      'through it they are, and which tabs are waiting in it (the ones still open when they last quit). Use it when the user asks what they were doing, wants to pick something back up, or refers to earlier browsing ' +
       '("that hotel I was looking at"). Pass trail_id for one trail\'s pages. The first time, the user is asked to allow it.',
     input_schema: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Only trails about this.' },
-        trail_id: { type: 'string', description: 'One trail in full: its pages, searches, unfinished work and tucked tabs.' },
+        trail_id: { type: 'string', description: 'One trail in full: its pages, searches, unfinished work and waiting tabs.' },
       },
     },
   },
   {
     name: 'continue_trail',
-    description: 'Reopen one of the user\'s trails for them in Skillerr: its tucked tabs, or the page they stopped at, scrolled to where they were.',
+    description: 'Reopen one of the user\'s trails for them in Skillerr: the tabs waiting in it come back, scrolled to where they were. Pages the user closed are done with and don\'t come back.',
     input_schema: { type: 'object', properties: { trail_id: { type: 'string' } }, required: ['trail_id'] },
   },
 ];

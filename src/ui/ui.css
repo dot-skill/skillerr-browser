@@ -709,11 +709,6 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .ai-note { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface); color: var(--text-2); font-size: 13px; }
 
 /* ---------- trails ---------- */
-.tidy-btn { -webkit-app-region: no-drag; display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; margin: 0 0 3px 4px; border-radius: 13px; flex: none;
-  font-size: 11.5px; font-weight: 600; color: var(--text-2); border: 1px solid var(--line-2); transition: all .15s; white-space: nowrap; }
-.tidy-btn:hover { color: var(--text); background: var(--surface-3); }
-.tidy-btn[hidden] { display: none; }
-.trails-chip { color: var(--text); background: color-mix(in srgb, var(--teal) 12%, var(--surface)); border-color: color-mix(in srgb, var(--teal) 40%, var(--line-2)); }
 .trails-home { align-self: stretch; margin: 26px 0 0; }
 .trails-home[hidden] { display: none; }
 .section-row { display: flex; align-items: baseline; justify-content: space-between; }
@@ -786,29 +781,39 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .tv-add input, .tv-profile { flex: 1; max-width: 260px; height: 30px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--surface-2); padding: 0 10px; outline: none; font-size: 12.5px; }
 .tv-settings > .switch-row { padding: 8px 0; }
 
-/* the trail shelf: tucked tabs at the start of the tab strip, by their icons */
-.shelf { -webkit-app-region: no-drag; display: flex; align-items: center; gap: 4px; flex: none; height: 32px; padding-right: 8px; margin-right: 4px;
-  border-right: 1px solid var(--line-2); animation: rise .25s both; }
+/* the trail shelf: journeys waiting between reload and the address bar, by their tabs' icons */
+.shelf { -webkit-app-region: no-drag; display: flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; overflow: hidden; height: 32px; animation: rise .25s both; }
 .shelf[hidden] { display: none; }
-.shelf-trail { display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 7px 0 5px; border-radius: 13px; flex: none;
-  background: color-mix(in srgb, var(--surface-3) 70%, transparent); border: 1px solid var(--line); color: var(--text-2); transition: all .15s; }
+.shelf-trail { position: relative; display: flex; align-items: center; gap: 5px; height: 28px; padding: 0 7px 0 5px; border-radius: 9px; flex: none; overflow: hidden;
+  background: var(--chrome); border: 1px solid var(--line); color: var(--text-2); transition: all .15s; }
 .shelf-trail:hover { background: var(--surface-3); border-color: var(--line-2); color: var(--text); }
-.shelf-trail.open { background: var(--chrome-2); border-color: color-mix(in srgb, var(--teal) 45%, var(--line-2)); color: var(--text); }
+.shelf-trail.open { background: var(--surface-2); border-color: color-mix(in srgb, var(--teal) 45%, var(--line-2)); color: var(--text); }
 .shelf-trail.more { padding: 0 9px; font-size: 11.5px; font-weight: 600; }
 .st-icons { display: flex; }
 .st-fav { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5px; background: var(--surface); box-shadow: 0 0 0 1.5px var(--chrome); color: var(--text-3); }
 .st-fav + .st-fav { margin-left: -6px; }
 .st-fav img { border-radius: 3px; }
-.st-title { font-size: 11.5px; font-weight: 600; white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 .st-n { font-size: 11px; font-weight: 700; color: var(--text-3); }
 .shelf-trail.open .st-n { color: var(--teal); }
-.shelf-tabs { display: flex; align-items: center; gap: 2px; animation: rise .2s both; }
-.ghost-tab { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; flex: none; color: var(--text-3);
-  border: 1px dashed var(--line-2); opacity: .75; transition: all .12s; }
-.ghost-tab:hover { opacity: 1; border-style: solid; background: var(--chrome-2); color: var(--text); transform: translateY(-1px); }
-.ghost-tab img { border-radius: 3px; }
-.ghost-tab.all { border-style: solid; color: var(--teal); opacity: 1; }
-.ghost-tab.all:hover { background: color-mix(in srgb, var(--teal) 14%, var(--surface)); }
+/* how far through the journey: a thin line along the chip's foot, a bar in the panel and on cards */
+.st-bar { display: block; height: 3px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.st-bar i { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--violet), var(--teal)); }
+.shelf-trail .st-bar { position: absolute; left: 6px; right: 6px; bottom: 2px; height: 2px; background: transparent; }
+.st-bar.big { flex: 1; height: 5px; }
+.shelf-pop { position: fixed; z-index: 60; width: 340px; padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2);
+  box-shadow: var(--shadow); animation: rise .15s both; }
+.shelf-pop[hidden] { display: none; }
+.sp-title { font-weight: 600; font-size: 13.5px; line-height: 1.35; color: var(--text); }
+.sp-sub { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
+.sp-progress, .tc-progress { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--text-2); white-space: nowrap; }
+.tc-progress .st-bar { width: 120px; flex: none; }
+.sp-tabs { display: flex; flex-direction: column; gap: 2px; margin: 10px -4px 0; max-height: 300px; overflow-y: auto; }
+.sp-tab { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; text-align: left; color: var(--text-2); font-size: 12.5px; }
+.sp-tab:hover { background: var(--surface-3); color: var(--text); }
+.sp-tab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-tab img, .sp-tab svg { flex: none; border-radius: 3px; }
+.sp-more { font-size: 11.5px; color: var(--text-3); padding: 4px 8px; }
+.sp-acts { display: flex; gap: 6px; margin-top: 10px; }
 
 /* a trail as its tabs, on trail cards */
 .tc-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; }
@@ -866,7 +871,6 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .tab-group .focus { width: 18px; height: 18px; border-radius: 5px; display: grid; place-items: center; opacity: 0; color: inherit; }
 .tab-group:hover .focus { opacity: .9; }
 .tab-group .focus:hover { background: color-mix(in srgb, var(--g) 25%, transparent); }
-.tab-group.trail { animation: rise .25s both; }
 .tb.by { display: inline-flex; align-items: center; gap: 4px; color: var(--violet); background: color-mix(in srgb, var(--violet) 12%, transparent); }
 .tb.by svg, .tb.by img { flex: none; }
 #tvWho { margin: 0; flex: none; }

@@ -42,7 +42,7 @@ test('Kilr answers from a trail\'s facts', () => {
   assert.match(text, /Standing desk, 2 days ago/);
   assert.match(text, /stopped at “Your cart”/);
   assert.match(text, /cart/);
-  assert.match(text, /2 of its tabs are tucked/);
+  assert.match(text, /2 of its tabs are waiting/);
 });
 
 test('Trails with Kilr group real threads of work better than words alone (held-out threads)', () => {

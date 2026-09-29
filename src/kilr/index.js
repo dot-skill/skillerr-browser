@@ -161,7 +161,7 @@ function describe(s, now = Date.now()) {
   if (s.stoppedAt) parts.push(`You stopped at “${s.stoppedAt.title}”.`);
   const u = s.unfinished?.[0];
   if (u && UNFINISHED[u.kind]) parts.push(capitalize(UNFINISHED[u.kind](u)) + '.');
-  if (s.tucked) parts.push(s.tucked === 1 ? 'One of its tabs is tucked away.' : `${s.tucked} of its tabs are tucked away.`);
+  if (s.tucked) parts.push(s.tucked === 1 ? 'One of its tabs is waiting.' : `${s.tucked} of its tabs are waiting.`);
   return parts.join(' ');
 }
 

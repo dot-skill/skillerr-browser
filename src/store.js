@@ -43,7 +43,7 @@ const DEFAULTS = {
   kilrSkillsDismissed: {}, // suggestion id → how many trails it had when the user said "not now"
   kilrSkillsSaved: {}, // suggestion id → how many trails it had when saved as a skill
   trails: true, // learn the user's ongoing work from their own browsing (src/trails.js)
-  trailsTuck: true, // tuck tabs unused for half a day into their trail (the 5 most recent always stay)
+  trailsFresh: true, // start with a clean tab strip: the tabs open at quit wait in their trails (off: they reopen)
   trailsIntroSeen: false,
   trailsAllowedClients: [], // AI apps the user allowed to see their trails
   updateChecks: true, // ask skillerr.com if there's a newer version (sends only the version and platform)

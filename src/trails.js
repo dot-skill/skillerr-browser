@@ -1,10 +1,13 @@
 // Trails: the user's own ongoing work, learned on this computer from how they browse.
 //
-// Every page the user visits is filed into a trail: one thread of work, like "Kyoto trip" or "Standing desk". A page
-// joins the trail of the tab it was opened in, the tab it was opened from, or the trail it's about (shared words with
-// the trail's searches and pages). Trails remember where the user stopped and what they left unfinished (a form typed
-// into but never sent, an article read partway, a cart not checked out, a video half watched), and keep the tabs the
-// user tucked away. Research memory (memory.js) is what AIs read; trails are what the user did.
+// A trail is one journey on the web, like "Kyoto trip" or "Standing desk": the pages opened for it, mostly in one
+// sitting. A page joins the trail of the tab it was opened in, the tab it was opened from, or a trail it's about that's
+// going on right now (shared words, or the Skillerr Orb's sense of meaning). Nothing is tucked while the user browses:
+// when Skillerr quits, the tabs still open are put away in their trails, and the next launch starts with a clean tab
+// strip. Continue brings a trail's tabs back; pages the user closed are done with and never come back. Trails remember
+// what was left unfinished (a form typed into but never sent, an article read partway, a cart not checked out, a
+// video half watched) and how far through each journey the user is. Research memory (memory.js) is what AIs read;
+// trails are what the user did.
 //
 // Privacy: a trail keeps each page's URL, title, favicon and a few keywords. Never page text, never what was typed into
 // a form (only that something was), and only the visit for pages with password or payment fields. Sites the user
@@ -19,7 +22,6 @@ const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
 const CONTINUE_MS = 30 * 60 * 1000; // the same tab, used again within this long, is still on the same trail
 const SESSION_GAP_MS = 2 * HOUR; // coming back to a trail after this long counts as returning to it
-const MATCH_DAYS = 14; // a page can join a trail touched in the last two weeks
 const JOIN = 0.34; // how alike a page and a trail must be for the page to join it on topic alone
 const MEANING_WEIGHT = 0.8; // Kilr's "same topic" (1.0) counts as a strong word match; a loose one stays under JOIN
 const PAGE_WORDS = 12;
@@ -126,14 +128,6 @@ function similarity(words, trail) {
   let hit = 0;
   for (const w of words) if (top.has(w)) hit++;
   return Math.min(1, hit / Math.min(words.length, 4));
-}
-
-// Which open tabs to tuck away. Every tab the user protects (the active one, what an AI is working in, a form being
-// typed, audio playing, a page they keep coming back to) stays, and so do the `keep` most recently used others.
-// A forced tidy tucks the rest; otherwise only the ones idle for `idleMs`.
-function chooseTabsToTuck(list, { now = Date.now(), keep = 5, idleMs = 12 * HOUR, force = false } = {}) {
-  const open = list.filter((t) => !t.protected).sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
-  return open.slice(keep).filter((t) => force || now - (t.lastUsed || 0) > idleMs).map((t) => t.id);
 }
 
 // Group many pages at once (an import of open tabs): average-linkage clustering. sim(i, j) → similarity of two items;
@@ -243,9 +237,13 @@ class Trails {
     let best = null;
     let bestScore = 0;
     for (const t of this.trails) {
-      if (t.state !== 'active' || t.loose || at - t.lastAt > MATCH_DAYS * DAY) continue;
+      if (t.state !== 'active' || t.loose) continue;
+      // A trail is one journey: a page joins it by topic only while that journey is going on (the same sitting). An
+      // older trail takes pages only from its own tabs, when the user continues it.
+      const own = ctx.tabTrail === t.id || ctx.openerTrail === t.id;
+      if (!own && at - t.lastAt > SESSION_GAP_MS) continue;
       // An AI's research trail takes the user's pages only when they carry on from it (same tab, or opened from it).
-      if (t.research && ctx.tabTrail !== t.id && ctx.openerTrail !== t.id) continue;
+      if (t.research && !own) continue;
       let score = similarity(words, t);
       if (this.meaning && !sensitive) score = Math.max(score, MEANING_WEIGHT * this.meaningOf(() => this.meaning.affinity({ title, h1, query }, t)));
       if (ctx.tabTrail === t.id && at - (ctx.tabAt || 0) < CONTINUE_MS) score += typed ? 0.15 : 0.6;
@@ -298,6 +296,7 @@ class Trails {
       p = { url: key, title: '', host, favicon: null, firstAt: at, lastAt: at, visits: 0, days: [], unfinished: {} };
       trail.pages.push(p);
     }
+    delete p.closed; // back on it
     p.title = cleanTitle(title) || p.title || key;
     p.favicon = favicon || p.favicon;
     p.lastAt = at;
@@ -337,7 +336,39 @@ class Trails {
       else if (state.video >= 0.05) p.unfinished.watch = { at, pct: Math.round(state.video * 100) };
     }
     if (state.scrollY != null) p.scrollY = Math.round(state.scrollY);
+    if (state.scroll != null) p.read = Math.max(p.read || 0, Math.round(state.scroll * 100) / 100); // how far down it got
     this.saveSoon();
+  }
+
+  // The user closed the tab this page was in: they're done with it. A closed page is never reopened by Continue and
+  // never shows as one of the trail's tabs.
+  closePage(trailId, url) {
+    const t = this.get(trailId);
+    const key = pageKey(url);
+    const p = t?.pages.find((x) => x.url === key);
+    if (!p) return false;
+    p.closed = this.now();
+    t.tucked = t.tucked.filter((x) => pageKey(x.url) !== key);
+    this.saveSoon();
+    return true;
+  }
+
+  // How far through the journey the user is, 0…1: a page counts as done when it was closed or left behind; a page still
+  // waiting counts as far as it was read (scrolled) or watched; a form typed into and not sent, or a cart not checked
+  // out, isn't done at all.
+  progress(t) {
+    const pages = t.pages.filter((p) => !p.sensitive);
+    if (!pages.length) return t.tucked.length ? 0 : 1;
+    const open = new Set(t.tucked.map((x) => pageKey(x.url)));
+    let sum = 0;
+    for (const p of pages) {
+      const u = p.unfinished || {};
+      if (u.form || u.cart) continue;
+      const part = u.read ? u.read.pct / 100 : u.watch ? u.watch.pct / 100 : null;
+      if (part != null) sum += part;
+      else sum += open.has(p.url) && !p.closed ? p.read || 0 : 1;
+    }
+    return Math.round((sum / pages.length) * 100) / 100;
   }
 
   // ---------- tucked tabs ----------
@@ -437,12 +468,14 @@ class Trails {
     return out;
   }
 
-  // The shelf in the tab strip: trails holding tucked tabs, most recently tucked first, each with its tabs' icons.
-  shelf(limit = 6) {
+  // The shelf between reload and the address bar: trails holding tabs put away, most recently put away first, each
+  // with its tabs' icons and how far through the journey the user is.
+  shelf(limit = 5) {
     const newest = (t) => Math.max(0, ...t.tucked.map((x) => x.at));
     const all = this.trails.filter((t) => t.state === 'active' && t.tucked.length).sort((a, b) => newest(b) - newest(a));
     return {
-      trails: all.slice(0, limit).map((t) => ({ id: t.id, title: t.title || 'Untitled trail', loose: !!t.loose,
+      trails: all.slice(0, limit).map((t) => ({ id: t.id, title: t.title || 'Untitled trail', loose: !!t.loose, by: t.research?.by || null,
+        progress: this.progress(t), unfinished: this.unfinished(t).length,
         tabs: t.tucked.slice(0, 24).map((x) => ({ url: x.url, title: x.title || x.url, favicon: x.favicon || null })), count: t.tucked.length })),
       more: Math.max(0, all.length - limit),
     };
@@ -474,7 +507,7 @@ class Trails {
   worth(t) {
     if (t.loose) return t.tucked.length > 0;
     if (t.research) return t.pages.length + t.searches.length >= 2 || t.tucked.length > 0;
-    return t.titleByUser || t.seeded || t.tucked.length > 0 || this.unfinished(t).length > 0 || t.pages.length >= 3 ||
+    return t.titleByUser || t.tucked.length > 0 || this.unfinished(t).length > 0 || t.pages.length >= 3 ||
       (t.pages.length >= 2 && (t.searches.length > 0 || t.sessions >= 2)) || (t.pages.length >= 1 && t.searches.length > 0 && t.sessions >= 2);
   }
 
@@ -497,10 +530,9 @@ class Trails {
       stoppedAt: last && { url: last.url, title: last.title, favicon: last.favicon, at: last.lastAt, scrollY: last.scrollY || 0 },
       unfinished: this.unfinished(t).slice(0, 5),
       tucked: t.tucked.length,
-      // What the trail looks like as tabs: its tucked tabs, or else its latest pages. People know their tabs by their icons.
-      tabs: (t.tucked.length ? t.tucked : [...t.pages].sort((a, b) => b.lastAt - a.lastAt)).slice(0, 8)
-        .map((x) => ({ url: x.url, title: x.title || x.url, favicon: x.favicon || null, tucked: t.tucked.includes(x) })),
-      seeded: !!t.seeded,
+      // The trail's tabs: only what was still open when the user put it away. Pages they closed are done with.
+      tabs: t.tucked.slice(0, 8).map((x) => ({ url: x.url, title: x.title || x.url, favicon: x.favicon || null, tucked: true })),
+      progress: this.progress(t),
       loose: !!t.loose,
       by: t.research?.by || null, // research an AI app did, and which
       researchSummary: t.research?.summary || null,
@@ -692,38 +724,6 @@ class Trails {
     });
     if (this.trails.length > MAX_TRAILS) this.data.trails = this.trails.sort((a, b) => b.lastAt - a.lastAt).slice(0, MAX_TRAILS);
   }
-
-  // ---------- a head start: Chrome history ----------
-  // Chrome keeps one row per page (most visits, last visit), not the order pages were opened in, so pages are grouped
-  // by topic alone, oldest first. Only groups of three or more pages become trails.
-  seed(pages) {
-    const before = new Set(this.trails.map((t) => t.id));
-    const rows = pages.filter((p) => /^https?:/i.test(p.url || '') && !this.ignored(p.url))
-      .map((p) => ({ ...p, at: Date.parse(p.lastVisited) || this.now() }))
-      .filter((p) => this.now() - p.at < 30 * DAY)
-      .sort((a, b) => a.at - b.at);
-    // Chrome's visit counts tell which sites are routine better than a month of seeding would.
-    const perHost = new Map();
-    for (const p of rows) perHost.set(hostOf(p.url), (perHost.get(hostOf(p.url)) || 0) + (p.visits || 1));
-    const busy = new Set([...perHost.entries()].filter(([, n]) => n >= 60).map(([h]) => h));
-    for (const p of rows) {
-      const host = hostOf(p.url);
-      if (busy.has(host) && !searchQuery(p.url)) continue;
-      this.observe({ url: p.url, title: p.title, at: p.at });
-    }
-    let made = 0;
-    this.data.trails = this.trails.filter((t) => {
-      if (before.has(t.id)) return true;
-      const keep = t.pages.length >= 3 || (t.pages.length >= 2 && t.searches.length > 0);
-      if (keep) {
-        t.seeded = true;
-        made++;
-      }
-      return keep;
-    });
-    this.save();
-    return made;
-  }
 }
 
-module.exports = { Trails, chooseTabsToTuck, clusterItems, searchQuery, cleanTitle, pageWords, pageKey, hostOf };
+module.exports = { Trails, clusterItems, searchQuery, cleanTitle, pageWords, pageKey, hostOf };

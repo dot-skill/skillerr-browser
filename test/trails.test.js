@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { Trails, chooseTabsToTuck, searchQuery, cleanTitle, pageKey } = require('../src/trails');
+const { Trails, searchQuery, cleanTitle, pageKey } = require('../src/trails');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'skillerr-trails-'));
 const MIN = 60 * 1000;
@@ -44,7 +44,7 @@ test('a search and the pages opened from it make one trail, titled by the search
   assert.strictEqual(t.stoppedAt.title, 'Gion');
 });
 
-test('an unrelated search in the same tab starts a new trail; a related one later joins the old trail', () => {
+test('an unrelated search starts a new trail; days later the same topic is a new journey unless the old one is continued', () => {
   const { tr, clock } = make();
   const kyoto = tr.observe({ url: 'https://www.google.com/search?q=kyoto+ryokan' }, { typed: true });
   tr.observe({ url: 'https://ryokan.example/kyoto-gion', title: 'Ryokan in Kyoto Gion' }, { tabTrail: kyoto, tabAt: clock.t });
@@ -53,9 +53,16 @@ test('an unrelated search in the same tab starts a new trail; a related one late
   const desk = tr.observe({ url: 'https://www.google.com/search?q=standing+desk+under+500' }, { tabTrail: kyoto, tabAt: clock.t - MIN, typed: true });
   assert.notStrictEqual(desk, kyoto);
   tr.observe({ url: 'https://desks.example/uplift-v2', title: 'Uplift V2 standing desk' }, { tabTrail: desk, tabAt: clock.t });
+  // Within the same sitting, a related search joins the journey that's going on.
+  clock.t += 10 * MIN;
+  assert.strictEqual(tr.observe({ url: 'https://www.google.com/search?q=kyoto+gion+ryokan+prices' }, { typed: true }), kyoto);
+  // Days later, a trail is one journey: the same topic typed afresh is a new journey, not the old one's pages.
   clock.t += 3 * DAY;
-  const back = tr.observe({ url: 'https://www.google.com/search?q=kyoto+gion+ryokan+dinner' }, { typed: true });
-  assert.strictEqual(back, kyoto);
+  const fresh = tr.observe({ url: 'https://www.google.com/search?q=kyoto+gion+ryokan+dinner' }, { typed: true });
+  assert.notStrictEqual(fresh, kyoto);
+  // …while a page opened from the old trail's own tab (the user continued it) carries on that journey.
+  clock.t += MIN;
+  assert.strictEqual(tr.observe({ url: 'https://ryokan.example/kyoto-higashiyama', title: 'Ryokan in Kyoto Higashiyama' }, { tabTrail: kyoto, tabAt: clock.t - MIN }), kyoto);
   const k = tr.list().find((t) => t.id === kyoto);
   assert.strictEqual(k.sessions, 2); // came back to it
 });
@@ -128,14 +135,25 @@ test('tucked tabs, the last session, and reopening', () => {
   assert.strictEqual(tr.get(id).tucked.length, 0);
 });
 
-test('choosing tabs to tuck keeps protected and recent tabs', () => {
-  const now = T0;
-  const list = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, lastUsed: now - (i + 1) * HOUR * 2, protected: i === 10 }));
-  // auto: only the idle ones beyond the 5 most recent (idle > 12 h), never the protected one
-  assert.deepStrictEqual(chooseTabsToTuck(list, { now }), [7, 8, 9, 10, 12]);
-  // tidy now: everything beyond the 5 most recent
-  assert.deepStrictEqual(chooseTabsToTuck(list, { now, force: true }), [6, 7, 8, 9, 10, 12]);
-  assert.deepStrictEqual(chooseTabsToTuck(list.slice(0, 4), { now, force: true }), []);
+test('closed pages are done with: never among a trail\'s tabs, never reopened; progress through the journey', () => {
+  const { tr, clock } = make();
+  const id = tr.observe({ url: 'https://www.google.com/search?q=espresso+machine' }, { typed: true });
+  const pages = ['https://coffee.example/a', 'https://coffee.example/b', 'https://coffee.example/c', 'https://coffee.example/d'];
+  pages.forEach((u, i) => tr.observe({ url: u, title: `Espresso machine ${'abcd'[i]}` }, { tabTrail: id, tabAt: clock.t }));
+  // a and b were closed during the sitting; c was read halfway; c and d were still open when Skillerr quit.
+  assert.ok(tr.closePage(id, pages[0]));
+  assert.ok(tr.closePage(id, pages[1]));
+  tr.leave(id, pages[2], { long: true, scroll: 0.5, dwellMs: 60000 });
+  tr.tuck(id, [{ url: pages[2], title: 'c' }, { url: pages[3], title: 'd' }], 'quit');
+  const s = tr.list()[0];
+  assert.deepStrictEqual(s.tabs.map((x) => x.url), [pages[2], pages[3]]); // only what was still open
+  assert.strictEqual(s.progress, 0.63); // a, b done; c half read; d still waiting, unread: 2.5 of 4
+  // a page closed after being put away leaves the shelf too
+  tr.closePage(id, pages[3]);
+  assert.deepStrictEqual(tr.shelf().trails[0].tabs.map((x) => x.url), [pages[2]]);
+  // visiting a closed page again brings it back into the journey
+  tr.observe({ url: pages[0], title: 'Espresso machine a' }, { tabTrail: id, tabAt: clock.t });
+  assert.ok(!tr.get(id).pages.find((p) => p.url === pages[0]).closed);
 });
 
 test('rename, merge, done, forget, remove a page, never learn from a site', () => {
@@ -182,24 +200,6 @@ test('trails survive a restart; forget everything keeps excluded sites', () => {
   assert.deepStrictEqual(wiped.data.ignoredHosts, ['private.example']);
 });
 
-test('Chrome history seeds trails from groups of related pages', () => {
-  const { tr } = make();
-  const at = (h) => new Date(T0 - h * HOUR).toISOString();
-  const made = tr.seed([
-    { url: 'https://www.google.com/search?q=mechanical+keyboard+switches', title: 'mechanical keyboard switches - Google Search', visits: 2, lastVisited: at(50) },
-    { url: 'https://kb.example/switches-linear-tactile', title: 'Linear vs tactile keyboard switches', visits: 3, lastVisited: at(49) },
-    { url: 'https://kb.example/hot-swap-keyboard', title: 'Best hot-swap mechanical keyboard', visits: 1, lastVisited: at(48) },
-    { url: 'https://shop.example/keychron-q1', title: 'Keychron Q1 mechanical keyboard', visits: 4, lastVisited: at(20) },
-    { url: 'https://news.example/elections', title: 'Election results live', visits: 1, lastVisited: at(10) },
-    { url: 'https://old.example/ancient', title: 'Something from long ago', visits: 9, lastVisited: new Date(T0 - 60 * DAY).toISOString() },
-  ]);
-  assert.strictEqual(made, 1);
-  const [t] = tr.list();
-  assert.ok(t.seeded);
-  assert.strictEqual(t.pageCount, 3);
-  assert.strictEqual(t.title, 'Mechanical keyboard switches');
-});
-
 test('with Kilr, pages join trails by meaning and search finds by meaning', () => {
   // A stand-in for Kilr: two topics, known by a few words each.
   const topic = (s) => (/kyoto|ryokan|gion|stay|lodging|japan/i.test(s) ? 'kyoto' : /desk|standing|ergonomic|chair/i.test(s) ? 'desk' : null);
@@ -211,16 +211,20 @@ test('with Kilr, pages join trails by meaning and search finds by meaning', () =
   const clock = { t: T0 };
   const tr = new Trails(tmp(), { now: () => clock.t, meaning });
   const a = tr.observe({ url: 'https://www.google.com/search?q=ryokan+near+gion' }, { typed: true });
-  clock.t += 5 * DAY;
-  // No shared words with "ryokan near gion", but the same topic: joins by meaning.
+  clock.t += 20 * MIN;
+  // No shared words with "ryokan near gion", but the same topic, in the same sitting: joins by meaning.
   const b = tr.observe({ url: 'https://www.google.com/search?q=where+to+stay+in+japan' }, { typed: true });
   assert.strictEqual(b, a);
   tr.observe({ url: 'https://inn.example/hotel/8', title: 'Lodging 8' }, { tabTrail: a, tabAt: clock.t });
+  tr.observe({ url: 'https://inn.example/hotel/9', title: 'Lodging 9' }, { tabTrail: a, tabAt: clock.t });
   assert.strictEqual(tr.get(a).title, 'Ryokan near gion'); // named by its first search, as without Kilr
   const d = tr.observe({ url: 'https://www.google.com/search?q=standing+desk' }, { typed: true });
   assert.notStrictEqual(d, a);
   tr.observe({ url: 'https://desk.example/uplift', title: 'Uplift desk' }, { tabTrail: d, tabAt: clock.t });
   assert.deepStrictEqual(tr.list({ query: 'somewhere to stay' }).map((t) => t.id), [a]);
+  // Days later the same topic typed afresh is a new journey: meaning joins only a journey that's going on.
+  clock.t += 5 * DAY;
+  assert.notStrictEqual(tr.observe({ url: 'https://www.google.com/search?q=japan+lodging+october' }, { typed: true }), a);
   // A broken Kilr never breaks learning.
   const broken = new Trails(tmp(), { meaning: { affinity: () => { throw new Error('x'); }, rank: () => { throw new Error('x'); } } });
   assert.ok(broken.observe({ url: 'https://www.google.com/search?q=espresso' }, { typed: true }));
