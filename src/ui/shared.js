@@ -79,6 +79,9 @@ function brandIcon(name, size = 16) {
   return b.badge ? `<span class="brand-wrap">${mark}<i>${b.badge}</i></span>` : mark;
 }
 
+// A site's icon, from this computer (src/favicons.js): the UI never loads icons from the web itself.
+const iconSrc = (url) => (/^https?:/i.test(url || '') ? `skillerr-icon://i/?f=${encodeURIComponent(url)}` : url || '');
+
 function icon(name, size = 16) {
   return `<svg class="i" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON_PATHS[name] || ''}</svg>`;
 }

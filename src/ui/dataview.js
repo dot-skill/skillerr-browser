@@ -45,7 +45,7 @@
         list.appendChild(Object.assign(document.createElement('li'), { className: 'dv-day', textContent: label }));
       }
       const li = document.createElement('li');
-      const fav = it.favicon ? `<img src="${esc(it.favicon)}" width="16" height="16">` : `<span class="bm-l">${esc(letter(it.url))}</span>`;
+      const fav = it.favicon ? `<img src="${esc(iconSrc(it.favicon))}" width="16" height="16">` : `<span class="bm-l">${esc(letter(it.url))}</span>`;
       li.innerHTML = `<input type="checkbox" ${selected.has(it.url) ? 'checked' : ''} /><span class="dv-fav">${fav}</span>
         <span class="dv-t"><b>${esc(trunc(it.title || it.url, 90))}</b><span class="muted">${esc(host(it.url))}${it.by ? ` · <span class="dv-by">opened by ${esc(it.by)}</span>` : ''}</span></span>
         <span class="dv-when muted">${new Date(it.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span><button type="button" class="dv-x" title="Remove from history">${icon('x', 13)}</button>`;

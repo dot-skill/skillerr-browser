@@ -140,7 +140,9 @@ function parseSession(buf) {
 
 // The web pages open in Chrome now. From Chrome's history (a private copy): titles where the session file has none,
 // when each page was first opened (firstVisit, ms), and on how many of the last 21 days its site was used (hostDays),
-// which is how the Orb tells sittings and everyday sites apart.
+// which is how the Orb tells sittings and everyday sites apart. From Chrome's own icon store (a private copy of
+// Favicons): each page's icon (favicon: its URL, faviconData: the image), so the tabs arrive with real icons and no page
+// has to load for them.
 function openTabs(dir) {
   const base = profileDir(dir);
   const file = sessionFile(base);
@@ -180,6 +182,20 @@ function openTabs(dir) {
         } catch {}
       }
       db.close();
+    }
+    if (tabs.length && fs.existsSync(path.join(base, 'Favicons'))) {
+      try {
+        const icons = path.join(tmpDir, 'Favicons');
+        fs.copyFileSync(path.join(base, 'Favicons'), icons);
+        const db = new DatabaseSync(icons, { readOnly: true });
+        const pick = db.prepare(`SELECT f.url AS icon, b.image_data AS data FROM icon_mapping m JOIN favicons f ON f.id = m.icon_id
+          JOIN favicon_bitmaps b ON b.icon_id = f.id WHERE m.page_url = ? AND length(b.image_data) > 0 ORDER BY abs(b.width - 32) LIMIT 1`);
+        for (const t of tabs) {
+          const r = pick.get(t.url);
+          if (r?.icon && r.data) Object.assign(t, { favicon: r.icon, faviconData: Buffer.from(r.data) });
+        }
+        db.close();
+      } catch {} // no icons is fine: they come when the pages are opened
     }
     return tabs;
   } finally {

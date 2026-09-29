@@ -30,6 +30,9 @@ let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
 const { AsyncLocalStorage } = require('async_hooks');
 const { AiActivity, pickPreviewTabs } = require('./ai-activity');
+const { Favicons } = require('./favicons');
+// Site icons: the browser UI loads them from skillerr-icon:, answered from this computer (see "site icons" below).
+require('electron').protocol.registerSchemesAsPrivileged([{ scheme: 'skillerr-icon', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 // Kilr (the user's Orb): their own AI model (src/kilr), running on their computer. It knows trails and research by meaning. Loaded on first use.
 const KILR_DIR = path.join(__dirname, '..', 'assets', 'kilr'); // src/ and out/src/ alike
 const KILR_PERSONAL = path.join(store.DIR, 'kilr', 'personal.bin'); // what Kilr learned from this user's trails
@@ -42,6 +45,39 @@ try { // staging builds called it Wenlo
 } catch {}
 const kilr = new Kilr({ dir: KILR_DIR, personalFile: KILR_PERSONAL });
 const history = new (require('./history').History)(store.DIR); // browsing history: History (⌘Y)
+
+// ---------- site icons, kept on this computer ----------
+// A page's icon is saved the moment the page shows it (from Chromium's cache, so no extra download), and the browser UI
+// shows icons only from here: tucked tabs, trails and history have real icons at once, offline, with no page loaded
+// and no request to the site. An icon asked for that isn't here yet is fetched once and kept.
+const favicons = new Favicons(path.join(store.DIR, 'favicons'));
+const iconFetches = new Map(); // icon url → pending fetch
+function keepIcon(url) {
+  if (!/^https?:/i.test(url || '') || favicons.has(url)) return Promise.resolve(favicons.get(url));
+  if (iconFetches.has(url)) return iconFetches.get(url);
+  const job = (async () => {
+    try {
+      const r = await require('electron').session.defaultSession.fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) return null;
+      const buf = Buffer.from(await r.arrayBuffer());
+      const mime = r.headers.get('content-type') || (/\.svg(\?|$)/i.test(url) ? 'image/svg+xml' : /\.ico(\?|$)/i.test(url) ? 'image/x-icon' : 'image/png');
+      return favicons.put(url, buf, mime) ? favicons.get(url) : null;
+    } catch {
+      return null;
+    } finally {
+      iconFetches.delete(url);
+    }
+  })();
+  iconFetches.set(url, job);
+  return job;
+}
+function serveIcons() {
+  require('electron').protocol.handle('skillerr-icon', async (req) => {
+    const url = new URL(req.url).searchParams.get('f') || '';
+    const icon = favicons.get(url) || (await keepIcon(url));
+    return icon ? new Response(icon.buf, { headers: { 'content-type': icon.mime, 'cache-control': 'max-age=604800' } }) : new Response(null, { status: 404 });
+  });
+}
 // What Kilr has been doing lately, for its screen: [{ at, what }], newest first.
 const kilrLog = [];
 function kilrDid(what) {
@@ -592,9 +628,10 @@ function attachView(tab) {
   });
   // Chromium remembers zoom per site; Skillerr keeps it per tab instead (fleet tiles zoom out, the user's zoom stays theirs).
   wc.on('did-navigate', () => wc.setZoomFactor(tab.zoom || tab.userZoom || 1));
-  wc.on('page-favicon-updated', (_e, favicons) => {
-    tab.favicon = favicons[0];
-    if (tab.historyId) history.update(tab.historyId, { favicon: favicons[0] });
+  wc.on('page-favicon-updated', (_e, icons) => {
+    tab.favicon = icons[0];
+    keepIcon(icons[0]).catch(() => {});
+    if (tab.historyId) history.update(tab.historyId, { favicon: icons[0] });
     pushTabs();
   });
   win.contentView.addChildView(view);
@@ -1044,7 +1081,7 @@ let lastShelf = '';
 // The trail shelf between reload and the address bar: journeys waiting, by their tabs' icons.
 function pushShelf() {
   const none = { trails: [], more: 0 };
-  const shelf = learningTrails() ? { yours: trailsDb().shelf(4), ais: trailsDb().aiShelf(4) } : { yours: none, ais: none };
+  const shelf = learningTrails() ? { yours: trailsDb().shelf(12), ais: trailsDb().aiShelf(12) } : { yours: none, ais: none };
   const json = JSON.stringify(shelf);
   if (json === lastShelf) return;
   lastShelf = json;
@@ -1120,19 +1157,25 @@ function importChromeTabs(profile) {
   for (const t of chrome_.openTabs(profile)) {
     if (seen.has(t.url) || !db.tuckable(t.url)) continue; // a mail thread isn't its inbox: same page means same URL
     seen.add(t.url);
-    list.push({ ...t, title: t.title || t.url });
+    if (t.favicon && t.faviconData) favicons.put(t.favicon, t.faviconData, 'image/png'); // Chrome's own copy of its icon
+    list.push({ ...t, title: t.title || t.url, faviconData: undefined });
   }
   const { groupTabs } = require('./kilr/journeys');
   const { journeys, everyday } = groupTabs(list, kilrOn() ? { vec: (x) => kilr.vec(x), cosine: kilrCosine } : null);
   const at = Date.now();
   const tucked = new Map(); // trail id → tabs
-  const put = (trailId, t) => (tucked.get(trailId) || tucked.set(trailId, []).get(trailId)).push({ url: t.url, title: t.title });
+  const put = (trailId, t) => (tucked.get(trailId) || tucked.set(trailId, []).get(trailId)).push({ url: t.url, title: t.title, favicon: t.favicon || null });
+  const made = new Set(); // trails this import started: another journey never joins them (the Orb kept them apart)
   for (const g of journeys) {
-    let trailId = null;
-    for (const i of g) {
-      const t = list[i];
-      trailId = db.observe({ url: t.url, title: t.title }, trailId ? { tabTrail: trailId, tabAt: at } : { typed: true }) || trailId || db.loose();
-      put(trailId, t);
+    // The journey's lead (the tab that says most about it) picks its trail: a new one, or one it's about already.
+    const lead = list[g[0]];
+    const before = new Set(db.trails.map((t) => t.id));
+    const trailId = db.observe({ url: lead.url, title: lead.title, favicon: lead.favicon || null }, { typed: true, exclude: made }) || db.loose();
+    if (!before.has(trailId)) made.add(trailId);
+    put(trailId, lead);
+    for (const i of g.slice(1)) {
+      db.addPage(trailId, { url: list[i].url, title: list[i].title, favicon: list[i].favicon || null });
+      put(trailId, list[i]);
     }
   }
   for (const i of everyday) put(db.loose(), list[i]);
@@ -2686,6 +2729,7 @@ function wireIpc() {
     const { session } = require('electron');
     if (what.history) {
       history.deleteSince(since);
+      if (!since) favicons.clear(); // all of history: its sites' icons go too, as in Chrome
       done.push('browsing history');
     }
     if (what.browsing) {
@@ -2694,6 +2738,7 @@ function wireIpc() {
     }
     if (what.cache) {
       await session.defaultSession.clearCache();
+      favicons.clear();
       done.push('cached images and files');
     }
     if (what.memory) {
@@ -3265,6 +3310,7 @@ app.whenReady().then(async () => {
   applyTheme();
   setSearchTemplate(searchTemplateFor());
   applySearchApi();
+  serveIcons();
   wirePermissions(require('electron').session.defaultSession);
   setupPasskeys(require('electron').session.defaultSession);
   if (process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, '..', 'assets', 'icon.png'));

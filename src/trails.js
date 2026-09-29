@@ -238,7 +238,7 @@ class Trails {
     let best = null;
     let bestScore = 0;
     for (const t of this.trails) {
-      if (t.state !== 'active' || t.loose) continue;
+      if (t.state !== 'active' || t.loose || ctx.exclude?.has(t.id)) continue; // exclude: trails this page may not join
       // A trail is one journey: a page joins it by topic only while that journey is going on (the same sitting). An
       // older trail takes pages only from its own tabs, when the user continues it.
       const own = ctx.tabTrail === t.id || ctx.openerTrail === t.id;
@@ -401,6 +401,17 @@ class Trails {
     }
     if (t.state !== 'active') t.state = 'active';
     return t.id;
+  }
+
+  // A page filed straight into a trail the caller chose (the Orb's journeys when moving over from Chrome: the journey's
+  // lead picks the trail, and the rest of the journey follows it rather than each page choosing again on its own).
+  addPage(id, { url, title = '', favicon = null, at = this.now() }) {
+    const t = this.get(id);
+    if (!t || !/^https?:/i.test(url || '') || this.ignored(url)) return false;
+    const query = searchQuery(url);
+    this.addTo(t, { url, title, favicon, host: hostOf(url), query, words: pageWords({ url, title, query }), sensitive: false, at });
+    this.saveSoon();
+    return true;
   }
 
   // A page the AI read or opened for the research.

@@ -247,7 +247,7 @@ skillerr.on('tabs', (list) => {
     const el = h('div', 'tab' + (t.active ? ' on' : '') + (t.loading ? ' loading' : '') + (t.ai ? ' ai' : '') + (grp ? ' grouped' : '') + (t.asleep ? ' asleep' : ''));
     if (grp) el.style.setProperty('--g', grp.color);
     el.title = t.asleep ? `${t.title}\nSleeping to keep Skillerr light. Click to wake it.` : t.title;
-    const fav = t.favicon ? `<img src="${esc(t.favicon)}">` : icon(t.isStart ? 'sparkle' : 'globe', 13);
+    const fav = t.favicon ? `<img src="${esc(iconSrc(t.favicon))}">` : icon(t.isStart ? 'sparkle' : 'globe', 13);
     el.innerHTML = `<span class="fav">${fav}</span><span class="title">${esc(t.title)}</span><button class="x" title="Close  ⌘W">${icon('x', 12)}</button>`;
     el.onmousedown = (e) => e.button === 0 && !e.target.closest('.x') && skillerr.send('switch-tab', t.id);
     el.onauxclick = (e) => e.button === 1 && skillerr.send('close-tab', t.id);
@@ -292,7 +292,7 @@ $('newtab').onclick = () => skillerr.send('new-tab');
 // back up to the tab strip.
 let shelfData = { yours: { trails: [], more: 0 }, ais: { trails: [], more: 0 } };
 let shelfOpen = null; // the trail whose panel is open
-const favImg = (f, size) => (f ? `<img src="${esc(f)}" width="${size}" height="${size}">` : icon('globe', size - 1));
+const favImg = (f, size) => (f ? `<img src="${esc(iconSrc(f))}" width="${size}" height="${size}">` : icon('globe', size - 1));
 function iconFallback(el, size) {
   el.querySelectorAll('img').forEach((img) => (img.onerror = () => (img.outerHTML = icon('globe', size - 1))));
 }
@@ -304,11 +304,12 @@ function renderShelf() {
   box.hidden = !trails.length || settings.trails === false;
   box.innerHTML = '';
   if (box.hidden) return shelfClose();
-  if (shelfOpen && ![...trails, ...shelfData.ais.trails].some((t) => t.id === shelfOpen)) shelfClose();
+  if (shelfOpen && !String(shelfOpen).startsWith('list:') && ![...trails, ...shelfData.ais.trails].some((t) => t.id === shelfOpen)) shelfClose();
   for (const t of trails) {
     const icons = [...new Map(t.tabs.map((x) => [x.favicon || x.url, x])).values()].slice(0, 3);
     const chip = h('button', 'shelf-trail' + (shelfOpen === t.id ? ' open' : ''));
     chip.type = 'button';
+    chip.dataset.trail = t.id;
     chip.title = `${t.title} · ${t.count} tab${t.count === 1 ? '' : 's'} waiting · ${pctText(t.progress)}`;
     chip.innerHTML = `<span class="st-icons">${icons.map((x) => `<span class="st-fav">${favImg(x.favicon, 14)}</span>`).join('')}</span><span class="st-n">${t.count}</span>` +
       `<span class="st-bar"><i style="width:${Math.round((t.progress || 0) * 100)}%"></i></span>`;
@@ -323,11 +324,95 @@ function renderShelf() {
     m.onclick = () => skillerr.send('open-trails');
     box.appendChild(m);
   }
+  stackIfCrowded(box, 'yours');
 }
-function shelfShow(t, chip) {
-  shelfOpen = t.id;
+
+// A side whose chips don't fit next to the address bar becomes one box: its trails' icons stacked and how many. Click
+// it for all of that side's trails in one panel. The address bar never moves or changes size for them.
+function stackIfCrowded(box, side) {
+  box.classList.remove('stacked');
+  if (box.hidden) return;
+  // The chips' own widths, not scrollWidth: chips aligned to the address bar overflow leftwards, which scrollWidth misses.
+  const gap = parseFloat(getComputedStyle(box).columnGap) || 0;
+  const need = [...box.children].reduce((w, c) => w + c.getBoundingClientRect().width, 0) + gap * Math.max(0, box.children.length - 1);
+  if (need <= box.clientWidth + 1) return;
+  const { trails, more } = shelfData[side];
+  const n = trails.length + more;
+  box.classList.add('stacked');
+  box.innerHTML = '';
+  const chip = h('button', 'shelf-trail stack' + (shelfOpen === `list:${side}` ? ' open' : '') +
+    (side === 'ais' && trails.some((t) => t.open.length) ? ' open-work' : side === 'ais' && trails.some((t) => !t.seen) ? ' new' : ''));
+  chip.type = 'button';
+  const marks = side === 'ais'
+    ? [...new Set(trails.map((t) => t.by || ''))].slice(0, 3).map((by) => `<span class="st-fav st-app">${brandIcon(by, 13) || icon('sparkle', 12)}</span>`)
+    : trails.slice(0, 3).map((t) => `<span class="st-fav">${favImg(t.tabs[0]?.favicon, 14)}</span>`);
+  chip.innerHTML = `<span class="st-icons">${marks.join('')}</span><span class="st-n">${n}</span>${side === 'ais' ? '<span class="st-dot"></span>' : ''}`;
+  chip.title = side === 'ais' ? `Your AIs' research: ${n}` : `Your trails: ${n} waiting`;
+  chip.setAttribute('aria-label', chip.title);
+  chip.onclick = () => (shelfOpen === `list:${side}` ? shelfClose() : shelfListShow(side, chip));
+  iconFallback(chip, 14);
+  box.appendChild(chip);
+}
+
+// All of one side's trails in one panel: yours with their tabs and how far through; your AIs' with who did them and
+// whether they're new or unfinished. A row opens that trail's own panel, which has a way back to the list.
+function shelfListShow(side, chip) {
+  shelfOpen = `list:${side}`;
   const pop = $('shelfPop');
   pop.innerHTML = '';
+  pop.classList.add('list');
+  const { trails, more } = shelfData[side];
+  pop.append(h('div', `sl-head ${side}`, `<span class="sl-dot"></span><span>${side === 'ais' ? "Your AIs' research" : 'Your trails'}</span><span class="sl-n">${trails.length + more}</span>`));
+  const list = h('div', 'sl-rows');
+  for (const t of trails) {
+    const row = h('button', 'sl-row' + (side === 'ais' ? (t.open.length ? ' open-work' : !t.seen ? ' new' : '') : ''));
+    row.type = 'button';
+    if (side === 'ais') {
+      row.innerHTML = `<span class="sl-mark">${brandIcon(t.by || '', 16) || icon('sparkle', 15)}</span>` +
+        `<span class="sl-text"><b>${esc(t.title)}</b><span>${esc(t.by || 'Your AI')} · ${t.count} page${t.count === 1 ? '' : 's'} · ${agoText(t.doneAt)}${t.open.length ? ' · unfinished' : !t.seen ? ' · new' : ''}</span></span><span class="st-dot"></span>`;
+      row.onclick = () => aiShelfShow(t, chip, true);
+    } else {
+      const icons = [...new Map(t.tabs.map((x) => [x.favicon || x.url, x])).values()].slice(0, 3);
+      row.innerHTML = `<span class="sl-mark st-icons">${icons.map((x) => `<span class="st-fav">${favImg(x.favicon, 14)}</span>`).join('')}</span>` +
+        `<span class="sl-text"><b>${esc(t.title)}</b><span>${t.count} tab${t.count === 1 ? '' : 's'} waiting · ${pctText(t.progress)}</span>` +
+        `<span class="st-bar"><i style="width:${Math.round((t.progress || 0) * 100)}%"></i></span></span>`;
+      row.onclick = () => shelfShow(t, chip, true);
+    }
+    iconFallback(row, 14);
+    list.appendChild(row);
+  }
+  pop.append(list);
+  pop.append(h('div', 'sp-acts', ''));
+  pop.lastChild.append(btn(more ? `All trails (${trails.length + more})` : 'All trails', 'ghost', () => { shelfClose(); skillerr.send('open-trails'); }));
+  placePop(chip, side);
+}
+// Opens the panel under its chip. The shelves are drawn again first (to mark the open chip), which replaces the chip the
+// panel was opened from, so it's found again: by its trail, or the side's stacked box.
+function placePop(chip, side) {
+  const pop = $('shelfPop');
+  renderShelf();
+  const box = side === 'ais' ? '#shelfAi' : '#shelf';
+  const anchor = [chip, document.querySelector(`${box} .shelf-trail[data-trail="${chip?.dataset?.trail}"]`), document.querySelector(`${box} .shelf-trail.stack`), document.querySelector(box)]
+    .find((el) => el && el.isConnected && el.getBoundingClientRect().width);
+  const r = anchor ? anchor.getBoundingClientRect() : { left: 8, bottom: 46 };
+  const w = pop.classList.contains('list') ? 368 : 348;
+  pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - w - 8))}px`;
+  pop.style.top = `${Math.max(46, r.bottom + 6)}px`;
+  pop.hidden = false;
+  skillerr.send('chrome-on-top', true); // over the page, or it would be hidden behind it
+}
+// A trail's panel opened from the list gets a way back to it.
+function backToList(pop, side, chip) {
+  const back = h('button', 'sp-back', `${icon('left', 12)}${side === 'ais' ? "Your AIs' research" : 'Your trails'}`);
+  back.type = 'button';
+  back.onclick = () => shelfListShow(side, chip);
+  pop.prepend(back);
+}
+function shelfShow(t, chip, fromList = false) {
+  shelfOpen = fromList ? 'list:yours' : t.id;
+  const pop = $('shelfPop');
+  pop.innerHTML = '';
+  pop.classList.remove('list');
   const head = h('div', 'sp-head', `<div class="sp-title">${esc(t.title)}</div>` +
     `<div class="sp-sub">${t.by ? `Research by ${esc(t.by)} · ` : ''}${t.count} tab${t.count === 1 ? '' : 's'} waiting${t.unfinished ? ` · ${t.unfinished} unfinished` : ''}</div>` +
     `<div class="sp-progress"><span class="st-bar big"><i style="width:${Math.round((t.progress || 0) * 100)}%"></i></span><span>${pctText(t.progress)}</span></div>`);
@@ -360,17 +445,14 @@ function shelfShow(t, chip) {
     }),
   );
   pop.append(head, list, acts);
-  const r = chip.getBoundingClientRect();
-  pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 348))}px`;
-  pop.style.top = `${r.bottom + 6}px`;
-  pop.hidden = false;
-  skillerr.send('chrome-on-top', true); // over the page, or it would be hidden behind it
-  renderShelf();
+  if (fromList) backToList(pop, 'yours', chip);
+  placePop(chip, 'yours');
 }
 function shelfClose() {
   if (!shelfOpen && $('shelfPop').hidden) return;
   shelfOpen = null;
   $('shelfPop').hidden = true;
+  $('shelfPop').classList.remove('list');
   skillerr.send('chrome-on-top', false);
   document.querySelectorAll('#shelf .shelf-trail.open, #shelfAi .shelf-trail.open').forEach((c) => c.classList.remove('open'));
 }
@@ -387,6 +469,7 @@ function renderAiShelf() {
   for (const t of trails) {
     const chip = h('button', 'shelf-trail' + (shelfOpen === t.id ? ' open' : '') + (t.open.length ? ' open-work' : !t.seen ? ' new' : ''));
     chip.type = 'button';
+    chip.dataset.trail = t.id;
     chip.title = `${t.title}\nResearch by ${t.by || 'your AI'} · ${t.count} page${t.count === 1 ? '' : 's'} · ${agoText(t.doneAt)}` +
       (t.open.length ? `\n${t.open.length} thing${t.open.length === 1 ? '' : 's'} left unfinished` : !t.seen ? '\nNew' : '');
     chip.innerHTML = `<span class="st-app">${brandIcon(t.by || '', 14) || icon('sparkle', 13)}</span><span class="st-name">${esc(t.title)}</span><span class="st-dot"></span>`;
@@ -400,13 +483,15 @@ function renderAiShelf() {
     m.onclick = () => skillerr.send('open-trails');
     box.appendChild(m);
   }
+  stackIfCrowded(box, 'ais');
 }
 // The research's sources, not its tabs: what the AI concluded, what's unfinished, the pages it read (one click opens
 // one), Open all, Continue with the AI, Done.
-function aiShelfShow(t, chip) {
-  shelfOpen = t.id;
+function aiShelfShow(t, chip, fromList = false) {
+  shelfOpen = fromList ? 'list:ais' : t.id;
   const pop = $('shelfPop');
   pop.innerHTML = '';
+  pop.classList.remove('list');
   const who = t.by || 'your AI';
   const head = h('div', 'sp-head', `<div class="sp-title">${esc(t.title)}</div>` +
     `<div class="sp-sub">Research by ${brandIcon(who, 12)}${esc(who)} · ${t.count} page${t.count === 1 ? '' : 's'} · ${agoText(t.doneAt)}</div>` +
@@ -440,15 +525,14 @@ function aiShelfShow(t, chip) {
     btn(`${icon('check', 12)}Done`, 'ghost', async () => { shelfClose(); await skillerr.invoke('trails-state', { id: t.id, state: 'done' }); }),
   );
   pop.append(acts);
-  const r = chip.getBoundingClientRect();
-  pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 348))}px`;
-  pop.style.top = `${r.bottom + 6}px`;
-  pop.hidden = false;
-  skillerr.send('chrome-on-top', true);
+  if (fromList) backToList(pop, 'ais', chip);
   if (!t.seen) skillerr.invoke('trails-ai-seen', t.id);
-  renderShelf();
+  placePop(chip, 'ais');
 }
 document.addEventListener('keydown', (e) => e.key === 'Escape' && shelfOpen && shelfClose());
+// The toolbar's sides change width with the window: chips that fitted may not any more, or the other way round.
+let refit = 0;
+new ResizeObserver(() => { cancelAnimationFrame(refit); refit = requestAnimationFrame(() => !shelfOpen && renderShelf()); }).observe(document.querySelector('.toolbar'));
 skillerr.on('trails-shelf', (data) => {
   const none = { trails: [], more: 0 };
   shelfData = { yours: data?.yours || none, ais: data?.ais || none };
@@ -488,7 +572,7 @@ function renderMosaicLabels(list) {
     if (!t) continue;
     el.classList.toggle('ai', t.ai);
     el.classList.toggle('loading', t.loading);
-    el.querySelector('.fav').innerHTML = t.favicon ? `<img src="${esc(t.favicon)}">` : icon('globe', 12);
+    el.querySelector('.fav').innerHTML = t.favicon ? `<img src="${esc(iconSrc(t.favicon))}">` : icon('globe', 12);
     const img = el.querySelector('.fav img');
     if (img) img.onerror = () => (img.outerHTML = icon('globe', 12));
     el.querySelector('.title').textContent = t.title;
@@ -537,7 +621,7 @@ function agoText(t) {
   return d === 1 ? 'yesterday' : d < 7 ? `${d} days ago` : new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 const favStack = (icons) => icons.length
-  ? icons.slice(0, 3).map((f) => `<img src="${esc(f)}">`).join('')
+  ? icons.slice(0, 3).map((f) => `<img src="${esc(iconSrc(f))}">`).join('')
   : icon('layers', 15);
 
 // One trail as a card: title, where you stopped, what's unfinished, and Continue.
@@ -823,7 +907,7 @@ function jumpRender() {
   jump.items.forEach((c, i) => {
     const el = h('button', 'jump-item' + (i === jump.sel ? ' on' : ''));
     el.type = 'button';
-    const fav = c.favicon ? `<img src="${esc(c.favicon)}" width="16" height="16">` : icon('globe', 15);
+    const fav = c.favicon ? `<img src="${esc(iconSrc(c.favicon))}" width="16" height="16">` : icon('globe', 15);
     let host = '';
     try {
       host = new URL(c.url).hostname.replace(/^www\./, '');
@@ -1379,7 +1463,7 @@ function renderComposerContext() {
   if (!currentTab || currentTab.isStart) {
     ctx.innerHTML = `${icon('sparkle', 12)}<span>Skillerr can open sites, click, type and read for you</span>`;
   } else {
-    const fav = currentTab.favicon ? `<img src="${esc(currentTab.favicon)}">` : icon('globe', 12);
+    const fav = currentTab.favicon ? `<img src="${esc(iconSrc(currentTab.favicon))}">` : icon('globe', 12);
     ctx.innerHTML = `${fav}<span>On this page · ${esc(currentTab.title)}</span>`;
     const img = ctx.querySelector('img');
     if (img) img.onerror = () => (img.outerHTML = icon('globe', 12));
