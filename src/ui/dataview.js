@@ -1,5 +1,5 @@
 /* global skillerr, esc, trunc, icon */
-// History & Bookmarks page: search and delete history, manage bookmarks, reset data.
+// History & Bookmarks page (⌘Y): browsing history by day, bookmarks, and clearing browsing data by time range.
 (() => {
   const $ = (id) => document.getElementById(id);
   const selected = new Set();
@@ -26,28 +26,51 @@
     refresh();
   }
 
+  // History like any browser's: newest first, by day, each page with its icon, time and who opened it.
+  const dayLabel = (t) => {
+    const d = new Date(t);
+    const today = new Date();
+    const days = Math.round((new Date(today.toDateString()) - new Date(d.toDateString())) / 864e5);
+    return days === 0 ? 'Today' : days === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+  };
   async function renderHistory() {
     const list = $('dvHist');
-    const items = await skillerr.invoke('data-history', $('dvHistQ').value);
-    list.innerHTML = items.length ? '' : '<li class="empty muted">No history yet. Pages your AIs and you visit through Skillerr appear here.</li>';
+    const items = await skillerr.invoke('data-history', { q: $('dvHistQ').value });
+    list.innerHTML = items.length ? '' : `<li class="empty muted">${$('dvHistQ').value ? 'Nothing in your history matches that.' : 'No history yet. Pages you and your AIs open in Skillerr appear here.'}</li>`;
+    let day = '';
     for (const it of items) {
+      const label = dayLabel(it.at);
+      if (label !== day) {
+        day = label;
+        list.appendChild(Object.assign(document.createElement('li'), { className: 'dv-day', textContent: label }));
+      }
       const li = document.createElement('li');
-      li.innerHTML = `<input type="checkbox" ${selected.has(it.id) ? 'checked' : ''} /><span class="bm-l">${esc(letter(it.url))}</span>
-        <span class="dv-t"><b>${esc(trunc(it.title, 90))}</b><span class="muted">${esc(it.host || it.url)}${it.from === 'chrome-history' ? ' · from Chrome' : it.from === 'bookmark' ? ' · bookmark' : ''}${it.visits > 1 ? ` · ${it.visits} visits` : ''}</span></span>
-        <span class="dv-when muted">${esc(when(it.lastVisited))}</span><button type="button" class="dv-x" title="Delete">${icon('x', 13)}</button>`;
+      const fav = it.favicon ? `<img src="${esc(it.favicon)}" width="16" height="16">` : `<span class="bm-l">${esc(letter(it.url))}</span>`;
+      li.innerHTML = `<input type="checkbox" ${selected.has(it.url) ? 'checked' : ''} /><span class="dv-fav">${fav}</span>
+        <span class="dv-t"><b>${esc(trunc(it.title || it.url, 90))}</b><span class="muted">${esc(host(it.url))}${it.by ? ` · <span class="dv-by">opened by ${esc(it.by)}</span>` : ''}</span></span>
+        <span class="dv-when muted">${new Date(it.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span><button type="button" class="dv-x" title="Remove from history">${icon('x', 13)}</button>`;
+      const img = li.querySelector('img');
+      if (img) img.onerror = () => (img.outerHTML = `<span class="bm-l">${esc(letter(it.url))}</span>`);
       li.querySelector('input').onchange = (e) => {
-        if (e.target.checked) selected.add(it.id);
-        else selected.delete(it.id);
+        if (e.target.checked) selected.add(it.url);
+        else selected.delete(it.url);
         $('dvDelSel').disabled = !selected.size;
       };
       li.querySelector('.dv-t').onclick = () => skillerr.send('open-url', it.url);
       li.querySelector('.dv-x').onclick = async () => {
-        await skillerr.invoke('data-delete-pages', [it.id]);
-        li.remove();
+        await skillerr.invoke('data-delete-pages', [it.url]);
+        renderHistory();
       };
       list.appendChild(li);
     }
   }
+  const host = (url) => {
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      return url;
+    }
+  };
 
   async function renderBookmarks() {
     const list = $('dvBm');
@@ -87,13 +110,7 @@
     $('dvDelSel').disabled = true;
     renderHistory();
   };
-  $('dvRange').onchange = async () => {
-    const v = $('dvRange').value;
-    $('dvRange').value = '';
-    if (!v) return;
-    await skillerr.invoke('data-delete-since', v === 'all' ? 0 : Date.now() - Number(v));
-    renderHistory();
-  };
+  $('dvToClear').onclick = () => showTab('clear');
   $('dvBmAdd').onclick = async () => {
     const r = await skillerr.invoke('bookmark-add');
     $('dvBmAdd').textContent = r.ok ? 'Bookmarked ✓' : r.message;
@@ -112,13 +129,15 @@
       b.textContent = 'Click again to clear';
       setTimeout(() => {
         b.dataset.armed = '';
-        b.textContent = 'Clear selected';
+        b.textContent = 'Clear data';
       }, 3000);
       return;
     }
     b.dataset.armed = '';
-    b.textContent = 'Clear selected';
-    if (what.everything) Object.assign(what, { browsing: true, memory: true, trails: true, bookmarks: true, settings: true });
+    b.textContent = 'Clear data';
+    if (what.everything) Object.assign(what, { history: true, browsing: true, cache: true, memory: true, trails: true, bookmarks: true, settings: true });
+    const range = Number($('dvSince').value);
+    what.since = range && !what.everything ? Date.now() - range : 0;
     $('dvResetMsg').textContent = await skillerr.invoke('data-reset', what);
     document.querySelectorAll('.dv-reset input').forEach((i) => (i.checked = false));
   };

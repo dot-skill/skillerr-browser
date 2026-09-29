@@ -34,7 +34,7 @@
         <canvas class="kp-orb" id="kpOrb" width="192" height="192"></canvas>
         <div>
           <div class="kp-eyebrow">Built into Skillerr</div>
-          <h3>Kilr</h3>
+          <h3>Skillerr Orb</h3>
           <p>Skillerr's own small AI. It turns page titles and searches into meaning, files them into trails and finds things by meaning. It doesn't write text, so it can't make things up.</p>
         </div>
       </header>
@@ -50,12 +50,12 @@
         <div id="kpLearn"></div>
       </section>
       <section class="kp-sec" id="kpSuggestSec" hidden>
-        <h4>Skills Kilr suggests</h4>
+        <h4>Skills the Orb suggests</h4>
         <p class="kp-note">Things you (or your AIs) keep doing the same way. Save one as a skill and any AI app can do it your way next time.</p>
         <div id="kpSuggest"></div>
       </section>
       <section class="kp-sec">
-        <h4>What Kilr did lately</h4>
+        <h4>What the Orb did lately</h4>
         <ol class="kp-log" id="kpLog"></ol>
       </section>`;
     panel.querySelector('.kp-close').onclick = close;
@@ -71,7 +71,7 @@
     const m = s.model || {};
     const p = s.personal || {};
     $('kpOff').hidden = s.on !== false;
-    if (s.on === false) $('kpOff').innerHTML = `Kilr is off. Trails match pages by shared words instead. <button type="button" class="link-btn" id="kpOn">Turn it on in Trails settings</button>`;
+    if (s.on === false) $('kpOff').innerHTML = `The Orb is off. Trails match pages by shared words instead. <button type="button" class="link-btn" id="kpOn">Turn it on in Trails settings</button>`;
     $('kpOn')?.addEventListener('click', () => skillerr.send('open-trails'));
 
     // Right now
@@ -135,7 +135,7 @@
     // Activity
     const log = s.log || [];
     $('kpLog').innerHTML = log.length ? log.map((e) => `<li class="${seen.has(e.at + e.what) ? '' : 'new'}"><span>${ago(e.at)}</span>${esc(e.what)}</li>`).join('')
-      : '<li class="kp-empty-log">Nothing yet this session. Open a few pages, or search from the address bar, and you\'ll see Kilr file and find them here.</li>';
+      : '<li class="kp-empty-log">Nothing yet this session. Open a few pages, or search from the address bar, and you\'ll see the Orb file and find them here.</li>';
     seen = new Set(log.map((e) => e.at + e.what));
   }
 

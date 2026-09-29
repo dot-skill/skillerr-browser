@@ -498,6 +498,17 @@
       n.parent = best;
       if (n.at && n.at > g.at) g.at = n.at;
     }
+    // A research session or topic with nothing round it would take a slice of the circle all to itself, and a day of
+    // many empty sessions (quick questions, test runs) then lines up as a perfect arc. Pool them per app instead, as a
+    // cloud like any other group.
+    for (const g of [...gmap.values()]) {
+      if (g.members.length !== 1 || !g.hub || g.hub.type === 'trail') continue;
+      const pool = groupFor(`~lone|${g.origin}|${g.by || ''}`, null, g.origin, g.by);
+      pool.members.push(g.hub);
+      g.hub.group = pool.key;
+      if (g.hub.at && g.hub.at > pool.at) pool.at = g.hub.at;
+      gmap.delete(g.key);
+    }
     groups = [...gmap.values()];
     const ORDER = { you: 0, both: 1, ai: 2 };
     // Grouped by whose, then by AI app (each app its own band of colour); within that, in a stable shuffle, so
@@ -701,15 +712,12 @@
   }
 
   function renderLegend() {
-    const apps = new Map();
-    for (const g of groups) if (g.origin === 'ai' && g.by) apps.set(g.by, (apps.get(g.by) || []).concat(g.hue));
-    const appChips = [...apps].slice(0, 6).map(([name, hs]) => `<span class="hv-app"><i style="background:hsl(${hs.reduce((a, b) => a + b, 0) / hs.length},100%,66%)"></i>${esc(name)}</span>`).join('');
-    $('mvLegend').innerHTML = `<span class="hv-sw"><i class="hv-grad you"></i>Yours</span><span class="hv-sw"><i class="hv-grad both"></i>Both of you</span><span class="hv-sw"><i class="hv-grad ai"></i>Your AIs'</span>${appChips}
-      ${data.nodes?.length ? '<span class="lg-sep"></span><span class="muted" title="Bright points are trails and research sessions, with their pages round them. The further from Kilr, the longer ago.">Further out is older</span>' : ''}`;
+    $('mvLegend').innerHTML = `<span class="hv-sw"><i class="hv-grad you"></i>Yours</span><span class="hv-sw"><i class="hv-grad both"></i>Both of you</span><span class="hv-sw"><i class="hv-grad ai"></i>Your AIs'</span>
+      ${data.nodes?.length ? '<span class="lg-sep"></span><span class="muted" title="Bright points are trails and research sessions, with their pages round them. The further from the Orb, the longer ago.">Further out is older</span>' : ''}`;
     const t = data.totals.all || 0;
     const pct = clamp(data.glow || 0, 0, 1) * 100;
     const extra = extraGlow();
-    $('hvGlow').innerHTML = `<span class="hv-glow-l">Kilr's glow</span><span class="hv-meter" title="Glow grows with everything you and your AIs look into, on a log scale. Full at about ${fmt(data.glowFull)} pages: a typical person's last three months of browsing."><i style="width:${pct.toFixed(1)}%"></i>${extra ? `<b style="width:${(extra * 100).toFixed(1)}%"></b>` : ''}</span><span class="hv-glow-n">${t >= data.glowFull ? `${fmt(t)}: past a typical three months` : `${fmt(t)} of ~${fmt(data.glowFull)}`}</span>`;
+    $('hvGlow').innerHTML = `<span class="hv-glow-l">The Orb's glow</span><span class="hv-meter" title="Glow grows with everything you and your AIs look into, on a log scale. Full at about ${fmt(data.glowFull)} pages: a typical person's last three months of browsing."><i style="width:${pct.toFixed(1)}%"></i>${extra ? `<b style="width:${(extra * 100).toFixed(1)}%"></b>` : ''}</span><span class="hv-glow-n">${t >= data.glowFull ? `${fmt(t)}: past a typical three months` : `${fmt(t)} of ~${fmt(data.glowFull)}`}</span>`;
   }
 
   function drawKilrIcon() {
@@ -1160,7 +1168,7 @@
       tip.innerHTML = `<b>${esc(trunc(n.label, 70))}</b><span><i style="background:hsl(${n.hue},100%,66%)"></i>${TYPE_LABEL[n.type] || 'Page'} · ${esc(whose(n))}${n.at ? ` · ${esc(n.at)}` : ''}</span>`;
     } else if (orb) {
       tip.hidden = false;
-      tip.innerHTML = `<b>Kilr</b><span>Skillerr's own small AI, on this computer. Click to see what it's doing.</span>`;
+      tip.innerHTML = `<b>Skillerr Orb</b><span>Skillerr's own small AI, on this computer. Click to see what it's doing.</span>`;
     } else tip.hidden = true;
     if (!tip.hidden) {
       const tw = tip.offsetWidth;

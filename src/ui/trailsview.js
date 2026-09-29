@@ -237,7 +237,7 @@
     $('tvLearnAi').checked = w.fromAi;
     $('tvResearch').checked = w.research;
     $('tvSkills').checked = w.skills;
-    $('tvLearnStatus').textContent = w.learning ? 'Learning…' : w.last ? `${new Date(w.last.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}: ${learnResultText(w.last)}` : 'Kilr hasn\'t learned from your trails yet.';
+    $('tvLearnStatus').textContent = w.learning ? 'Learning…' : w.last ? `${new Date(w.last.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}: ${learnResultText(w.last)}` : 'The Orb hasn\'t learned from your trails yet.';
   }
   $('tvFresh').onchange = () => saveSettings({ trailsFresh: $('tvFresh').checked });
   $('tvKilr').onchange = () => saveSettings({ kilr: $('tvKilr').checked });

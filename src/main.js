@@ -39,6 +39,7 @@ try { // staging builds called it Wenlo
   }
 } catch {}
 const kilr = new Kilr({ dir: KILR_DIR, personalFile: KILR_PERSONAL });
+const history = new (require('./history').History)(store.DIR); // browsing history: History (⌘Y)
 // What Kilr has been doing lately, for its screen: [{ at, what }], newest first.
 const kilrLog = [];
 function kilrDid(what) {
@@ -298,7 +299,7 @@ function baseTabInfo(t) {
   const wc = t.view.webContents;
   return {
     id: t.id,
-    title: t.internal === 'memory' ? 'History' : t.internal === 'data' ? 'Bookmarks & Data' : t.internal === 'trails' ? 'Trails' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
+    title: t.internal === 'memory' ? 'Skillerr Orb' : t.internal === 'data' ? 'History & Bookmarks' : t.internal === 'trails' ? 'Trails' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
     url: t.isStart ? '' : wc.getURL(),
     internal: t.internal || null,
     isStart: t.isStart,
@@ -455,6 +456,13 @@ function attachView(tab) {
     pushTabs();
   });
   for (const ev of ['did-stop-loading', 'page-title-updated', 'did-navigate', 'did-navigate-in-page']) wc.on(ev, pushTabs);
+  // History: every page the tab opens, by the user or an AI (and which).
+  wc.on('did-navigate', (_e, u) => {
+    try {
+      tab.historyId = history.add({ url: u, title: wc.getTitle(), favicon: tab.favicon, tabId: tab.id, by: aiTab(tab) ? (groups.get(tab.groupId)?.controller || status.controller?.name || 'an AI') : null });
+    } catch {}
+  });
+  wc.on('page-title-updated', (_e, title) => tab.historyId && history.update(tab.historyId, { title }));
   // Trails: what the user (not an AI) visits, and where they were on the page.
   wc.on('did-navigate', (_e, u) => trailNavigated(tab, u));
   wc.on('did-navigate-in-page', (_e, u, isMain) => isMain && trailNavigated(tab, u, true));
@@ -471,6 +479,7 @@ function attachView(tab) {
   wc.on('did-navigate', () => wc.setZoomFactor(tab.zoom || tab.userZoom || 1));
   wc.on('page-favicon-updated', (_e, favicons) => {
     tab.favicon = favicons[0];
+    if (tab.historyId) history.update(tab.historyId, { favicon: favicons[0] });
     pushTabs();
   });
   win.contentView.addChildView(view);
@@ -1335,7 +1344,7 @@ function kilrSaveSuggestion(id) {
   const x = kilrSuggestions().find((y) => y.id === id);
   if (!x) return { ok: false, message: 'That suggestion is gone.' };
   try {
-    const r = skills.learn({ name: x.slug, description: x.description, instructions: x.instructions, topics: x.topics, by: 'Kilr' });
+    const r = skills.learn({ name: x.slug, description: x.description, instructions: x.instructions, topics: x.topics, by: 'Skillerr Orb' });
     const s = store.getSettings();
     store.saveSettings({ ...s, kilrSkillsSaved: { ...(s.kilrSkillsSaved || {}), [id]: x.count } });
     if (s.shareSkillsWithClaudeCode) skills.shareWithClaudeCode();
@@ -1992,7 +2001,7 @@ const BROWSER_TOOLS = {
       '',
       `Research folders (one folder per topic, with an index and the notes): ${RESEARCH_DIR}`,
       `Research memory: ${st.session} sessions, ${st.page} pages, ${st.topic} topics, stored on this computer in ${path.join(store.DIR, 'memory')}. ` +
-        'Use recall to search it. The user can browse it in Skillerr → ⋮ → History.',
+        'Use recall to search it. The user can browse it in Skillerr → ⋮ → Skillerr Orb.',
     ].join('\n') };
   },
   my_trails: async (args) => {
@@ -2072,7 +2081,7 @@ const BROWSER_TOOLS = {
     } else if (v === 'memory' || v === 'folders' || v === 'history' || v === 'bookmarks') {
       openInternal(v === 'memory' || v === 'folders' ? 'memory' : 'data');
       if (v === 'folders') setTimeout(() => ui('memory-mode', { mode: 'folders', query: args.query || '' }), 300);
-      if (v === 'bookmarks') ui('data-tab', 'bookmarks');
+      if (v === 'bookmarks' || v === 'history') ui('data-tab', v);
       if (v === 'memory' && args.query) setTimeout(() => ui('memory-search', String(args.query)), 400);
     } else if (['settings', 'skills', 'connect'].includes(v)) {
       togglePanel(true);
@@ -2469,12 +2478,8 @@ function wireIpc() {
     return true;
   });
   // History & bookmarks management, and resets.
-  ipcMain.handle('data-history', (_e, q) => memory.history({ q: String(q || '') }));
-  ipcMain.handle('data-delete-pages', (_e, ids) => {
-    for (const id of [].concat(ids || [])) memory.removeNode(String(id));
-    return true;
-  });
-  ipcMain.handle('data-delete-since', (_e, ms) => memory.forgetSince(Number(ms) || 0));
+  ipcMain.handle('data-history', (_e, { q = '', before = Infinity } = {}) => history.list({ q: String(q), before: Number(before) || Infinity }));
+  ipcMain.handle('data-delete-pages', (_e, urls) => history.deleteUrls([].concat(urls || []).map(String)));
   ipcMain.handle('bookmark-delete', (_e, url) => {
     store.writeJson('bookmarks.json', store.readJson('bookmarks.json', []).filter((b) => b.url !== url));
     const n = memory.nodes.get(memory.pageId(url));
@@ -2483,16 +2488,27 @@ function wireIpc() {
     return true;
   });
   ipcMain.handle('bookmark-add', () => bookmarkActive());
+  // Clear browsing data. since: a time (ms) or 0 for all time; history and research memory honour it. Cookies and the
+  // cache can't be cleared by time in Chromium, so those go entirely.
   ipcMain.handle('data-reset', async (_e, what = {}) => {
     const done = [];
+    const since = Number(what.since) || 0;
+    const { session } = require('electron');
+    if (what.history) {
+      history.deleteSince(since);
+      done.push('browsing history');
+    }
     if (what.browsing) {
-      const { session } = require('electron');
       await session.defaultSession.clearStorageData();
-      await session.defaultSession.clearCache();
       done.push('cookies and site data');
     }
+    if (what.cache) {
+      await session.defaultSession.clearCache();
+      done.push('cached images and files');
+    }
     if (what.memory) {
-      memory.forgetAll();
+      if (since) memory.forgetSince(since);
+      else memory.forgetAll();
       done.push('research memory');
     }
     if (what.trails) {
@@ -2637,9 +2653,10 @@ function wireIpc() {
       { label: 'New Tab', accelerator: 'CmdOrCtrl+T', click: () => newTab() },
       { label: 'Fleet View', accelerator: 'CmdOrCtrl+Shift+F', type: 'checkbox', checked: !!mosaic, click: () => (mosaic ? exitMosaic() : enterMosaic(tabs.map((t) => t.id))) },
       { type: 'separator' },
-      { label: 'History', accelerator: 'CmdOrCtrl+Y', click: () => openInternal('memory') },
+      { label: 'History', accelerator: 'CmdOrCtrl+Y', click: () => { openInternal('data'); ui('data-tab', 'history'); } },
+      { label: 'Skillerr Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: () => openInternal('memory') },
       { label: 'Trails', click: () => openInternal('trails') },
-      { label: 'Bookmarks & Data', click: () => openInternal('data') },
+      { label: 'Bookmarks', click: () => { openInternal('data'); ui('data-tab', 'bookmarks'); } },
       { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: () => bookmarkActive() },
       { label: 'Skills…', click: sheet('skills') },
       { label: 'Connected AI Apps…', click: sheet('connect') },
@@ -2660,7 +2677,7 @@ function wireIpc() {
       { label: status.paused ? 'Resume AI' : 'Pause AI', accelerator: 'CmdOrCtrl+Shift+P', click: () => setPaused(!status.paused) },
       { label: 'Remember Research', type: 'checkbox', checked: s.remember !== false, click: (item) => store.saveSettings({ ...store.getSettings(), remember: item.checked }) },
       { type: 'separator' },
-      { label: 'Reset Data…', click: () => { openInternal('data'); ui('data-tab', 'reset'); } },
+      { label: 'Clear Browsing Data…', accelerator: 'CmdOrCtrl+Shift+Backspace', click: () => { openInternal('data'); ui('data-tab', 'clear'); } },
       { label: 'Recordings Folder', click: open(path.join(app.getPath('videos'), 'Skillerr')) },
       { label: 'Notes Folder', click: open(NOTES_DIR) },
       { type: 'separator' },
@@ -2932,8 +2949,9 @@ function buildMenu() {
         { label: 'Open Location…', accelerator: 'CmdOrCtrl+L', click: guard(() => ui('focus-url')) },
         { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', click: guard(() => closedTabs.length && newTab(closedTabs.pop())) },
         { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: guard(() => activeTab()?.view.webContents.print()) },
-        { label: 'History', accelerator: 'CmdOrCtrl+Y', click: guard(() => openInternal('memory')) },
-        { label: 'Bookmarks & Data', click: guard(() => openInternal('data')) },
+        { label: 'History', accelerator: 'CmdOrCtrl+Y', click: guard(() => { openInternal('data'); ui('data-tab', 'history'); }) },
+        { label: 'Skillerr Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: guard(() => openInternal('memory')) },
+        { label: 'Bookmarks', click: guard(() => { openInternal('data'); ui('data-tab', 'bookmarks'); }) },
         { label: 'Trails', accelerator: 'CmdOrCtrl+Shift+L', click: guard(() => openInternal('trails')) },
         { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: guard(() => bookmarkActive()) },
       ],
@@ -3174,6 +3192,9 @@ app.on('second-instance', (_e, argv) => {
 app.on('before-quit', snapshotForQuit);
 app.on('will-quit', () => {
   store.clearSession();
+  try {
+    history.flush();
+  } catch {}
   try {
     if (trailStore?.timer) trailStore.save(); // write what was learned in the last moments
   } catch {}

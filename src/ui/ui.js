@@ -561,24 +561,24 @@ async function renderTrailsHome() {
 function renderKilrLine(box, line) {
   box.hidden = !line;
   if (!line) return;
-  box.innerHTML = `<span class="orb xs"></span><span class="sl-text"><b>Kilr</b> ${esc(line.text)}</span>`;
+  box.innerHTML = `<span class="orb xs"></span><span class="sl-text"><b>Orb</b> ${esc(line.text)}</span>`;
   const go = btn('Continue', 'ghost', () => skillerr.invoke('trails-continue', line.trailId));
   box.appendChild(go);
 }
 // ----- Kilr learning from the user's trails -----
 function learnResultText(r) {
   if (!r) return '';
-  if (r.error) return 'Kilr couldn\'t learn this time. It will try again later.';
+  if (r.error) return 'The Orb couldn\'t learn this time. It will try again later.';
   const rep = r.report || {};
   if (r.accepted) {
     const pct = (x) => Math.round((x || 0) * 100);
     const gain = rep.after > rep.before ? `It now files your pages right ${pct(rep.after)}% of the time, up from ${pct(rep.before)}%.`
       : `It now tells your trails apart ${Math.max(1, Math.round(((rep.marginAfter - rep.marginBefore) / Math.max(0.05, Math.abs(rep.marginBefore))) * 100))}% more clearly, so new pages join the right one more often.`;
     const src = r.sources ? [r.sources.you && `${r.sources.you} of yours`, r.sources.ai && `${r.sources.ai} from your AIs' research`].filter(Boolean).join(' and ') : `${rep.items}`;
-    return `Kilr learned your words from ${src} pages and searches, in ${rep.trails} trails. ${gain}`;
+    return `The Orb learned your words from ${src} pages and searches, in ${rep.trails} trails. ${gain}`;
   }
-  if (rep.reason === 'not-enough') return 'Not enough browsing yet for Kilr to learn from. It will offer again later.';
-  return 'Kilr checked your latest browsing: it already files your pages well, so nothing changed.';
+  if (rep.reason === 'not-enough') return 'Not enough browsing yet for the Orb to learn from. It will offer again later.';
+  return 'The Orb checked your latest browsing: it already files your pages well, so nothing changed.';
 }
 let learnProgress = null;
 function renderLearnCard(home) {
@@ -592,11 +592,11 @@ function renderLearnCard(home) {
   const acts = h('div', 'ti-acts');
   card.append(ic, text, acts);
   if (home.learning || learnProgress != null) {
-    text.innerHTML = `<b>Kilr is learning your words…</b><div class="learn-bar"><i style="width:${Math.round((learnProgress || 0) * 100)}%"></i></div>`;
+    text.innerHTML = `<b>The Orb is learning your words…</b><div class="learn-bar"><i style="width:${Math.round((learnProgress || 0) * 100)}%"></i></div>`;
     return;
   }
   if (home.learned) {
-    text.innerHTML = `<b>Kilr learned.</b> ${esc(learnResultText(home.learned))}`;
+    text.innerHTML = `<b>The Orb learned.</b> ${esc(learnResultText(home.learned))}`;
     acts.append(btn('OK', 'ghost', async () => {
       await skillerr.invoke('kilr-learned-seen');
       renderTrailsHome();
@@ -604,7 +604,7 @@ function renderLearnCard(home) {
     return;
   }
   const parts = [home.learn.you && `${home.learn.you} of yours`, home.learn.ai && `${home.learn.ai} your AIs researched`].filter(Boolean).join(', ');
-  text.innerHTML = `<b>Kilr can learn from your browsing.</b> ${home.learn.newPages} new pages since last time (${esc(parts)}). It learns the words you and your AIs use (the places, products and jargon) so new pages join the right trail. A few seconds, on this computer.`;
+  text.innerHTML = `<b>The Orb can learn from your browsing.</b> ${home.learn.newPages} new pages since last time (${esc(parts)}). It learns the words you and your AIs use (the places, products and jargon) so new pages join the right trail. A few seconds, on this computer.`;
   acts.append(
     btn('Learn now', 'primary', () => skillerr.invoke('kilr-learn')),
     btn('Always, automatically', 'ghost', async () => {
@@ -629,7 +629,7 @@ function renderSkillCard(home) {
   const pre = h('pre', 'skill-preview');
   pre.textContent = x.preview;
   pre.hidden = true;
-  text.innerHTML = `<b>${x.update ? 'Kilr can update a skill' : 'Kilr noticed a habit'}: ${esc(x.title.toLowerCase())}.</b> ${esc(x.why)} ` +
+  text.innerHTML = `<b>${x.update ? 'The Orb can update a skill' : 'The Orb noticed a habit'}: ${esc(x.title.toLowerCase())}.</b> ${esc(x.why)} ` +
     `${x.update ? 'Update the skill with what it learned since?' : 'Save it as a skill, so your AI does it your way next time?'}`;
   text.append(pre);
   card.append(h('div', 'ti-ic', icon('sparkle', 16)), text, acts);
@@ -744,7 +744,7 @@ function jumpRender() {
   if (!jump.items.length || !jump.input || document.activeElement !== jump.input) return jumpHide();
   const r = (jump.input.closest('form') || jump.input).getBoundingClientRect();
   Object.assign(box.style, { left: `${r.left}px`, top: `${r.bottom + 6}px`, width: `${r.width}px` });
-  box.innerHTML = `<div class="jump-head">${icon('sparkle', 11)} Kilr found</div>`;
+  box.innerHTML = `<div class="jump-head">${icon('sparkle', 11)} The Orb found</div>`;
   jump.items.forEach((c, i) => {
     const el = h('button', 'jump-item' + (i === jump.sel ? ' on' : ''));
     el.type = 'button';
