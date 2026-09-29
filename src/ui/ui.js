@@ -409,7 +409,7 @@ function aiShelfShow(t, chip) {
   pop.innerHTML = '';
   const who = t.by || 'your AI';
   const head = h('div', 'sp-head', `<div class="sp-title">${esc(t.title)}</div>` +
-    `<div class="sp-sub">Research by ${esc(who)} · ${t.count} page${t.count === 1 ? '' : 's'} · ${agoText(t.doneAt)}</div>` +
+    `<div class="sp-sub">Research by ${brandIcon(who, 12)}${esc(who)} · ${t.count} page${t.count === 1 ? '' : 's'} · ${agoText(t.doneAt)}</div>` +
     (t.summary ? `<div class="sp-summary">${esc(t.summary)}</div>` : ''));
   pop.append(head);
   if (t.open.length) {

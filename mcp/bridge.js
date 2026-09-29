@@ -137,6 +137,9 @@ function clientName(server) {
   if (/^local-agent-mode/i.test(raw) || /^claude[- ]desktop/i.test(raw)) return 'Claude Desktop';
   if (/^claude-code/i.test(raw)) return 'Claude Code';
   if (/^cursor/i.test(raw)) return 'Cursor';
+  const others = [[/^codex/i, 'Codex'], [/gemini/i, 'Gemini CLI'], [/visual studio code|^vscode|copilot/i, 'VS Code'], [/^zed/i, 'Zed'],
+    [/^goose/i, 'Goose'], [/lm ?studio/i, 'LM Studio'], [/chatgpt|openai/i, 'ChatGPT'], [/windsurf|codeium/i, 'Windsurf']];
+  for (const [re, name] of others) if (re.test(raw)) return name;
   return raw;
 }
 

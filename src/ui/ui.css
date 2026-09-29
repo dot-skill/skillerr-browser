@@ -670,6 +670,9 @@ body.os-other .tab, body.os-other .ibtn, body.os-other button { -webkit-app-regi
 .brand { position: relative; display: inline-block; width: var(--sz); height: var(--sz); flex: none; vertical-align: -2px; margin-right: 6px;
   background: var(--c); -webkit-mask: var(--m) center / contain no-repeat; mask: var(--m) center / contain no-repeat; }
 .brand-wrap { position: relative; display: inline-flex; flex: none; margin-right: 6px; }
+/* An AI app Skillerr has no mark for: its initial, in a colour of its own. */
+.brand-mono { display: inline-grid; place-items: center; width: var(--sz); height: var(--sz); flex: none; margin-right: 6px; border-radius: 4px;
+  background: color-mix(in srgb, var(--c) 22%, transparent); color: var(--c); font: 700 calc(var(--sz) * .62)/1 var(--font, system-ui); vertical-align: -2px; }
 .brand-wrap .brand { margin-right: 0; }
 .brand-wrap i { position: absolute; right: -7px; bottom: -5px; font: 700 7px/1 ui-monospace, Menlo, monospace; font-style: normal; color: var(--text);
   background: var(--surface-3); border-radius: 3px; padding: 1px 2px; }
@@ -1045,4 +1048,4 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .sp-open b { color: var(--text); font-weight: 600; }
 .sp-open li { margin: 3px 0 0 14px; }
 .sp-tab .sp-read { margin-left: auto; flex: none; color: var(--ok, #12a37f); font-size: 11px; }
-
+.shelf-ai .shelf-trail .st-app .brand, .shelf-ai .shelf-trail .st-app .brand-wrap, .shelf-ai .shelf-trail .st-app .brand-mono { margin-right: 0; }

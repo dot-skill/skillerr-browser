@@ -52,9 +52,29 @@ const BRANDS = {
   'claude code': { file: 'claude', color: '#D97757', badge: '>_' }, 'claude-code': { file: 'claude', color: '#D97757', badge: '>_' },
   cursor: { file: 'cursor' }, windsurf: { file: 'windsurf', color: '#0B9B8A' }, ollama: { file: 'ollama' },
 };
+// Which AI app it is, always shown: its own mark when Skillerr has one (by exact name, or by what the name says:
+// "Claude Code (VS Code)" is Claude Code), Skillerr's wheel for its own Pilot, and otherwise the app's initial in a
+// colour of its own, so every AI is told apart at a glance and none is an anonymous "AI".
+function brandOf(name) {
+  const n = String(name || '').toLowerCase().trim();
+  if (BRANDS[n]) return BRANDS[n];
+  if (/^skillerr/.test(n)) return { file: '../mark', color: 'var(--violet, #8b6cff)' };
+  if (/claude.?code/.test(n)) return BRANDS['claude code'];
+  if (/claude|anthropic/.test(n)) return BRANDS['claude desktop'];
+  if (/cursor/.test(n)) return BRANDS.cursor;
+  if (/windsurf|codeium/.test(n)) return BRANDS.windsurf;
+  if (/ollama/.test(n)) return BRANDS.ollama;
+  return null;
+}
 function brandIcon(name, size = 16) {
-  const b = BRANDS[String(name || '').toLowerCase()];
-  if (!b) return '';
+  const b = brandOf(name);
+  if (!b) {
+    const letter = (String(name || '').match(/[a-z0-9]/i) || [''])[0].toUpperCase();
+    if (!letter) return '';
+    let hash = 0;
+    for (const c of String(name).toLowerCase()) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
+    return `<span class="brand-mono" style="--sz:${size}px;--c:hsl(${hash % 360} 62% 58%)">${letter}</span>`;
+  }
   const mark = `<span class="brand" style="--sz:${size}px;--c:${b.color || 'currentColor'};--m:url(brands/${b.file}.svg)"></span>`;
   return b.badge ? `<span class="brand-wrap">${mark}<i>${b.badge}</i></span>` : mark;
 }
