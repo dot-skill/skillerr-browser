@@ -244,5 +244,5 @@
     refresh();
   });
 
-  window.kilrPanel = { open: show, close, toggle: () => (open ? close() : show()), isOpen: () => open };
+  window.orbPanel = { open: show, close, toggle: () => (open ? close() : show()), isOpen: () => open };
 })();

@@ -1086,3 +1086,13 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .sp-back { display: inline-flex; align-items: center; gap: 4px; margin: -2px 0 8px -4px; padding: 3px 6px; border-radius: 7px; font-size: 11.5px; color: var(--text-2); }
 .sp-back:hover { background: var(--surface-3); color: var(--text); }
 
+/* No built-in AI: the card that takes the Pilot box's place. */
+.no-pilot { margin: 8px 12px 12px; padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2); font-size: 13px; line-height: 1.5; color: var(--text-2); }
+.no-pilot[hidden], .composer[hidden] { display: none; }
+.no-pilot p { margin: 0; }
+.no-pilot b { color: var(--text); }
+.no-pilot .np-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 10px; }
+.no-pilot .np-own { font-size: 12px; color: var(--text-3); }
+.no-pilot .np-own a { color: var(--violet); }
+
+#ideas[hidden] { display: none; }

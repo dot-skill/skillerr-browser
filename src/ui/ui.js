@@ -19,6 +19,7 @@ const OTHER_PRESETS = {
   openai: { baseUrl: 'https://api.openai.com/v1', model: '' },
   custom: { baseUrl: '', model: '' },
 };
+let aiReady = true; // is a built-in AI set up? (applyAiReady keeps it current)
 const PRO_GATEWAY = 'https://ai-gateway.vercel.sh/v1'; // direct, for a gateway key (the owner's own)
 const PRO_API = 'https://skillerr.com/api/pro/v1'; // licensed: skillerr.com checks the license, then calls the gateway
 const PRO_NAMES = { 'anthropic/claude-sonnet-5': 'Claude Sonnet 5', 'anthropic/claude-opus-5.5': 'Claude Opus 5.5', 'anthropic/claude-haiku-4.5': 'Claude Haiku 4.5', 'google/gemini-3.5-flash': 'Gemini 3.5 Flash' };
@@ -201,6 +202,11 @@ skillerr.on('shot-saved', () => flash('Screenshot saved to Pictures/Skillerr'));
 
 // Right-click → "Ask Skillerr about …" fills the composer.
 skillerr.on('prefill-task', (text) => {
+  if (!aiReady) { // no built-in AI: hand it to the user's AI app instead
+    skillerr.send('copy', text);
+    skillerr.send('toggle-panel', true);
+    return flash('Copied. Paste it into Claude Desktop, Claude Code or Cursor.', 6000);
+  }
   taskInput.value = text;
   autosize();
   taskInput.focus();
@@ -837,8 +843,9 @@ skillerr.on('trails-changed', () => {
 
 function intentInput({ input, badge, form, hint, idleIcon, onValue, idleWhenBlurred, emptyHint }) {
   let manual = null;
-  const current = () => (input.value.trim() && !(idleWhenBlurred && document.activeElement !== input) ? manual || detectIntent(input.value) : null);
-  const options = () => (looksLikeUrl(input.value.trim()) ? ['go', 'search', 'ask'] : ['search', 'ask']);
+  // "Ask Skillerr" only when there's a built-in AI to ask; otherwise a long search is a search.
+  const current = () => { if (!input.value.trim() || (idleWhenBlurred && document.activeElement !== input)) return null; const it = manual || detectIntent(input.value); return it === 'ask' && !aiReady ? 'search' : it; };
+  const options = () => (looksLikeUrl(input.value.trim()) ? ['go', 'search', 'ask'] : ['search', 'ask']).filter((o) => o !== 'ask' || aiReady);
 
   function render() {
     const it = current();
@@ -848,7 +855,7 @@ function intentInput({ input, badge, form, hint, idleIcon, onValue, idleWhenBlur
     if (hint) {
       const focused = document.activeElement === input;
       const next = options().filter((o) => o !== it)[0];
-      hint.innerHTML = !it ? (emptyHint || '') : !focused ? '' :
+      hint.innerHTML = !it ? (hint.dataset.empty || emptyHint || '') : !focused ? '' :
         `<kbd>↵</kbd> ${INTENTS[it].label}${next ? ` · <kbd>Tab</kbd> ${INTENTS[next].label} instead` : ''}`;
     }
   }
@@ -1479,11 +1486,33 @@ function agentName() {
 
 async function renderModelPill() {
   const ready = await skillerr.invoke('agent-ready');
+  applyAiReady(ready);
   const p = $('modelPill');
   p.className = 'model-pill ' + (ready ? 'ready' : 'setup');
   p.innerHTML = ready ? `<span class="dot"></span><span>${esc(agentName())}</span>` : `${icon('sparkle', 12)}<span>Choose an AI to power Skillerr</span>`;
 }
 $('modelPill').onclick = () => openSheet('settings');
+
+// Without a built-in AI, nothing in Skillerr may invite the user to type a task for it: the Pilot box gives way to a card
+// that says how Skillerr is driven (by the user's AI apps), and the address bar and start page only search and go, so a
+// long search is searched, not copied as a task.
+function applyAiReady(ready) {
+  aiReady = !!ready;
+  $('composer').hidden = !aiReady;
+  $('noPilot').hidden = aiReady;
+  $('welcomeStep1').innerHTML = aiReady
+    ? '<b>Say what you want.</b> Type below or in the address bar — “find”, “compare”, “summarize”, “fill in”.'
+    : '<b>Connect your AI app.</b> Claude Desktop, Claude Code or Cursor: ask it to research or compare, and it browses here.';
+  $('welcomeAlso').hidden = !aiReady;
+  $('url').placeholder = aiReady ? 'Search, enter an address, or tell Skillerr what to do' : 'Search or enter an address';
+  $('hero').placeholder = aiReady ? 'Ask, search, or type a URL' : 'Search or type a URL';
+  $('ideas').hidden = !aiReady; // task ideas are for the built-in AI; without one they'd only copy text
+  $('heroHint').dataset.empty = aiReady ? 'Type an address, a search, or something for Skillerr to do' : 'Type an address or a search';
+  if (!$('hero').value) $('heroHint').textContent = $('heroHint').dataset.empty;
+  const lede = document.querySelector('.start .lede');
+  if (lede) lede.textContent = aiReady ? 'Browse like always — or just say what you want done, and watch it happen.' : 'Browse like always. Your AI apps can browse here too, while you watch.';
+}
+$('npSnap').onclick = () => snapForAi();
 
 // Screenshot for your AI: capture the page, copy one line, paste it into your AI and just say what's wrong.
 $('snapBtn').innerHTML = icon('camera', 13);

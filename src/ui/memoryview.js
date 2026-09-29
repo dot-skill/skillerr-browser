@@ -1146,7 +1146,7 @@
     if (!dragging && !panning) return;
     if (dragging && !moved) select(dragging);
     else if (panning && !moved) {
-      if (downOrb) window.kilrPanel?.toggle();
+      if (downOrb) window.orbPanel?.toggle();
       else select(null);
     }
     dragging = null;
@@ -1210,7 +1210,7 @@
   }));
   $('hvKilrBtn').onclick = () => {
     if (mode !== 'map') setMode('map');
-    window.kilrPanel?.toggle();
+    window.orbPanel?.toggle();
   };
 
   $('mvSearch').onsubmit = async (e) => {
@@ -1264,7 +1264,7 @@
     if ($('memView').hidden) {
       visible = false;
       tip.hidden = true;
-      window.kilrPanel?.close();
+      window.orbPanel?.close();
     }
   }).observe($('memView'), { attributes: true, attributeFilter: ['hidden'] });
   document.addEventListener('visibilitychange', () => {
@@ -1288,7 +1288,7 @@
     $('hvFilter').hidden = m !== 'map';
     $('mvFolders').hidden = m !== 'folders';
     if (m === 'folders') {
-      window.kilrPanel?.close();
+      window.orbPanel?.close();
       loadFolders();
     } else {
       // Back to the map: start clean, not stuck on an old search highlight or selection.
