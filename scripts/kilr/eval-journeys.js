@@ -16,7 +16,7 @@ const { cosine } = require('../../src/kilr/embed');
 const { groupTabs, readableTitle } = require('../../src/kilr/journeys');
 const { clusterItems, cleanTitle, pageWords } = require('../../src/trails');
 
-const orb = new Kilr({ dir: require('path').join(__dirname, '..', '..', 'assets', 'kilr') });
+const orb = new Kilr({ dir: process.env.ORB_DIR || require('path').join(__dirname, '..', '..', 'assets', 'kilr') });
 const meaning = { vec: (x) => orb.vec(x), cosine };
 const MIN = 60e3;
 const DAY = 24 * 60 * MIN;
