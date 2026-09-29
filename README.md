@@ -162,8 +162,11 @@ See [docs/trails.md](docs/trails.md).
 
 - **Yours, not ours.** The Orb is your own AI model: it runs on your computer, learns from your browsing there, and
   sends nothing to Skillerr or anyone else. It works offline.
-- **Tiny and fast.** One 7.9 MB file, about 26 µs per text in plain JavaScript. Runs on your CPU, no GPU needed,
-  nothing to install.
+- **Tiny and fast.** One 7.9 MB file, about 8 µs per page title in plain JavaScript on one CPU core: over 250 times
+  faster than the transformer it learned from, keeping 88% of its accuracy. No GPU, nothing to install.
+- **Sorts weeks of open tabs into journeys.** Moving over from Chrome, it finds what belongs together with 91% precision
+  (F1 0.83, against 0.25 for word matching), and holds up when titles say nothing ("Log In"). See
+  [docs/orb.md](docs/orb.md#how-good-it-is).
 - **Knows your work by meaning.** Pages join the right trail even in different words, "Ask the Orb" on the Trails page
   finds "plane tickets to Japan" in a trail of Tokyo flights, and the start page says where you were and what's
   unfinished.

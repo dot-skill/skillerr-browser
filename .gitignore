@@ -5,3 +5,4 @@ dist/
 out
 mcp/preview.html
 build/entitlements.generated.plist
+scripts/kilr/work/

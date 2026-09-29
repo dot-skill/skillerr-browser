@@ -55,3 +55,13 @@ node ../bench.js
 ```
 
 STS-B and SICK test sets are used only to score the result, never to fit it.
+
+## Measure it
+
+```bash
+node scripts/kilr/bench.js             # speed and footprint of the shipped table
+node scripts/kilr/compare.js work      # against all-MiniLM-L6-v2: STS-B, SICK, speed, memory (setup in the file)
+node scripts/kilr/eval-journeys.js     # sorting long-kept tabs into journeys, before and now
+node scripts/kilr/eval-personal.js     # what weekly learning adds
+```
+
