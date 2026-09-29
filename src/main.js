@@ -3071,6 +3071,7 @@ function offerMoveToApplications() {
 app.whenReady().then(async () => {
   traceStartup('app ready');
   if (offerMoveToApplications()) return;
+  startWidevine();
   applyTheme();
   setSearchTemplate(searchTemplateFor());
   applySearchApi();
@@ -3188,6 +3189,20 @@ app.on('second-instance', (_e, argv) => {
     win.focus();
   }
 });
+
+// Protected video (Netflix, Disney+, Spotify and the like): Skillerr runs on castlabs' Electron for Content Security,
+// which fetches Google's Widevine module on first launch and keeps it updated. Not awaited: browsing starts at once, and
+// streaming sites play as soon as it's in place (a page opened before that plays after a reload).
+let widevine = 'unavailable';
+function startWidevine() {
+  const { components } = require('electron');
+  if (!components) return; // a stock Electron (development without the castlabs build)
+  widevine = 'installing';
+  components.whenReady()
+    .then(() => (widevine = 'ready'))
+    .catch(() => (widevine = 'failed')) // offline on first launch: it tries again next time
+    .finally(() => traceStartup(`widevine ${widevine}`));
+}
 
 app.on('before-quit', snapshotForQuit);
 app.on('will-quit', () => {

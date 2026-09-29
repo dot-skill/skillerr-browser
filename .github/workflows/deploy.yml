@@ -12,6 +12,8 @@
 #   APPLE_API_KEY_P8, APPLE_API_KEY_ID, APPLE_API_ISSUER  optional. App Store Connect API key, to notarize.
 #   APPLE_TEAM_ID, MAC_PROVISIONING_PROFILE_B64           optional. Touch ID passkeys (docs/passkeys.md).
 #   WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD                    optional. Windows code-signing certificate (.pfx, base64).
+#   EVS_ACCOUNT_NAME, EVS_PASSWD                          optional. castlabs EVS account, to VMP-sign macOS and Windows
+#                                                         builds so Widevine sites (Netflix…) play (scripts/vmp-sign.cjs).
 name: Deploy
 
 on:
@@ -80,6 +82,7 @@ jobs:
     env:
       HAS_NOTARY_KEY: ${{ secrets.APPLE_API_KEY_P8 != '' }}
       HAS_PROFILE: ${{ secrets.MAC_PROVISIONING_PROFILE_B64 != '' }}
+      HAS_EVS: ${{ secrets.EVS_ACCOUNT_NAME != '' }}
     strategy:
       fail-fast: true
       matrix:
@@ -120,6 +123,16 @@ jobs:
         run: |
           printf '%s' "$PROFILE_B64" | base64 --decode > "$RUNNER_TEMP/skillerr.provisionprofile"
           echo "MAC_PROVISIONING_PROFILE=$RUNNER_TEMP/skillerr.provisionprofile" >> "$GITHUB_ENV"
+      - name: Widevine VMP signing account
+        if: runner.os != 'Linux' && env.HAS_EVS == 'true'
+        shell: bash
+        env:
+          EVS_ACCOUNT_NAME: ${{ secrets.EVS_ACCOUNT_NAME }}
+          EVS_PASSWD: ${{ secrets.EVS_PASSWD }}
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" -m pip install --upgrade castlabs-evs
+          "$PY" -m castlabs_evs.account reauth -A "$EVS_ACCOUNT_NAME" -P "$EVS_PASSWD"
       - name: Build and upload (draft)
         shell: bash
         env:
@@ -132,11 +145,13 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           WIN_CSC_LINK: ${{ runner.os == 'Windows' && secrets.WIN_CSC_LINK || '' }}
           WIN_CSC_KEY_PASSWORD: ${{ runner.os == 'Windows' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
+          EVS_ACCOUNT_NAME: ${{ runner.os != 'Linux' && secrets.EVS_ACCOUNT_NAME || '' }}
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK != '' }}
         run: |
           [ -n "$CSC_LINK" ] || unset CSC_LINK CSC_KEY_PASSWORD
           [ -n "$WIN_CSC_LINK" ] || unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
           [ -n "$APPLE_TEAM_ID" ] || unset APPLE_TEAM_ID
+          [ -n "$EVS_ACCOUNT_NAME" ] || unset EVS_ACCOUNT_NAME
           npm run build
           npx electron-builder --config electron-builder.config.cjs ${{ matrix.args }} --publish always
 

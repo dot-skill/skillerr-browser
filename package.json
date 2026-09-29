@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/ext-apps": "^2.0.0",
-    "electron": "^44.4.5",
+    "electron": "github:castlabs/electron-releases#v44.1.0+wvcus",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2"
   },

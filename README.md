@@ -276,6 +276,10 @@ See [docs/trails.md](docs/trails.md).
   find in page, downloads, a context menu with "Ask Skillerr", history with Clear browsing data, bookmarks, Chrome import, and light and
   dark themes.
 - Recordings of a tab or the window with captions, and screenshots, saved to your Movies and Pictures folders.
+- **Protected video** (Widevine) for streaming sites like Netflix, via castlabs' Electron. See
+  [docs/protected-video.md](docs/protected-video.md).
+- A built-in **clear-popups** skill, so your AI gets past cookie banners and sign-up modals the careful way: the most
+  private choice, never agreeing to anything for you.
 
 </details>
 
