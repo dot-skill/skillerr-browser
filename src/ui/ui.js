@@ -532,6 +532,7 @@ async function renderTrailsHome() {
   }
   renderKilrLine($('kilrLine'), home.kilr);
   renderLearnCard(home);
+  renderSkillCard(home);
   const row = $('sessionRow');
   row.hidden = !home.session;
   if (home.session) {
@@ -606,6 +607,39 @@ function renderLearnCard(home) {
     }),
     btn('Not now', 'ghost', async () => {
       await skillerr.invoke('kilr-learn-snooze');
+      renderTrailsHome();
+    }),
+  );
+}
+// A skill Kilr noticed: the kind of task the user keeps doing, written down the way they do it.
+function renderSkillCard(home) {
+  const card = $('skillCard');
+  const x = home.skill;
+  card.hidden = !x;
+  if (!x) return;
+  card.innerHTML = '';
+  const text = h('div', 'ti-text');
+  const acts = h('div', 'ti-acts');
+  const pre = h('pre', 'skill-preview');
+  pre.textContent = x.preview;
+  pre.hidden = true;
+  text.innerHTML = `<b>${x.update ? 'Kilr can update a skill' : 'Kilr noticed a habit'}: ${esc(x.title.toLowerCase())}.</b> ${esc(x.why)} ` +
+    `${x.update ? 'Update the skill with what it learned since?' : 'Save it as a skill, so your AI does it your way next time?'}`;
+  text.append(pre);
+  card.append(h('div', 'ti-ic', icon('sparkle', 16)), text, acts);
+  const see = btn('See skill', 'ghost', () => {
+    pre.hidden = !pre.hidden;
+    see.textContent = pre.hidden ? 'See skill' : 'Hide';
+  });
+  acts.append(
+    btn(x.update ? 'Update skill' : 'Save skill', 'primary', async () => {
+      const r = await skillerr.invoke('kilr-suggestion-save', x.id);
+      flash(r.ok ? `Saved “${r.name}”. Your AI can use it now: ask it to use the ${r.name} skill, or type /${r.name}.` : r.message, 7000);
+      renderTrailsHome();
+    }),
+    see,
+    btn('Not now', 'ghost', async () => {
+      await skillerr.invoke('kilr-suggestion-dismiss', x.id);
       renderTrailsHome();
     }),
   );

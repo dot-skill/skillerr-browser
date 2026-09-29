@@ -562,6 +562,23 @@ class Trails {
       .filter((t) => t.texts.length);
   }
 
+  // What Kilr looks at to suggest skills (src/kilr/suggest.js): each trail's searches, and its sites in the order they
+  // were first opened. Never pages with password or payment fields, never "Other tabs", never excluded sites.
+  forSkills({ you = true, ai = true } = {}) {
+    return this.trails
+      .filter((t) => !t.loose && this.worth(t) && (t.research ? ai : you))
+      .map((t) => ({
+        id: t.id,
+        title: this.summary(t).title,
+        by: t.research?.by || null,
+        searches: t.searches,
+        pages: t.pages.filter((p) => !p.sensitive).map((p) => ({ host: p.host, title: p.title, firstAt: p.firstAt })),
+        days: t.days,
+        sessions: t.sessions,
+        lastAt: t.lastAt,
+      }));
+  }
+
   // Pages first visited since a time: what's new for Kilr to learn from.
   newPagesSince(at, { you = true, ai = true } = {}) {
     let n = 0;

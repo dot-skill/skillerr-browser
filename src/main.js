@@ -1186,6 +1186,14 @@ function trailsHome() {
     learn: s.kilrLearn === 'suggest' ? learnDue() : null,
     learning: !!learning,
     learned: s.kilrLastLearn && Date.now() - s.kilrLastLearn.at < 864e5 && !s.kilrLastLearn.seen ? s.kilrLastLearn : null,
+    // A skill Kilr noticed the user could keep (the first one; the Kilr screen lists them all).
+    skill: (() => {
+      try {
+        return kilrSuggestions()[0] || null;
+      } catch {
+        return null;
+      }
+    })(),
   };
 }
 
@@ -1405,6 +1413,55 @@ function kilrStatus() {
     runsOn: { gpu: false, network: false, where: 'this computer' },
     log: kilrLog.slice(0, 30),
   };
+}
+
+// ---------- Skills Kilr suggests (src/kilr/suggest.js) ----------
+// From the user's own trails and their AI apps' research trails (as chosen under what Kilr learns from). A suggestion
+// the user put off comes back only once the habit has doubled; a saved one comes back as an update after two more trails.
+const kilrSuggested = new Set();
+function kilrSuggestions() {
+  const s = store.getSettings();
+  if (s.kilr === false || s.kilrSkills === false || !learningTrails()) return [];
+  const db = trailsDb();
+  const found = require('./kilr/suggest').suggestSkills(db.forSkills({ you: s.kilrLearnFromYou !== false, ai: s.kilrLearnFromAi !== false }), { everyday: (h) => db.everyday(h) });
+  const out = [];
+  for (const x of found) {
+    const put = (s.kilrSkillsDismissed || {})[x.id];
+    const saved = (s.kilrSkillsSaved || {})[x.id];
+    if (put && x.count < put * 2) continue;
+    if (saved && x.count < saved + 2) continue;
+    const mine = skills.get(x.slug);
+    if (mine && mine.trust?.state !== 'learned') continue; // the user's own skill of that name wins
+    if (!kilrSuggested.has(x.id)) {
+      kilrSuggested.add(x.id);
+      kilrDid(`Noticed a habit: ${x.title.toLowerCase()} (${x.count} trails)`);
+    }
+    out.push({ ...x, update: !!saved, preview: require('./kilr/suggest').skillMarkdown(x) });
+  }
+  return out;
+}
+
+function kilrSaveSuggestion(id) {
+  const x = kilrSuggestions().find((y) => y.id === id);
+  if (!x) return { ok: false, message: 'That suggestion is gone.' };
+  try {
+    const r = skills.learn({ name: x.slug, description: x.description, instructions: x.instructions, topics: x.topics, by: 'Kilr' });
+    const s = store.getSettings();
+    store.saveSettings({ ...s, kilrSkillsSaved: { ...(s.kilrSkillsSaved || {}), [id]: x.count } });
+    if (s.shareSkillsWithClaudeCode) skills.shareWithClaudeCode();
+    kilrDid(`Saved the skill “${x.slug}”`);
+    trailsChanged();
+    return { ok: true, name: r.skill.name, file: r.file, updated: r.updated };
+  } catch (err) {
+    return { ok: false, message: err.message };
+  }
+}
+
+function kilrDismissSuggestion(id) {
+  const x = kilrSuggestions().find((y) => y.id === id);
+  const s = store.getSettings();
+  store.saveSettings({ ...s, kilrSkillsDismissed: { ...(s.kilrSkillsDismissed || {}), [id]: x ? x.count : 1 } });
+  trailsChanged();
 }
 
 // For AI apps (my_trails), in plain words.
@@ -2489,10 +2546,13 @@ function wireIpc() {
     if (s.kilrLastLearn) store.saveSettings({ ...s, kilrLastLearn: { ...s.kilrLastLearn, seen: true } });
   });
   ipcMain.handle('kilr-forget', () => kilrForget());
+  ipcMain.handle('kilr-suggestions', () => kilrSuggestions());
+  ipcMain.handle('kilr-suggestion-save', (_e, id) => kilrSaveSuggestion(String(id)));
+  ipcMain.handle('kilr-suggestion-dismiss', (_e, id) => kilrDismissSuggestion(String(id)));
   ipcMain.handle('kilr-info', () => {
     const s = store.getSettings();
     return { learn: s.kilrLearn, every: s.kilrLearnEvery, last: s.kilrLastLearn, personal: kilr.personal, learning: !!learning,
-      fromYou: s.kilrLearnFromYou !== false, fromAi: s.kilrLearnFromAi !== false, research: s.trailsResearch !== false };
+      fromYou: s.kilrLearnFromYou !== false, fromAi: s.kilrLearnFromAi !== false, research: s.trailsResearch !== false, skills: s.kilrSkills !== false };
   });
   ipcMain.handle('trails-list', (_e, { state = 'active', query = '', who = 'all' } = {}) => trailsDb().list({ state, query: String(query), who }));
   ipcMain.handle('trails-detail', (_e, id) => trailsDb().detail(String(id)));

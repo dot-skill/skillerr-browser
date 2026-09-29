@@ -39,6 +39,9 @@ const DEFAULTS = {
   kilrLearnedAt: 0,
   kilrSnoozedUntil: 0,
   kilrLastLearn: null, // { at, accepted, report, auto }
+  kilrSkills: true, // suggest skills from the kinds of task the user (and their AIs) keep doing (src/kilr/suggest.js)
+  kilrSkillsDismissed: {}, // suggestion id → how many trails it had when the user said "not now"
+  kilrSkillsSaved: {}, // suggestion id → how many trails it had when saved as a skill
   trails: true, // learn the user's ongoing work from their own browsing (src/trails.js)
   trailsTuck: true, // tuck tabs unused for half a day into their trail (the 5 most recent always stay)
   trailsIntroSeen: false,

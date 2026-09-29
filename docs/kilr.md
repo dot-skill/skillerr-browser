@@ -21,6 +21,7 @@ nothing to install and nothing to download, and nothing leaves the computer.
 |---|---|
 | **Tabs sort themselves** | Open tabs of the same trail show as one named group in the tab strip, and a tab that joins a trail moves next to its trail's other tabs. Click folds a group, **Focus** folds the other trails, **×** puts the trail's tabs away. |
 | **Find anything by meaning** | Type what you remember in the address bar ("newborn feeding", "train from tokyo to kyoto"): open tabs, tucked tabs and trail pages appear above web search. ↵ switches to the tab, or brings a tucked or visited page back where you were. |
+| **Suggests skills** | When you (or your AIs) keep doing the same kind of task, like choosing what to buy, Kilr offers to save how you do it as a skill your AI can follow. Below. |
 | **Learns your words, and your AI's** | Weekly (by default it asks first), Kilr retrains on your trails and your AIs' research so your jargon joins the right trail. Below. |
 | **Trails: filing pages** | A page joins a trail by meaning as well as by shared words. "hotels in japan for october" joins a trail of "cheap flights to tokyo". |
 | **Trails: search** | The Trails page search box is "Ask Kilr": "plane tickets to Japan" finds the Tokyo flights trail. |
@@ -87,6 +88,38 @@ Measured on the Trails threads (`scripts/kilr/eval-trails.js`, trained on the tu
 On a week of jargon-heavy browsing (`scripts/kilr/eval-personal.js`: ryokan, tokio, bassinet, Gateron, VTI), the
 following week's new pages that Trails joins by meaning go from 60% to 95%, with no wrong joins.
 
+## Skills Kilr suggests
+
+Skillerr already keeps what the user and their AIs browse (trails, research memory). Kilr turns habits in it into
+skills: when the same kind of task shows up in 3 or more trails on 2 or more days, the start page offers to save how
+it's done as a standard skill (`SKILL.md`) that any AI connected to Skillerr (Claude Desktop, Cursor, Claude Code…) can
+use with `use_skill`, or that the built-in Pilot uses.
+
+```
+Kilr noticed a habit: how you choose what to buy. You did this 4 times on 4 days, each time with rtings.com,
+reddit.com, amazon.com. Save it as a skill, so your AI does it your way next time?     [Save skill] [See skill] [Not now]
+```
+
+The skill says, from what was observed:
+
+1. how the user searches, as patterns ("best … 2026", "… review reddit"), in the order they're typed;
+2. the sites they rely on, in the order they use them ("usually first", "usually near the end");
+3. how many pages they usually look at before deciding;
+4. a closing step for that kind of task (for buying: compare two or three finalists in a table);
+5. to check `my_trails` first, in case they've started on it already.
+
+- **No language model writes it, and nothing leaves the computer.** The kinds of task (buy, fix, learn, trip, recipe,
+  job, place to live) are fixed word lists; the searches and sites are counted from trails; the wording is a template.
+  Kilr's part is the trails themselves, which it files by meaning.
+- **Works with manual browsing and with AI apps.** It reads the user's own trails and their AIs' research trails, as
+  chosen under what Kilr learns from (Trails settings). The skill says who did the research.
+- **Not now** puts a suggestion off until the habit has doubled. A saved skill is offered as an update after two more
+  trails. A skill of the same name the user made themselves is never overwritten.
+- **Turn it off:** Trails settings → Suggest skills from what you keep doing.
+- **What it doesn't do (yet):** notice the same *subject* coming back weeks apart. Kilr's closeness between whole
+  trails wasn't reliable enough for that (related trails scored as low as unrelated ones), and a wrong suggestion is
+  worse than none.
+
 ## Light enough for 4 GB
 
 Kilr is about 22 MB of memory, computes nothing on the graphics card, and only works when a page is filed or a
@@ -137,6 +170,7 @@ Done, on `develop`:
 - Trails matching and search by meaning; the start-page line; "Ask Kilr"; recall by meaning without Ollama.
 - Weekly learning from the user's trails, with the proof-before-keep check, worker thread, schedule and settings.
 - Tabs sort themselves into trail groups; find anything by meaning from the address bar; Tidy closes duplicates.
+- Skills suggested from habits in trails (yours and your AIs'), saved as standard skills.
 
 Next, in order of value:
 
@@ -155,10 +189,12 @@ Next, in order of value:
 | `src/kilr/embed.js` | Loads the table, embeds texts, cosine and centroid |
 | `src/kilr/index.js` | `Kilr`: page–trail affinity, ranking trails for a question, answers from a trail's facts |
 | `src/kilr/calibration.js` | Where Kilr's cosines fall |
+| `src/kilr/suggest.js` | Skills from habits in trails: kinds of task, search patterns, sites in order, the SKILL.md |
 | `src/kilr/train.js`, `train-worker.js` | Learning from the user's trails; runs in a worker thread |
 | `src/embed.js` | Recall by meaning: Kilr built in, or an endpoint |
 | `src/trails.js` | Uses Kilr (`meaning`) when given, words otherwise |
 | `assets/kilr/` | The model (`kilr-embed.bin`, `vocab.txt`) and its provenance |
 | `scripts/kilr/` | Building, calibrating, benchmarking and evaluating it |
+| `test/kilr-suggest.test.js` | Suggested skills from simulated browsing |
 | `test/kilr.test.js` | Tokenizer, model, meaning, answers, Trails grouping on held-out threads, recall, learning, the worker |
 | `scripts/kilr/eval-trails.js`, `eval-personal.js`, `personal-data.js` | How well Kilr groups threads of work, and what learning adds |

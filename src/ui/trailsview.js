@@ -215,6 +215,7 @@
   $('tvLearnYou').onchange = () => saveSettings({ kilrLearnFromYou: $('tvLearnYou').checked });
   $('tvLearnAi').onchange = () => saveSettings({ kilrLearnFromAi: $('tvLearnAi').checked });
   $('tvResearch').onchange = () => saveSettings({ trailsResearch: $('tvResearch').checked });
+  $('tvSkills').onchange = () => saveSettings({ kilrSkills: $('tvSkills').checked });
   document.querySelectorAll('#tvWho button').forEach((b) => (b.onclick = () => {
     who = b.dataset.who;
     document.querySelectorAll('#tvWho button').forEach((x) => x.classList.toggle('on', x === b));
@@ -234,6 +235,7 @@
     $('tvLearnYou').checked = w.fromYou;
     $('tvLearnAi').checked = w.fromAi;
     $('tvResearch').checked = w.research;
+    $('tvSkills').checked = w.skills;
     $('tvLearnStatus').textContent = w.learning ? 'Learning…' : w.last ? `${new Date(w.last.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}: ${learnResultText(w.last)}` : 'Kilr hasn\'t learned from your trails yet.';
   }
   $('tvTuck').onchange = () => saveSettings({ trailsTuck: $('tvTuck').checked });
