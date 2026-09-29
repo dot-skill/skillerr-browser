@@ -147,7 +147,7 @@ The skill says, from what was observed:
 
 ## Light enough for 4 GB
 
-Kilr is about 22 MB of memory, computes nothing on the graphics card, and only works when a page is filed or a
+Kilr is about 22 MB of memory, needs no GPU, and only works when a page is filed or a
 search is typed (microseconds each). Learning is a short burst in a capped worker thread. Tidy and tucked tabs keep
 the number of loaded pages down, and sleeping tabs unload the rest; those matter far more on a 4 GB machine than
 Kilr does.

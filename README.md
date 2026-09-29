@@ -160,8 +160,8 @@ See [docs/trails.md](docs/trails.md).
 <details>
 <summary><b>What you get</b></summary>
 
-- **Built in, tiny, fast.** One 7.9 MB file, about 26 µs per text in plain JavaScript. Nothing to install, nothing to
-  download, nothing leaves your computer.
+- **Built in, tiny, fast.** One 7.9 MB file, about 26 µs per text in plain JavaScript. Runs on your CPU, no GPU
+  needed, works offline. Nothing to install, nothing leaves your computer.
 - **Knows your work by meaning.** Pages join the right trail even in different words, "Ask Kilr" on the Trails page
   finds "plane tickets to Japan" in a trail of Tokyo flights, and the start page says where you were and what's
   unfinished.
@@ -172,6 +172,9 @@ See [docs/trails.md](docs/trails.md).
   pages better. Each source can be switched off.
 - **Your AI's research is kept too.** What Claude Desktop or Cursor researches in Skillerr becomes its own trail, named
   after what it was looking into, that you can see, search and continue.
+- **Suggests skills from what you keep doing.** Research products the same way three times (the same searches, the
+  same review sites) and Kilr offers to save how you do it as a skill, so your AI does it your way next time. Worked
+  out from your trails and your AIs', with no AI model writing it.
 - **Recall by meaning, out of the box.** No Ollama needed any more.
 - **It doesn't make things up.** Kilr chooses from the facts of your own trails; it never generates text.
 - **Ours.** Distilled from an open model (Apache-2.0) with a closed-form fit anyone can rerun on a laptop. See
@@ -179,20 +182,28 @@ See [docs/trails.md](docs/trails.md).
 
 </details>
 
-### Research memory and folders
+### History, Kilr and folders
 
 <table>
 <tr>
-<td width="50%"><img alt="Research memory map: sessions, notes, topics and entities connected, with an attention glow" src=".github/assets/memory.png"></td>
+<td width="50%"><img alt="History: Kilr as a glowing cracked orb at the centre, with the research of Claude Code, Claude Desktop and Cursor coming out of it as threads of light" src=".github/assets/history.png"></td>
+<td width="50%"><img alt="Kilr panel: what Kilr is doing, its size and memory, runs on your CPU with no GPU and no internet, learning and suggested skills" src=".github/assets/kilr.png"></td>
+</tr>
+<tr>
 <td width="50%"><img alt="Research folders: Travel, Japan, Flights, with sessions, notes and pages read, and a Copy prompt for your AI button" src=".github/assets/folders.png"></td>
+<td width="50%"></td>
 </tr>
 </table>
 
 <details>
 <summary><b>What you get</b></summary>
 
+- **History (⌘Y)** is everything you and your AIs looked into, as one map around Kilr: your pages on the warm end of
+  the spectrum, your AIs' on the cool end (one colour per app), pages you both touched in green. Kilr glows brighter
+  as your history grows. Click Kilr to see what it's doing on your computer: its size, memory, speed, what it learned
+  and the skills it suggests.
 - **A local knowledge graph** of sessions, pages, notes, skills, topics and entities. Co-visits, backlinks and topics
-  build up as you browse. An interactive map with an attention glow shows what you've been into lately.
+  build up as you browse.
 - **Research folders.** The topic taxonomy becomes a tree, and real folders in `~/Skillerr/research` with a README
   index and linked notes. Open a folder, or **Copy prompt for your AI** to hand the research to any AI.
 - **Continuity across AIs.** `recall`, `my_research` and `read_note` bring back past research. Notes and skills are
@@ -329,7 +340,7 @@ src/
   chrome-import.js Chrome bookmarks and history import (local profile only)
   api-server.js    Local control API (127.0.0.1, bearer token; browser-origin requests refused)
   store.js         Settings and session files in ~/.skillerr/browser
-  ui/              Browser chrome, Pilot panel, start page, memory map and folders, history, HUD, captions
+  ui/              Browser chrome, Pilot panel, start page, History map and Kilr panel, folders, HUD, captions
 mcp/bridge.js      MCP stdio server that forwards to the running app (and serves notes, skills and the live view)
 mcp/preview/       Live view shown inside AI apps' chats (MCP Apps), built into mcp/preview.html
 mcp/setup.js       Connects AI apps and, if asked, makes Skillerr their web browser

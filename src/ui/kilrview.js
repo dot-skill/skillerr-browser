@@ -95,9 +95,9 @@
     ].join('');
     const r = s.runsOn || {};
     $('kpRuns').innerHTML = [
-      `${icon('cpu', 13)}Runs on this computer's processor`,
-      r.gpu ? `${icon('cpu', 13)}Uses the graphics card` : `${icon('check', 13)}No graphics card needed`,
-      r.network ? `${icon('globe', 13)}Uses the internet` : `${icon('shield', 13)}No internet: nothing leaves this computer`,
+      `${icon('cpu', 13)}Runs on your CPU`,
+      r.gpu ? `${icon('cpu', 13)}Uses your GPU` : `${icon('check', 13)}No GPU needed`,
+      r.network ? `${icon('globe', 13)}Uses the internet` : `${icon('shield', 13)}Works offline. Nothing leaves your computer`,
     ].map((x) => `<span>${x}</span>`).join('');
 
     // Learning
