@@ -123,6 +123,13 @@ own, marked **Research by Claude Desktop**, kept apart from the user's own trail
 - **Continue it later** from the start page like any trail; pages the user opens from it join it. The user's other
   pages never join it by topic. The Orb learns from it only while "from your AIs' research" is on (Trails settings).
 - When Skillerr quits, its tabs wait in its research trail, never in the user's.
+- **Put away when it's done.** The AI app never says it has finished, so Skillerr infers it: no tool call from that app
+  for 90 seconds and none of its tabs loading or being worked in. Its tabs are then tucked into the research and closed,
+  except a tab the user is looking at (Skillerr in front) or touched in the last minute, which goes once they've moved
+  on. If the AI uses one of those tabs again, it comes back with the same number and the research carries on.
+- **Complete unless the facts say otherwise.** The AI read what it opened, so its research counts as complete. The Orb
+  marks it unfinished only from facts (the live view's Audit list): pages it couldn't open, a robot check or approval it
+  met, pages opened but never read, the user pausing it.
 
 ## Find anything by meaning
 
@@ -130,9 +137,20 @@ Typing in the address bar (or the start page's box) shows open tabs, waiting tab
 (where words start) and by the Orb's sense of meaning, above web search. ↑/↓ choose, ↵ opens: it switches to the tab, or
 brings a waiting or visited page back, scrolled where the user was. Typing an address skips it. See docs/orb.md.
 
-## The trail shelf
+## The trail shelves
 
-Between reload and the address bar, each journey with tabs waiting is a chip: its tabs' site icons stacked, how many,
+The address bar sits in the middle of the toolbar. **Left of it: your trails. Right of it: your AIs' research.** Warm on
+your side, cool on theirs, as on the Your Orb page.
+
+**Your AIs' research** (right): finished research, newest first, each chip with its AI app's icon and the research's
+name. An aurora dot means new (not opened yet); an amber dot means unfinished. Click one for its sources, not its tabs:
+what the AI concluded, what's unfinished, the pages it read (click one to open it), **Open all** (its tabs come back),
+**Continue with Claude** (copies a line to paste into the AI app, which then finds the research with `my_trails`) and
+**Done**. Finished research leaves the shelf after 3 days (it stays on the Trails page and the Your Orb map); unfinished
+research stays until it's dealt with. The start page's Orb line is about where *you* were, and describes an AI's research
+as the AI's.
+
+**Your trails** (left): each journey with tabs waiting is a chip: its tabs' site icons stacked, how many,
 and a thin line for how far through it the user is (the 5 most recent, then **+N**). Click one for its tabs, **Continue**
 (they all come back up), **Done**, or a single tab to open just that one. The tab strip above stays only for the tabs
 being worked in.

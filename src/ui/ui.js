@@ -290,7 +290,7 @@ $('newtab').onclick = () => skillerr.send('new-tab');
 // The tab strip is only for the tabs being worked in. Tabs still open when Skillerr quit wait in their trails, each
 // trail a chip here with its tabs' icons. Click one for its tabs and how far through it you are; Continue brings them
 // back up to the tab strip.
-let shelfData = { trails: [], more: 0 };
+let shelfData = { yours: { trails: [], more: 0 }, ais: { trails: [], more: 0 } };
 let shelfOpen = null; // the trail whose panel is open
 const favImg = (f, size) => (f ? `<img src="${esc(f)}" width="${size}" height="${size}">` : icon('globe', size - 1));
 function iconFallback(el, size) {
@@ -298,12 +298,13 @@ function iconFallback(el, size) {
 }
 const pctText = (p) => `${Math.round((p || 0) * 100)}% through`;
 function renderShelf() {
+  renderAiShelf();
   const box = $('shelf');
-  const { trails, more } = shelfData;
+  const { trails, more } = shelfData.yours;
   box.hidden = !trails.length || settings.trails === false;
   box.innerHTML = '';
   if (box.hidden) return shelfClose();
-  if (shelfOpen && !trails.some((t) => t.id === shelfOpen)) shelfClose();
+  if (shelfOpen && ![...trails, ...shelfData.ais.trails].some((t) => t.id === shelfOpen)) shelfClose();
   for (const t of trails) {
     const icons = [...new Map(t.tabs.map((x) => [x.favicon || x.url, x])).values()].slice(0, 3);
     const chip = h('button', 'shelf-trail' + (shelfOpen === t.id ? ' open' : ''));
@@ -371,12 +372,86 @@ function shelfClose() {
   shelfOpen = null;
   $('shelfPop').hidden = true;
   skillerr.send('chrome-on-top', false);
-  $('shelf').querySelectorAll('.shelf-trail.open').forEach((c) => c.classList.remove('open'));
+  document.querySelectorAll('#shelf .shelf-trail.open, #shelfAi .shelf-trail.open').forEach((c) => c.classList.remove('open'));
 }
-document.addEventListener('mousedown', (e) => shelfOpen && !e.target.closest('#shelfPop, #shelf') && shelfClose());
+document.addEventListener('mousedown', (e) => shelfOpen && !e.target.closest('#shelfPop, #shelf, #shelfAi') && shelfClose());
+
+// Your AIs' research, right of the address bar: finished research, newest first, each chip with its AI app's icon and a
+// short name. New (not opened yet): an aurora dot. Unfinished by the facts: an amber dot.
+function renderAiShelf() {
+  const box = $('shelfAi');
+  const { trails, more } = shelfData.ais;
+  box.hidden = !trails.length || settings.trails === false;
+  box.innerHTML = '';
+  if (box.hidden) return;
+  for (const t of trails) {
+    const chip = h('button', 'shelf-trail' + (shelfOpen === t.id ? ' open' : '') + (t.open.length ? ' open-work' : !t.seen ? ' new' : ''));
+    chip.type = 'button';
+    chip.title = `${t.title}\nResearch by ${t.by || 'your AI'} · ${t.count} page${t.count === 1 ? '' : 's'} · ${agoText(t.doneAt)}` +
+      (t.open.length ? `\n${t.open.length} thing${t.open.length === 1 ? '' : 's'} left unfinished` : !t.seen ? '\nNew' : '');
+    chip.innerHTML = `<span class="st-app">${brandIcon(t.by || '', 14) || icon('sparkle', 13)}</span><span class="st-name">${esc(t.title)}</span><span class="st-dot"></span>`;
+    chip.onclick = () => (shelfOpen === t.id ? shelfClose() : aiShelfShow(t, chip));
+    box.appendChild(chip);
+  }
+  if (more) {
+    const m = h('button', 'shelf-trail more', `+${more}`);
+    m.type = 'button';
+    m.title = `${more} more research${more === 1 ? '' : 'es'} by your AIs`;
+    m.onclick = () => skillerr.send('open-trails');
+    box.appendChild(m);
+  }
+}
+// The research's sources, not its tabs: what the AI concluded, what's unfinished, the pages it read (one click opens
+// one), Open all, Continue with the AI, Done.
+function aiShelfShow(t, chip) {
+  shelfOpen = t.id;
+  const pop = $('shelfPop');
+  pop.innerHTML = '';
+  const who = t.by || 'your AI';
+  const head = h('div', 'sp-head', `<div class="sp-title">${esc(t.title)}</div>` +
+    `<div class="sp-sub">Research by ${esc(who)} · ${t.count} page${t.count === 1 ? '' : 's'} · ${agoText(t.doneAt)}</div>` +
+    (t.summary ? `<div class="sp-summary">${esc(t.summary)}</div>` : ''));
+  pop.append(head);
+  if (t.open.length) {
+    pop.append(h('div', 'sp-open', `<b>Not finished</b><ul>${t.open.slice(0, 5).map((x) => `<li>${esc(x.reason)}${x.title || x.url ? `: ${esc(x.title || hostOf(x.url))}` : ''}</li>`).join('')}</ul>`));
+  }
+  const list = h('div', 'sp-tabs');
+  for (const x of t.pages.slice(0, 12)) {
+    const row = h('button', 'sp-tab', `${favImg(x.favicon, 14)}<span>${esc(x.title)}</span><span class="sp-read">✓ read</span>`);
+    row.type = 'button';
+    row.title = `${x.title}\n${x.url}\n\nOpen this page`;
+    row.onclick = () => {
+      shelfClose();
+      skillerr.invoke('trails-ai-open', { id: t.id, url: x.url });
+    };
+    iconFallback(row, 14);
+    list.appendChild(row);
+  }
+  if (t.pages.length > 12) list.appendChild(h('div', 'sp-more', `and ${t.pages.length - 12} more`));
+  if (t.pages.length) pop.append(list);
+  const acts = h('div', 'sp-acts');
+  if (t.waiting) acts.append(btn(`${icon('play', 11)}Open all`, 'ghost', () => { shelfClose(); skillerr.invoke('trails-continue', t.id); }));
+  acts.append(
+    btn(`Continue with ${esc(who)}`, 'primary', async () => {
+      const r = await skillerr.invoke('trails-ai-continue', t.id);
+      shelfClose();
+      if (r) flash(`Copied. Paste it into ${who} to carry on with this research.`, 6000);
+    }),
+    btn(`${icon('check', 12)}Done`, 'ghost', async () => { shelfClose(); await skillerr.invoke('trails-state', { id: t.id, state: 'done' }); }),
+  );
+  pop.append(acts);
+  const r = chip.getBoundingClientRect();
+  pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 348))}px`;
+  pop.style.top = `${r.bottom + 6}px`;
+  pop.hidden = false;
+  skillerr.send('chrome-on-top', true);
+  if (!t.seen) skillerr.invoke('trails-ai-seen', t.id);
+  renderShelf();
+}
 document.addEventListener('keydown', (e) => e.key === 'Escape' && shelfOpen && shelfClose());
 skillerr.on('trails-shelf', (data) => {
-  shelfData = data || { trails: [], more: 0 };
+  const none = { trails: [], more: 0 };
+  shelfData = { yours: data?.yours || none, ais: data?.ais || none };
   renderShelf();
 });
 $('back').onclick = () => skillerr.send('back');

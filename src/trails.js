@@ -33,6 +33,7 @@ const EVERYDAY_DAYS = 5; // a site used on this many of the last 21 days is rout
 const EPHEMERAL_DAYS = 3; // a one-off that never became a trail is dropped after this long
 const KEEP_DAYS = 90; // trails untouched this long are dropped, unless the user named them
 const DONE_KEEP_DAYS = 30;
+const AI_SHELF_DAYS = 3; // finished AI research stays on its shelf this long
 
 // Words that say nothing about what the work is.
 const GENERIC = new Set(`best top review guide official free online buy price cheap compare comparison list latest ultimate complete tips idea
@@ -470,15 +471,67 @@ class Trails {
 
   // The shelf between reload and the address bar: trails holding tabs put away, most recently put away first, each
   // with its tabs' icons and how far through the journey the user is.
+  // The user's own journeys waiting on the shelf, left of the address bar. Research an AI did is on its own shelf
+  // (aiShelf), right of it.
   shelf(limit = 5) {
     const newest = (t) => Math.max(0, ...t.tucked.map((x) => x.at));
-    const all = this.trails.filter((t) => t.state === 'active' && t.tucked.length).sort((a, b) => newest(b) - newest(a));
+    const all = this.trails.filter((t) => t.state === 'active' && t.tucked.length && !t.research).sort((a, b) => newest(b) - newest(a));
     return {
       trails: all.slice(0, limit).map((t) => ({ id: t.id, title: t.title || 'Untitled trail', loose: !!t.loose, by: t.research?.by || null,
         progress: this.progress(t), unfinished: this.unfinished(t).length,
         tabs: t.tucked.slice(0, 24).map((x) => ({ url: x.url, title: x.title || x.url, favicon: x.favicon || null })), count: t.tucked.length })),
       more: Math.max(0, all.length - limit),
     };
+  }
+
+  // Research an AI did and finished, right of the address bar: newest first. An AI's research counts as complete, since
+  // it read what it opened, unless the facts say otherwise (research.open: pages it couldn't open, a robot check or an
+  // approval still waiting, work the user paused or took over, pages opened but never read). Complete research leaves
+  // the shelf AI_SHELF_DAYS after it was put away (it stays on the Trails page); incomplete research stays until dealt
+  // with. Research the user hasn't opened yet is "new".
+  aiShelf(limit = 5) {
+    const at = (t) => t.research.doneAt || 0;
+    const all = this.trails.filter((t) => t.research && t.state === 'active' && t.research.doneAt &&
+      (t.research.open?.length || this.now() - t.research.doneAt < AI_SHELF_DAYS * DAY)).sort((a, b) => at(b) - at(a));
+    return {
+      trails: all.slice(0, limit).map((t) => ({
+        id: t.id, title: t.title || 'Research', by: t.research.by || null, summary: t.research.summary || '',
+        doneAt: t.research.doneAt, seen: (t.research.seenAt || 0) >= t.research.doneAt, open: t.research.open || [],
+        searches: t.searches.slice(0, 6),
+        pages: [...t.pages].filter((p) => !p.closed || t.tucked.some((x) => x.url === p.url)).sort((a, b) => b.lastAt - a.lastAt).slice(0, 30)
+          .map((p) => ({ url: p.url, title: p.title || p.url, favicon: p.favicon || null })),
+        count: t.pages.length, waiting: t.tucked.length,
+      })),
+      more: Math.max(0, all.length - limit),
+    };
+  }
+
+  // The AI finished this research: its tabs are put away (tuck), and the facts that make it incomplete, if any.
+  researchDone(id, { open = [], at = this.now() } = {}) {
+    const t = this.get(id);
+    if (!t?.research) return false;
+    t.research.doneAt = at;
+    t.research.open = open.slice(0, 20).map((x) => ({ url: String(x.url || ''), title: String(x.title || '').slice(0, 120), reason: String(x.reason || '').slice(0, 120) }));
+    this.saveSoon();
+    return true;
+  }
+
+  // The user opened this research on the shelf: it's no longer new.
+  researchSeen(id, at = this.now()) {
+    const t = this.get(id);
+    if (!t?.research) return false;
+    t.research.seenAt = at;
+    this.saveSoon();
+    return true;
+  }
+
+  // The AI is working on this research again: it's no longer done.
+  researchResumed(id) {
+    const t = this.get(id);
+    if (!t?.research?.doneAt) return false;
+    t.research.doneAt = 0;
+    this.saveSoon();
+    return true;
   }
 
   // The tabs that were open when Skillerr last quit, by trail.

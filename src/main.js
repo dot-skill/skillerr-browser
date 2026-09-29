@@ -374,7 +374,8 @@ function assignGroup(controller, tabIds) {
   if (!list.length) return;
   const g = groupFor(controller);
   for (const t of list) t.groupId = g.id;
-  researchTrailOf(g);
+  const trailId = researchTrailOf(g);
+  if (trailId) try { trailsDb().researchResumed(trailId); } catch {}
   for (const t of list) researchVisit(t);
   pushTabs();
 }
@@ -438,6 +439,77 @@ function closeGroup(id) {
 }
 function pruneGroups() {
   for (const id of groups.keys()) if (!groupTabs(id).length) groups.delete(id);
+}
+
+// ---------- an AI's finished research is put away, right of the address bar ----------
+// The AI app never says it's done, so Skillerr infers it: no tool call from it for AI_DONE_MS and none of its tabs
+// loading or being worked in. Its tabs are then tucked into its research trail and closed, except a tab the user is
+// looking at (Skillerr in front) or touched in the last minute: those stay, and go the next time round once the user
+// has moved on. The research is marked done, with what's unfinished about it from the facts (the Audit list's): pages
+// it couldn't open, a robot check or approval it met, pages it opened but never read, the user pausing it. If the AI
+// uses one of those tabs again, it comes back with the same number (see executeInSession) and the research resumes.
+const AI_DONE_MS = 90 * 1000;
+const tuckedAiTabs = new Map(); // tab id → { url, title, trailId, groupId }
+const openFacts = (client) => activity.list(client).flatMap((p) => {
+  const why = { failed: `Couldn't open it${p.reason ? `: ${p.reason}` : ''}`, blocked: p.reason || 'A robot check stopped it', declined: p.reason || 'Not allowed' }[p.state]
+    || (p.state === 'opened' && ['open_tabs', 'new_tab'].includes(p.tool) ? 'Opened, but not read' : null);
+  return why ? [{ url: p.url, title: p.title, reason: why }] : [];
+});
+function tuckFinishedResearch() {
+  if (!win || !learningTrails()) return;
+  const now = Date.now();
+  const watching = win.isFocused() && win.isVisible() && !win.isMinimized();
+  for (const g of [...groups.values()]) {
+    const last = activity.active.get(g.controller)?.last || 0;
+    if (now - last < AI_DONE_MS || (status.agentRunning && g.controller === agentLabel())) continue;
+    const list = groupTabs(g.id);
+    if (list.some((t) => (t.aiUntil || 0) > now || (!t.sleeping && t.view && !t.view.webContents.isDestroyed() && t.view.webContents.isLoading()))) continue;
+    const trailId = researchTrailOf(g);
+    if (!trailId) continue;
+    const go = list.filter((t) => !t.isStart && !(watching && isShown(t)) && now - (t.lastInput || 0) > 60000);
+    if (!go.length) continue;
+    const db = trailsDb();
+    db.tuck(trailId, go.map((t) => ({ url: tabUrl(t), title: t.sleeping ? t.sleeping.title : t.view.webContents.getTitle(), favicon: t.favicon })), 'ai-done');
+    for (const t of go) {
+      tuckedAiTabs.set(t.id, { url: tabUrl(t), trailId, groupId: g.id, controller: g.controller });
+      closeTab(t.id, { tucked: true });
+    }
+    const open = openFacts(g.controller);
+    if (status.paused) open.push({ url: '', title: '', reason: 'You paused it before it finished' });
+    db.researchDone(trailId, { open });
+    trailsChanged();
+  }
+}
+setInterval(() => {
+  try {
+    tuckFinishedResearch();
+  } catch {}
+}, 15 * 1000);
+
+const waitForLoadOf = (t, ms = 10000) => new Promise((resolve) => {
+  const wc = t?.view?.webContents;
+  if (!wc || wc.isDestroyed()) return resolve();
+  const done = () => { clearTimeout(timer); resolve(); };
+  const timer = setTimeout(done, ms);
+  wc.once('did-stop-loading', done);
+  wc.once('did-fail-load', done);
+});
+
+// An AI reaching for one of its tucked tabs gets it back, with the same number, and its research is no longer done.
+function bringBackTucked(id) {
+  const x = tuckedAiTabs.get(id);
+  if (!x || getTab(id)) return null;
+  tuckedAiTabs.delete(id);
+  const t = newTab(x.url, { background: true, id });
+  if (groups.has(x.groupId)) t.groupId = x.groupId;
+  else assignGroup({ name: x.controller }, [t.id]); // its group went when its last tab was put away: same research
+  t.trailId = x.trailId;
+  try {
+    trailsDb().untuck(x.trailId, (y) => y.url === x.url);
+    trailsDb().researchResumed(x.trailId);
+    trailsChanged();
+  } catch {}
+  return t;
 }
 
 const pushTabs = () => ui('tabs', tabs.map(tabInfo));
@@ -529,8 +601,8 @@ function attachView(tab) {
   return view;
 }
 
-function newTab(url, { background = false, opener = null } = {}) {
-  const tab = { id: nextTabId++, view: null, favicon: null, isStart: !url, userZoom: 1, lastInput: 0, lastUsed: Date.now(), openerId: opener };
+function newTab(url, { background = false, opener = null, id = null } = {}) {
+  const tab = { id: id ?? nextTabId++, view: null, favicon: null, isStart: !url, userZoom: 1, lastInput: 0, lastUsed: Date.now(), openerId: opener };
   const call = aiCall.getStore(); // opened during an AI's tool call: it's that AI session's tab
   if (call) Object.assign(tab, { aiBy: call.client, aiSession: call.session });
   attachView(tab);
@@ -643,7 +715,7 @@ function switchTab(id) {
   pushTabs();
 }
 
-function closeTab(id) {
+function closeTab(id, { tucked = false } = {}) {
   const i = tabs.findIndex((t) => t.id === id);
   if (i < 0) throw new Error(`No tab ${id}`);
   const [tab] = tabs.splice(i, 1);
@@ -657,7 +729,7 @@ function closeTab(id) {
       if (trailsDb().closePage(trailId, url)) trailsChanged();
     } catch {}
   }
-  if (!tab.isStart && !tab.internal) closedTabs.push(tab.sleeping ? tab.sleeping.url : tab.view.webContents.getURL());
+  if (!tab.isStart && !tab.internal && !tucked) closedTabs.push(tab.sleeping ? tab.sleeping.url : tab.view.webContents.getURL());
   if (closedTabs.length > 25) closedTabs.shift();
   if (tab.view) win.contentView.removeChildView(tab.view);
   if (mosaic) {
@@ -971,7 +1043,8 @@ let trailsTimer = null;
 let lastShelf = '';
 // The trail shelf between reload and the address bar: journeys waiting, by their tabs' icons.
 function pushShelf() {
-  const shelf = learningTrails() ? trailsDb().shelf() : { trails: [], more: 0 };
+  const none = { trails: [], more: 0 };
+  const shelf = learningTrails() ? { yours: trailsDb().shelf(4), ais: trailsDb().aiShelf(4) } : { yours: none, ais: none };
   const json = JSON.stringify(shelf);
   if (json === lastShelf) return;
   lastShelf = json;
@@ -1122,7 +1195,7 @@ function trailsHome() {
     trails: all.slice(0, 3),
     total: all.length,
     // Kilr's one line about where you were, built from the facts of the top trail.
-    kilr: s.kilr !== false && all[0] ? kilrLine(all[0]) : null,
+    kilr: s.kilr !== false && all[0] ? kilrLine(all.find((t) => !t.by) || all[0]) : null, // where *you* were, first
     // Kilr offering to learn (setting "suggest"), or what it just learned.
     learn: s.kilrLearn === 'suggest' ? learnDue() : null,
     learning: !!learning,
@@ -1930,6 +2003,13 @@ async function executeInSession(controller, name, args, session) {
   }
 
   const id = ++seq;
+  if (args.tab_id != null && !getTab(Number(args.tab_id)) && tuckedAiTabs.has(Number(args.tab_id))) {
+    const back = bringBackTucked(Number(args.tab_id));
+    if (back) await waitForLoadOf(back);
+  }
+  if (name === 'read_tabs' && Array.isArray(args.tab_ids)) {
+    for (const n of args.tab_ids.map(Number)) if (!getTab(n) && tuckedAiTabs.has(n)) { const back = bringBackTucked(n); if (back) await waitForLoadOf(back); }
+  }
   // fetch_page opens its own tab (grouped with this AI's research) unless told which tab to use.
   if (name === 'fetch_page' && args.tab_id == null) args = { ...args, tab_id: newTab(undefined, { background: !activeTab()?.isStart }).id };
   // So does web_search, rather than taking over a page the user has open (a blank tab or this AI's own is fine).
@@ -1995,7 +2075,7 @@ async function executeInSession(controller, name, args, session) {
     // Group what this AI opened (and a fresh tab it started working in) under its current research task.
     const opened = tabs.filter((t) => !before.tabIds.includes(t.id)).map((t) => t.id);
     if (opened.length) assignGroup(controller, opened);
-    if ((name === 'navigate' && tab && before.wasStart) || name === 'fetch_page') assignGroup(controller, [tab.id]);
+    if ((name === 'navigate' && tab && before.wasStart) || name === 'fetch_page' || (name === 'web_search' && tab && (before.wasStart || mine(tab)))) assignGroup(controller, [tab.id]);
     try {
       auditResult(name, args, tab, opened, before, audit);
     } catch {} // nor may the Audit list
@@ -2552,6 +2632,22 @@ function wireIpc() {
     pushShelf();
   });
   ipcMain.handle('trails-restore-session', () => restoreLastSession());
+  // Your AIs' shelf: opening research marks it seen; a page from it opens in a new tab (and joins that research);
+  // "Continue with <AI>" copies a line to paste into the AI app, which then finds the research with my_trails.
+  ipcMain.handle('trails-ai-seen', (_e, id) => changed(trailsDb().researchSeen(String(id))));
+  ipcMain.handle('trails-ai-open', (_e, { id, url }) => {
+    if (!/^https?:\/\//i.test(String(url || ''))) return false;
+    const t = newTab(String(url));
+    t.trailId = String(id);
+    return true;
+  });
+  ipcMain.handle('trails-ai-continue', (_e, id) => {
+    const t = trailsDb().get(String(id));
+    if (!t?.research) return null;
+    const line = `Continue the research "${t.title}" you did in Skillerr: call my_trails with the query "${t.title}" to see what you already read, then carry on.`;
+    clipboard.writeText(line);
+    return { by: t.research.by, line };
+  });
   ipcMain.handle('trails-dismiss-session', () => changed(trailsDb().markQuit(0)));
   ipcMain.handle('trails-state', (_e, { id, state }) => changed(trailsDb().setState(String(id), state)));
   ipcMain.handle('trails-rename', (_e, { id, title }) => changed(trailsDb().rename(String(id), title)));

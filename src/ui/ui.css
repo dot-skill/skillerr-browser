@@ -100,7 +100,12 @@ a:hover { text-decoration: underline; }
 .tab.ai .fav { color: var(--violet); }
 .newtab { -webkit-app-region: no-drag; margin: 0 0 4px 4px; }
 
-.toolbar { height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 10px; background: var(--chrome-2); margin: 0; }
+.toolbar { height: 46px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 680px) minmax(0, 1fr); align-items: center; gap: 8px;
+  padding: 0 10px; background: var(--chrome-2); margin: 0; }
+/* Three columns keep the address bar in the middle: your trails on its left, your AIs' research on its right. */
+.tb-side { display: flex; align-items: center; gap: 8px; min-width: 0; height: 100%; }
+.tb-left .shelf { margin-left: auto; justify-content: flex-end; }
+.tb-fill { flex: 1 1 0; min-width: 0; }
 /* Back, forward and reload share one capsule: one control, not three loose buttons. */
 .navbtns { -webkit-app-region: no-drag; display: flex; gap: 0; padding: 2px; border-radius: 12px; background: var(--chrome); border: 1px solid var(--line); flex: none; }
 .navbtns .ibtn { width: 30px; height: 28px; border-radius: 9px; }
@@ -110,7 +115,7 @@ a:hover { text-decoration: underline; }
 
 /* The address capsule: centred, the site's name first. An aurora line sweeps along it while a page loads,
    and its rim turns into the aurora ring while an AI works in this tab (the same signature as the page frame). */
-.omni { -webkit-app-region: no-drag; position: relative; flex: 1 1 auto; max-width: 780px; margin: 0 auto; display: flex; align-items: center; gap: 6px;
+.omni { -webkit-app-region: no-drag; position: relative; width: 100%; min-width: 0; display: flex; align-items: center; gap: 6px;
   height: 34px; padding: 0 12px 0 5px; border-radius: 17px; background: var(--chrome); border: 1px solid var(--line);
   transition: border-color .15s, box-shadow .15s, background .15s; }
 .omni::after { content: ''; position: absolute; left: 16px; right: 16px; bottom: 0; height: 2px; border-radius: 2px; opacity: 0; pointer-events: none;
@@ -1020,3 +1025,24 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 @media (prefers-reduced-motion: reduce) {
   .kp, .kp-log li.new, .kp-now.busy .kp-dot, .hv-meter b { animation: none !important; }
 }
+
+/* Your AIs' research, right of the address bar: cool where yours is warm (as on the Your Orb page), each chip with its
+   AI app's icon. New research (not opened yet) carries a small aurora dot; research the Orb found unfinished, an
+   amber one. */
+.shelf-you .shelf-trail .st-bar i { background: linear-gradient(90deg, #ff8a5b, #ffc15e); }
+.shelf-ai { flex: 0 1 auto; }
+.shelf-ai .shelf-trail { gap: 5px; padding: 0 8px 0 6px; flex: 0 1 auto; min-width: 34px; }
+.shelf-ai .shelf-trail .st-app { display: grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--violet); }
+.shelf-ai .shelf-trail .st-app svg, .shelf-ai .shelf-trail .st-app img { width: 14px; height: 14px; }
+.shelf-ai .shelf-trail .st-name { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
+.shelf-ai .shelf-trail .st-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; }
+.shelf-ai .shelf-trail.new .st-dot { background: conic-gradient(from 0deg, #8b6cff, #3de0c0, #ff7ac6, #8b6cff); box-shadow: 0 0 6px color-mix(in srgb, #8b6cff 60%, transparent); }
+.shelf-ai .shelf-trail.open-work .st-dot { background: var(--warn, #f0a646); }
+.shelf-ai .shelf-trail.open { border-color: color-mix(in srgb, var(--violet) 45%, var(--line-2)); }
+.sp-summary { margin-top: 8px; font-size: 12.5px; line-height: 1.45; color: var(--text); }
+.sp-open { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--warn, #f0a646) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn, #f0a646) 30%, transparent); font-size: 12px; color: var(--text-2); }
+.sp-open b { color: var(--text); font-weight: 600; }
+.sp-open li { margin: 3px 0 0 14px; }
+.sp-tab .sp-read { margin-left: auto; flex: none; color: var(--ok, #12a37f); font-size: 11px; }
+

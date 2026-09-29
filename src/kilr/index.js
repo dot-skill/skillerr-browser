@@ -159,6 +159,8 @@ const UNFINISHED = {
 
 // One or two plain sentences about a trail, from its summary.
 function describe(s, now = Date.now()) {
+  // Research an AI did is described as its, not the user's: who did it and what it concluded.
+  if (s.by) return [`${s.title}: ${s.by}'s research, ${ago(s.lastAt, now)}.`, s.researchSummary ? s.researchSummary : ''].filter(Boolean).join(' ');
   const parts = [`${s.title}, ${ago(s.lastAt, now)}.`];
   if (s.stoppedAt) parts.push(`You stopped at “${s.stoppedAt.title}”.`);
   const u = s.unfinished?.[0];

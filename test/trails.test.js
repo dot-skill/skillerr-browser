@@ -288,3 +288,36 @@ test('an import of many tabs is grouped all at once, merging only what is alike'
   const groups = clusterItems(6, (i, j) => S[i][j], { threshold: 0.2 }).map((g) => g.sort().join(',')).sort();
   assert.deepStrictEqual(groups, ['0,1,2', '3,4', '5']);
 });
+
+test("your AIs' research: put away when done, new until opened, unfinished from the facts, off the shelf after a few days", () => {
+  const { tr, clock } = make();
+  const mine = tr.observe({ url: 'https://www.google.com/search?q=rust+async' }, { typed: true });
+  tr.tuck(mine, [{ url: 'https://tokio.example/tutorial', title: 'Tokio tutorial' }], 'tidy');
+  const r = tr.research({ key: 'session:x', by: 'Claude Desktop' });
+  tr.researchPage(r, { url: 'https://dino.example/largest', title: 'The largest dinosaurs ever found' });
+  tr.researchPage(r, { url: 'https://dino.example/sauropods', title: 'Sauropods: the long-necked giants' });
+  tr.tuck(r, [{ url: 'https://dino.example/sauropods', title: 'Sauropods' }], 'ai-done');
+  assert.deepStrictEqual(tr.aiShelf().trails, [], 'not on the AI shelf until the research is done');
+  assert.deepStrictEqual(tr.shelf().trails.map((t) => t.id), [mine], "the user's shelf never has an AI's research");
+  tr.researchDone(r);
+  let s = tr.aiShelf().trails[0];
+  assert.strictEqual(s.id, r);
+  assert.strictEqual(s.by, 'Claude Desktop');
+  assert.strictEqual(s.seen, false);
+  assert.deepStrictEqual(s.open, []);
+  assert.strictEqual(s.pages.length, 2);
+  tr.researchSeen(r);
+  assert.strictEqual(tr.aiShelf().trails[0].seen, true);
+  clock.t += 4 * 24 * 3600e3;
+  assert.deepStrictEqual(tr.aiShelf().trails, [], 'finished research leaves the shelf after a few days');
+  // Unfinished research stays until dealt with, and is new again when it's done again.
+  tr.researchDone(r, { open: [{ url: 'https://dead.example/', reason: "Couldn't open it" }] });
+  s = tr.aiShelf().trails[0];
+  assert.strictEqual(s.seen, false);
+  assert.strictEqual(s.open[0].reason, "Couldn't open it");
+  clock.t += 10 * 24 * 3600e3;
+  assert.strictEqual(tr.aiShelf().trails.length, 1);
+  // The AI carries on: no longer done.
+  tr.researchResumed(r);
+  assert.deepStrictEqual(tr.aiShelf().trails, []);
+});

@@ -13,12 +13,14 @@
       <button class="ibtn newtab" id="newtab" title="New tab  ⌘T"></button>
     </div>
     <div class="toolbar">
+      <div class="tb-side tb-left">
       <div class="navbtns">
         <button class="ibtn" id="back" title="Back  ⌘["></button>
         <button class="ibtn" id="forward" title="Forward  ⌘]"></button>
         <button class="ibtn" id="reload" title="Reload  ⌘R"></button>
       </div>
-      <div class="shelf" id="shelf" hidden></div>
+      <div class="shelf shelf-you" id="shelf" hidden aria-label="Your trails"></div>
+      </div>
       <form class="omni" id="omni" autocomplete="off">
         <button type="button" class="intent" id="intent" title="Tab to switch"></button>
         <input id="url" spellcheck="false" placeholder="Search, enter an address, or tell Skillerr what to do" />
@@ -26,6 +28,9 @@
         <span class="omni-hint" id="omniHint"></span>
         <button type="button" class="zoom-badge" id="zoomBadge" hidden title="Reset zoom  ⌘0"></button>
       </form>
+      <div class="tb-side tb-right">
+      <div class="shelf shelf-ai" id="shelfAi" hidden aria-label="Your AIs' research"></div>
+      <div class="tb-fill"></div>
       <div class="findbar" id="findBar" hidden>
         <input id="findInput" spellcheck="false" placeholder="Find in page" />
         <span class="find-count" id="findCount"></span>
@@ -40,6 +45,7 @@
       <button class="human-pill" id="humanPill" hidden title="AI is paused. You're browsing on your own; nothing is sent to an AI or added to research memory. Click to let AI act again  ⇧⌘P"><span class="hp-dot"></span>Human mode <span class="hp-resume">Resume AI</span></button>
       <button class="pilot-btn" id="togglePanel" title="Pilot panel  ⌘J"><span class="orb xs" id="miniOrb"></span>Pilot</button>
       <button class="ibtn more-btn" id="moreMenu" title="More"></button>
+      </div>
     </div>
   </header>
 
