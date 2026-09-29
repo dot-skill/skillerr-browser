@@ -250,7 +250,7 @@ async function previewFrame(client, { viewId = '', createdAt = 0 } = {}) {
   // Fleet when the AI has tabs side by side, or has been working several tabs at once; otherwise its latest tab.
   const fleetIds = mosaic?.length > 1 ? mosaic : recentAi.length > 1 ? recentAi.slice(0, 6).map((t) => t.id) : null;
   const shown = fleetIds ? fleetIds.map(getTab).filter(Boolean) : [recentAi[0] || activeTab()].filter((t) => t && !t.isStart);
-  const width = fleetIds ? 360 : 720;
+  const width = fleetIds ? 480 : 720; // fleet tiles are about half the view's width, on high-density screens
   const tiles = superseded ? [] : await Promise.all(shown.map(async (t) => {
     const wc = t.view.webContents;
     const url = t.sleeping ? t.sleeping.url : wc.isDestroyed() ? '' : wc.getURL();

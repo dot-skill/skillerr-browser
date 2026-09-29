@@ -11,7 +11,8 @@ const dir = path.join(root, 'mcp', 'preview');
 
 const js = await build({ entryPoints: [path.join(dir, 'view.js')], bundle: true, minify: true, format: 'iife', target: 'es2022',
   platform: 'browser', write: false, legalComments: 'none', logLevel: 'warning' });
-const css = await build({ entryPoints: [path.join(dir, 'view.css')], minify: true, write: false, logLevel: 'warning' });
+// bundle: the Skillerr mark (src/ui/mark.svg) goes in as a data URL, since the view can't load files.
+const css = await build({ entryPoints: [path.join(dir, 'view.css')], bundle: true, loader: { '.svg': 'dataurl' }, minify: true, write: false, logLevel: 'warning' });
 const shared = await build({ entryPoints: [path.join(root, 'src/ui/shared.js')], minify: true, write: false, logLevel: 'warning' });
 
 const safe = (s) => s.replace(/<\/script/gi, '<\\/script');
