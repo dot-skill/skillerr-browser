@@ -278,14 +278,38 @@ const LIBRARY_TOOLS = [
   },
 ];
 
+// Trails: the user's own ongoing work, learned from how they browse (src/trails.js). An AI app sees them only after the
+// user allows it once, in Skillerr.
+const TRAIL_TOOLS = [
+  {
+    name: 'my_trails',
+    description: 'The user\'s trails: threads of their own ongoing work in Skillerr (e.g. "Kyoto trip", "Standing desk"), learned from what ' +
+      'they browse. Each says where they stopped, what they left unfinished (a form not sent, an article read partway, a cart), how far ' +
+      'through it they are, and which tabs are waiting in it (the ones still open when they last quit). Use it when the user asks what they were doing, wants to pick something back up, or refers to earlier browsing ' +
+      '("that hotel I was looking at"). Pass trail_id for one trail\'s pages. The first time, the user is asked to allow it.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Only trails about this.' },
+        trail_id: { type: 'string', description: 'One trail in full: its pages, searches, unfinished work and waiting tabs.' },
+      },
+    },
+  },
+  {
+    name: 'continue_trail',
+    description: 'Reopen one of the user\'s trails for them in Skillerr: the tabs waiting in it come back, scrolled to where they were. Pages the user closed are done with and don\'t come back.',
+    input_schema: { type: 'object', properties: { trail_id: { type: 'string' } }, required: ['trail_id'] },
+  },
+];
+
 const VIEW_TOOL = {
   name: 'open_view',
-  description: 'Show the user one of Skillerr\'s own screens: the research graph (optionally searched), history, bookmarks, settings, skills, ' +
+  description: 'Show the user one of Skillerr\'s own screens: the research graph (optionally searched), their trails, history, bookmarks, settings, skills, ' +
     'connected AI apps, or the activity panel. Use when the user asks to see their research or a setting.',
   input_schema: {
     type: 'object',
     properties: {
-      view: { type: 'string', enum: ['memory', 'folders', 'history', 'bookmarks', 'settings', 'skills', 'connect', 'panel'] },
+      view: { type: 'string', enum: ['memory', 'folders', 'trails', 'history', 'bookmarks', 'settings', 'skills', 'connect', 'panel'] },
       query: { type: 'string', description: 'For memory: highlight research matching this. For folders: open the folder whose name or path matches.' },
     },
     required: ['view'],
@@ -335,7 +359,7 @@ const SHOT_TOOL = {
   },
 };
 
-const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, CAPTURE_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
+const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, CAPTURE_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...TRAIL_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
 
 // ---------- page-side scripts ----------
 
@@ -895,6 +919,8 @@ async function runPageTool(browser, name, args, found) {
     case 'tag_session':
     case 'deep_research':
     case 'my_research':
+    case 'my_trails':
+    case 'continue_trail':
     case 'read_note':
     case 'open_view':
     case 'save_screenshot':
@@ -1031,6 +1057,9 @@ async function runPageTool(browser, name, args, found) {
     }
 
     case 'fetch_page': {
+      // A tab opened for this fetch is still loading its blank page: let that finish first, or it can land after the real
+      // page and leave the tab blank (the fetch then reads about:blank).
+      if (wc.isLoading()) await waitForLoad(wc);
       await wc.loadURL(toUrl(args.url || '')).catch(() => {});
       await settle(wc);
       const page = await inWorld(wc, READ_JS).catch(() => ({ text: '', hidden: '' }));

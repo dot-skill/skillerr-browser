@@ -1,7 +1,7 @@
 {
   "name": "skillerr-browser",
   "productName": "Skillerr",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "The browser any AI can drive, while you watch every step. Research memory, deep research, fleet view.",
   "main": "src/boot.js",
   "scripts": {
@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/ext-apps": "^2.0.0",
-    "electron": "^44.4.5",
+    "electron": "github:castlabs/electron-releases#v44.1.0+wvcus",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2"
   },

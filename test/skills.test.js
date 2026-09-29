@@ -11,6 +11,7 @@ test('built-in skills load from SKILL.md frontmatter', () => {
   const names = skills.list().map((s) => s.name);
   assert.ok(names.includes('demo-recorder'));
   assert.ok(names.includes('screenshots'));
+  assert.ok(names.includes('clear-popups'));
   for (const s of skills.list()) assert.ok(s.description.length > 0, s.name);
 });
 

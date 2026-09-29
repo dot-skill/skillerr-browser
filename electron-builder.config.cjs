@@ -44,4 +44,10 @@ const win = { ...base.win, ...(winCert ? { signAndEditExecutable: true } : {}) }
 // CI decides how a build is published (deploy.yml): always as a draft first, promoted once every platform uploaded.
 const publish = base.publish.map((p) => ({ ...p, releaseType: env.RELEASE_TYPE || 'draft' }));
 
-module.exports = { ...base, mac, win, publish };
+// Protected video (Widevine): Skillerr runs on castlabs' Electron for Content Security, downloaded from castlabs'
+// releases, and is VMP-signed when an EVS account is set (scripts/vmp-sign.cjs; EVS_ACCOUNT_NAME, EVS_PASSWD).
+const electronVersion = require('electron/package.json').version; // e.g. 44.1.0+wvcus
+const electronDownload = { version: electronVersion, mirror: 'https://github.com/castlabs/electron-releases/releases/download/' };
+const { afterPack, afterSign } = require('./scripts/vmp-sign.cjs');
+
+module.exports = { ...base, mac, win, publish, electronVersion, electronDownload, afterPack, afterSign };

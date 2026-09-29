@@ -1,0 +1,3 @@
+# Kilr's model: exact bytes on every platform (a CRLF vocab.txt would break the word lookup).
+assets/kilr/*.bin binary
+assets/kilr/vocab.txt -text

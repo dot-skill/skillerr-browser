@@ -30,10 +30,32 @@ const DEFAULTS = {
   sitePermissions: {}, // origin → { permission: 'allow' | 'block' }
   popupsAllowed: {}, // host → true
   sleepTabs: true, // unload tabs nobody is using, to stay light
+  kilr: true, // Skillerr's own small AI (src/kilr): trails and recall by meaning, on this computer
+  kilrLearn: 'suggest', // retraining on the user's own trails: 'suggest' (ask when due) | 'auto' (when the computer is idle) | 'off'
+  kilrLearnEvery: 'weekly', // 'daily' | 'weekly' | 'monthly'
+  kilrLearnFromYou: true, // learn from the user's own browsing
+  kilrLearnFromAi: true, // learn from research the user's AI apps did in Skillerr
+  trailsResearch: true, // keep research an AI app did as a trail of its own ("Research by Claude Desktop")
+  kilrLearnedAt: 0,
+  kilrSnoozedUntil: 0,
+  kilrLastLearn: null, // { at, accepted, report, auto }
+  kilrSkills: true, // suggest skills from the kinds of task the user (and their AIs) keep doing (src/kilr/suggest.js)
+  kilrSkillsDismissed: {}, // suggestion id → how many trails it had when the user said "not now"
+  kilrSkillsSaved: {}, // suggestion id → how many trails it had when saved as a skill
+  trails: true, // learn the user's ongoing work from their own browsing (src/trails.js)
+  trailsFresh: true, // start with a clean tab strip: the tabs open at quit wait in their trails (off: they reopen)
+  trailsIntroSeen: false,
+  trailsAllowedClients: [], // AI apps the user allowed to see their trails
   updateChecks: true, // ask skillerr.com if there's a newer version (sends only the version and platform)
   betaUpdates: false, // also take staging builds (prereleases from the develop branch)
   dismissedNotices: [], // update/notice ids the user closed
 };
+
+// Kilr was called Wenlo in staging builds: carry its settings over (wenlo → kilr, wenloLearn → kilrLearn, …).
+function renamed(s) {
+  for (const k of Object.keys(s)) if (k.startsWith('wenlo') && !(`kilr${k.slice(5)}` in s)) s[`kilr${k.slice(5)}`] = s[k];
+  return s;
+}
 
 function ensureDir() {
   fs.mkdirSync(DIR, { recursive: true, mode: 0o700 });
@@ -58,7 +80,7 @@ module.exports = {
   writeJson: (name, data) => writeJson(path.join(DIR, name), data),
   DIR,
   SESSION,
-  getSettings: () => ({ ...DEFAULTS, ...readJson(SETTINGS, {}) }),
+  getSettings: () => ({ ...DEFAULTS, ...renamed(readJson(SETTINGS, {})) }),
   saveSettings: (s) => writeJson(SETTINGS, { ...DEFAULTS, ...s }),
   writeSession: (s) => writeJson(SESSION, s),
   readSession: () => readJson(SESSION, null),

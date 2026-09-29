@@ -30,7 +30,7 @@ body:
     attributes:
       label: Skillerr version
       description: Settings → About, or the version in the release you downloaded.
-      placeholder: "0.1.4"
+      placeholder: "0.1.5"
     validations:
       required: true
   - type: dropdown

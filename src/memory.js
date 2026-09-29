@@ -428,7 +428,7 @@ class Memory {
     const ids = new Set(keep.map((n) => n.id));
     return {
       nodes: keep.map((n) => ({ id: n.id, type: n.type, label: this.label(n), kind: n.kind, when: (n.updated || '').slice(0, 10),
-        summary: n.summary || n.description || '', url: n.url, file: n.file, controller: n.controller, heat: this.heat(n) })),
+        summary: n.summary || n.description || '', url: n.url, file: n.file, controller: n.controller, heat: this.heat(n), importedFrom: n.importedFrom || null })),
       edges: [...this.edges.values()].filter((e) => ids.has(e.from) && ids.has(e.to))
         .map((e) => ({ from: e.from, to: e.to, type: e.type, source: e.source, confidence: e.confidence, weight: e.weight || 1 })),
       stats: this.stats(),

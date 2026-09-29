@@ -224,25 +224,28 @@ skillerr.on('tabs', (list) => {
   box.innerHTML = '';
   let lastGroup = null;
   for (const t of list) {
-    // A chip starts each group of tabs one AI opened for one research task.
-    if (t.group && t.group.id !== lastGroup) {
-      const members = list.filter((x) => x.group?.id === t.group.id);
-      const g = h('div', 'tab-group' + (collapsedGroups.has(t.group.id) ? ' collapsed' : '') + (members.some((x) => x.ai) ? ' live' : ''));
-      g.style.setProperty('--g', t.group.color);
-      g.title = `${t.group.title} · ${members.length} tab${members.length === 1 ? '' : 's'} opened by ${t.group.controller}. Click to ${collapsedGroups.has(t.group.id) ? 'expand' : 'collapse'}.`;
-      g.innerHTML = `<span class="gdot"></span><span class="gtitle">${esc(trunc(t.group.title, 22))}</span><span class="gn">${members.length}</span><button class="x" title="Close all ${members.length} tabs">${icon('x', 11)}</button>`;
+    // A chip starts each group of tabs one AI opened for one research task. The user's own tabs are never regrouped
+    // or moved: the tab strip is theirs to work in.
+    const grp = t.group;
+    if (grp && grp.id !== lastGroup) {
+      const members = list.filter((x) => x.group?.id === grp.id);
+      const folded = collapsedGroups.has(grp.id);
+      const g = h('div', 'tab-group' + (folded ? ' collapsed' : '') + (members.some((x) => x.ai) ? ' live' : ''));
+      g.style.setProperty('--g', grp.color);
+      g.title = `${grp.title} · ${members.length} tab${members.length === 1 ? '' : 's'} opened by ${grp.controller}. Click to ${folded ? 'expand' : 'collapse'}.`;
+      g.innerHTML = `<span class="gdot"></span><span class="gtitle">${esc(trunc(grp.title, 22))}</span><span class="gn">${members.length}</span><button class="x" title="Close all ${members.length} tabs">${icon('x', 11)}</button>`;
       g.onclick = (e) => {
-        if (e.target.closest('.x')) return skillerr.send('group-close', t.group.id);
-        if (collapsedGroups.has(t.group.id)) collapsedGroups.delete(t.group.id);
-        else collapsedGroups.add(t.group.id);
+        if (e.target.closest('.x')) return skillerr.send('group-close', grp.id);
+        if (collapsedGroups.has(grp.id)) collapsedGroups.delete(grp.id);
+        else collapsedGroups.add(grp.id);
         skillerr.invoke('tabs-refresh');
       };
       box.appendChild(g);
     }
-    lastGroup = t.group?.id ?? null;
-    if (t.group && collapsedGroups.has(t.group.id) && !t.active) continue;
-    const el = h('div', 'tab' + (t.active ? ' on' : '') + (t.loading ? ' loading' : '') + (t.ai ? ' ai' : '') + (t.group ? ' grouped' : '') + (t.asleep ? ' asleep' : ''));
-    if (t.group) el.style.setProperty('--g', t.group.color);
+    lastGroup = grp?.id ?? null;
+    if (grp && collapsedGroups.has(grp.id) && !t.active) continue;
+    const el = h('div', 'tab' + (t.active ? ' on' : '') + (t.loading ? ' loading' : '') + (t.ai ? ' ai' : '') + (grp ? ' grouped' : '') + (t.asleep ? ' asleep' : ''));
+    if (grp) el.style.setProperty('--g', grp.color);
     el.title = t.asleep ? `${t.title}\nSleeping to keep Skillerr light. Click to wake it.` : t.title;
     const fav = t.favicon ? `<img src="${esc(t.favicon)}">` : icon(t.isStart ? 'sparkle' : 'globe', 13);
     el.innerHTML = `<span class="fav">${fav}</span><span class="title">${esc(t.title)}</span><button class="x" title="Close  ⌘W">${icon('x', 12)}</button>`;
@@ -259,11 +262,17 @@ skillerr.on('tabs', (list) => {
   if (!currentTab) return;
   const memTab = currentTab.internal === 'memory';
   const dataTab = currentTab.internal === 'data';
-  $('start').hidden = !currentTab.isStart || memTab || dataTab || list.some((x) => x.tiled);
+  const trailsTab = currentTab.internal === 'trails';
+  const wasStart = !$('start').hidden;
+  $('start').hidden = !currentTab.isStart || memTab || dataTab || trailsTab || list.some((x) => x.tiled);
   $('memView').hidden = !memTab;
   $('dataView').hidden = !dataTab;
+  $('trailsView').hidden = !trailsTab;
   if (memTab) window.memoryView?.show();
   if (dataTab) window.dataView?.show();
+  if (trailsTab && $('trailsView').dataset.shown !== '1') window.trailsView?.show();
+  $('trailsView').dataset.shown = trailsTab ? '1' : '';
+  if (!$('start').hidden && !wasStart) renderTrailsHome();
   if (document.activeElement !== $('url')) omni.reset();
   $('back').disabled = !currentTab.canGoBack;
   $('forward').disabled = !currentTab.canGoForward;
@@ -276,6 +285,100 @@ skillerr.on('tabs', (list) => {
 });
 
 $('newtab').onclick = () => skillerr.send('new-tab');
+
+// ================= the trail shelf: journeys put away, between reload and the address bar =================
+// The tab strip is only for the tabs being worked in. Tabs still open when Skillerr quit wait in their trails, each
+// trail a chip here with its tabs' icons. Click one for its tabs and how far through it you are; Continue brings them
+// back up to the tab strip.
+let shelfData = { trails: [], more: 0 };
+let shelfOpen = null; // the trail whose panel is open
+const favImg = (f, size) => (f ? `<img src="${esc(f)}" width="${size}" height="${size}">` : icon('globe', size - 1));
+function iconFallback(el, size) {
+  el.querySelectorAll('img').forEach((img) => (img.onerror = () => (img.outerHTML = icon('globe', size - 1))));
+}
+const pctText = (p) => `${Math.round((p || 0) * 100)}% through`;
+function renderShelf() {
+  const box = $('shelf');
+  const { trails, more } = shelfData;
+  box.hidden = !trails.length || settings.trails === false;
+  box.innerHTML = '';
+  if (box.hidden) return shelfClose();
+  if (shelfOpen && !trails.some((t) => t.id === shelfOpen)) shelfClose();
+  for (const t of trails) {
+    const icons = [...new Map(t.tabs.map((x) => [x.favicon || x.url, x])).values()].slice(0, 3);
+    const chip = h('button', 'shelf-trail' + (shelfOpen === t.id ? ' open' : ''));
+    chip.type = 'button';
+    chip.title = `${t.title} · ${t.count} tab${t.count === 1 ? '' : 's'} waiting · ${pctText(t.progress)}`;
+    chip.innerHTML = `<span class="st-icons">${icons.map((x) => `<span class="st-fav">${favImg(x.favicon, 14)}</span>`).join('')}</span><span class="st-n">${t.count}</span>` +
+      `<span class="st-bar"><i style="width:${Math.round((t.progress || 0) * 100)}%"></i></span>`;
+    chip.onclick = () => (shelfOpen === t.id ? shelfClose() : shelfShow(t, chip));
+    iconFallback(chip, 14);
+    box.appendChild(chip);
+  }
+  if (more) {
+    const m = h('button', 'shelf-trail more', `+${more}`);
+    m.type = 'button';
+    m.title = `${more} more trail${more === 1 ? '' : 's'} waiting`;
+    m.onclick = () => skillerr.send('open-trails');
+    box.appendChild(m);
+  }
+}
+function shelfShow(t, chip) {
+  shelfOpen = t.id;
+  const pop = $('shelfPop');
+  pop.innerHTML = '';
+  const head = h('div', 'sp-head', `<div class="sp-title">${esc(t.title)}</div>` +
+    `<div class="sp-sub">${t.by ? `Research by ${esc(t.by)} · ` : ''}${t.count} tab${t.count === 1 ? '' : 's'} waiting${t.unfinished ? ` · ${t.unfinished} unfinished` : ''}</div>` +
+    `<div class="sp-progress"><span class="st-bar big"><i style="width:${Math.round((t.progress || 0) * 100)}%"></i></span><span>${pctText(t.progress)}</span></div>`);
+  const list = h('div', 'sp-tabs');
+  for (const x of t.tabs.slice(0, 12)) {
+    const row = h('button', 'sp-tab', `${favImg(x.favicon, 14)}<span>${esc(x.title)}</span>`);
+    row.type = 'button';
+    row.title = `${x.title}\n${x.url}\n\nOpen just this tab`;
+    row.onclick = () => {
+      shelfClose();
+      skillerr.invoke('trails-reopen-tab', { id: t.id, url: x.url });
+    };
+    iconFallback(row, 14);
+    list.appendChild(row);
+  }
+  if (t.count > 12) list.appendChild(h('div', 'sp-more', `and ${t.count - 12} more`));
+  const acts = h('div', 'sp-acts');
+  acts.append(
+    btn(`${icon('play', 11)}Continue`, 'primary', () => {
+      shelfClose();
+      skillerr.invoke('trails-continue', t.id);
+    }),
+    btn(`${icon('check', 12)}Done`, 'ghost', async () => {
+      shelfClose();
+      await skillerr.invoke('trails-state', { id: t.id, state: 'done' });
+    }),
+    btn('All trails', 'ghost', () => {
+      shelfClose();
+      skillerr.send('open-trails');
+    }),
+  );
+  pop.append(head, list, acts);
+  const r = chip.getBoundingClientRect();
+  pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 348))}px`;
+  pop.style.top = `${r.bottom + 6}px`;
+  pop.hidden = false;
+  skillerr.send('chrome-on-top', true); // over the page, or it would be hidden behind it
+  renderShelf();
+}
+function shelfClose() {
+  if (!shelfOpen && $('shelfPop').hidden) return;
+  shelfOpen = null;
+  $('shelfPop').hidden = true;
+  skillerr.send('chrome-on-top', false);
+  $('shelf').querySelectorAll('.shelf-trail.open').forEach((c) => c.classList.remove('open'));
+}
+document.addEventListener('mousedown', (e) => shelfOpen && !e.target.closest('#shelfPop, #shelf') && shelfClose());
+document.addEventListener('keydown', (e) => e.key === 'Escape' && shelfOpen && shelfClose());
+skillerr.on('trails-shelf', (data) => {
+  shelfData = data || { trails: [], more: 0 };
+  renderShelf();
+});
 $('back').onclick = () => skillerr.send('back');
 $('forward').onclick = () => skillerr.send('forward');
 $('reload').onclick = () => skillerr.send(currentTab && currentTab.loading ? 'stop-loading' : 'reload');
@@ -342,6 +445,235 @@ function renderGroupsOnStart(list) {
   }
 }
 
+// ================= trails: pick up where you left off (start page) =================
+const UNFINISHED = {
+  form: () => 'Form not sent',
+  read: (u) => `Read ${u.pct || 0}%`,
+  cart: () => 'In your cart',
+  watch: (u) => `Watched ${u.pct || 0}%`,
+};
+function agoText(t) {
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 2) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const hr = Math.round(m / 60);
+  if (hr < 24) return `${hr} h ago`;
+  const d = Math.round(hr / 24);
+  return d === 1 ? 'yesterday' : d < 7 ? `${d} days ago` : new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+const favStack = (icons) => icons.length
+  ? icons.slice(0, 3).map((f) => `<img src="${esc(f)}">`).join('')
+  : icon('layers', 15);
+
+// One trail as a card: title, where you stopped, what's unfinished, and Continue.
+function trailCard(t, { onChange } = {}) {
+  const card = h('div', 'trail-card');
+  const badges = [
+    t.by ? `<span class="tb by">${brandIcon(t.by, 11) || icon('sparkle', 10)}Research by ${esc(t.by)}</span>` : '',
+    ...t.unfinished.slice(0, 2).map((u) => `<span class="tb warn" title="${esc(u.title)}">${esc((UNFINISHED[u.kind] || (() => u.kind))(u))}</span>`),
+    t.tucked ? `<span class="tb">${t.tucked} tab${t.tucked === 1 ? '' : 's'} waiting</span>` : '',
+    t.sessions > 1 ? `<span class="tb">Back ${t.sessions} times</span>` : '',
+  ].filter(Boolean).join('');
+  const stop = t.researchSummary ? `<b>${esc(trunc(t.researchSummary, 90))}</b> · ${agoText(t.lastAt)}`
+    : t.stoppedAt ? `${t.by ? 'Last read' : 'Stopped at'} <b>${esc(trunc(t.stoppedAt.title, 60))}</b> · ${agoText(t.lastAt)}` : `${t.tucked} tabs · ${agoText(t.lastAt)}`;
+  card.innerHTML = `<div class="tc-ic">${favStack(t.favicons)}</div>
+    <div class="tc-meta"><div class="tc-title">${esc(t.title)}</div><div class="tc-sub">${stop}</div>
+      <div class="tc-progress" title="How far through this journey you are: pages you closed or moved on from count as done, tabs still waiting by how much of them you read"><span class="st-bar"><i style="width:${Math.round((t.progress ?? 0) * 100)}%"></i></span><span>${pctText(t.progress)}</span></div>
+      ${badges ? `<div class="tc-badges">${badges}</div>` : ''}</div>
+    <div class="tc-acts"></div>`;
+  // The trail as the tabs the user remembers: icon and title, like the tab strip. Click one to open just that tab.
+  if (t.tabs?.length) {
+    const row = h('div', 'tc-tabs');
+    for (const x of t.tabs.slice(0, 5)) {
+      const m = h('button', 'mini-tab' + (x.tucked ? ' tucked' : ''), `${favImg(x.favicon, 13)}<span>${esc(x.title)}</span>`);
+      m.type = 'button';
+      m.title = `${x.title}\n${x.url}`;
+      m.onclick = (e) => {
+        e.stopPropagation();
+        skillerr.invoke('trails-reopen-tab', { id: t.id, url: x.url });
+      };
+      iconFallback(m, 13);
+      row.appendChild(m);
+    }
+    const extra = t.tucked - 5;
+    if (extra > 0) row.appendChild(h('span', 'mini-more', `+${extra}`));
+    card.querySelector('.tc-meta').appendChild(row);
+  }
+  const done = btn(icon('check', 13), 'ghost icon-only', async () => {
+    await skillerr.invoke('trails-state', { id: t.id, state: 'done' });
+    onChange?.();
+  });
+  done.title = 'Done with this: move it to Done';
+  // Continue brings back the tabs it was put away with; a journey whose pages were all closed has nothing to reopen.
+  if (t.tucked) card.querySelector('.tc-acts').append(btn(`${icon('play', 11)}Continue`, 'primary', () => skillerr.invoke('trails-continue', t.id)));
+  card.querySelector('.tc-acts').append(done);
+  const ic = card.querySelector('.tc-ic');
+  ic.querySelectorAll('img').forEach((img) => (img.onerror = () => {
+    img.remove();
+    if (!ic.querySelector('img')) ic.innerHTML = icon('layers', 15);
+  }));
+  return card;
+}
+
+async function renderTrailsHome() {
+  const home = await skillerr.invoke('trails-home');
+  const box = $('trailsHome');
+  box.hidden = !home.enabled || (!home.trails.length && !home.session && !home.intro && !home.learn && !home.learned && !home.learning);
+  if (box.hidden) return;
+  const intro = $('trailsIntro');
+  intro.hidden = !home.intro;
+  if (home.intro) {
+    intro.innerHTML = `<div class="ti-ic">${icon('layers', 16)}</div><div class="ti-text"><b>New: Trails.</b> Skillerr files what you browse into journeys and notices what you leave unfinished.
+      Your tabs are never touched while you work. When you quit, the ones still open wait in their trails next to the address bar,
+      so every launch starts clean and any journey is one click from coming back. It all stays on this computer.</div>`;
+    const acts = h('div', 'ti-acts');
+    acts.append(btn('Got it', 'primary', async () => {
+      await saveSettings({ trailsIntroSeen: true });
+      renderTrailsHome();
+    }), btn('Turn off', 'ghost', async () => {
+      await saveSettings({ trailsIntroSeen: true, trails: false });
+      renderTrailsHome();
+    }));
+    intro.appendChild(acts);
+  }
+  renderKilrLine($('kilrLine'), home.kilr);
+  renderLearnCard(home);
+  renderSkillCard(home);
+  const row = $('sessionRow');
+  row.hidden = !home.session;
+  if (home.session) {
+    const { tabs: n, trails: k } = home.session;
+    row.innerHTML = `<span class="sr-ic">${icon('reload', 14)}</span><span class="sr-text">You had <b>${n} tab${n === 1 ? '' : 's'}</b> open${k > 1 ? ` across ${k} trails` : ''} when Skillerr closed.</span>`;
+    const x = btn(icon('x', 12), 'ghost icon-only', async () => {
+      await skillerr.invoke('trails-dismiss-session');
+      renderTrailsHome();
+    });
+    x.title = 'Dismiss. They stay in their trails.';
+    row.append(btn('Reopen all', 'primary', () => skillerr.invoke('trails-restore-session')), x);
+  }
+  const cards = $('trailCards');
+  cards.innerHTML = '';
+  for (const t of home.trails) cards.appendChild(trailCard(t, { onChange: renderTrailsHome }));
+  $('allTrails').textContent = home.total > home.trails.length ? `All ${home.total} trails` : 'All trails';
+  box.querySelector('.section-row').hidden = !home.trails.length;
+}
+// Kilr's line: one or two sentences built from a trail's facts, with Continue.
+function renderKilrLine(box, line) {
+  box.hidden = !line;
+  if (!line) return;
+  box.innerHTML = `<span class="orb xs"></span><span class="sl-text"><b>Orb</b> ${esc(line.text)}</span>`;
+  const go = btn('Continue', 'ghost', () => skillerr.invoke('trails-continue', line.trailId));
+  box.appendChild(go);
+}
+// ----- Kilr learning from the user's trails -----
+function learnResultText(r) {
+  if (!r) return '';
+  if (r.error) return 'The Orb couldn\'t learn this time. It will try again later.';
+  const rep = r.report || {};
+  if (r.accepted) {
+    const pct = (x) => Math.round((x || 0) * 100);
+    const gain = rep.after > rep.before ? `It now files your pages right ${pct(rep.after)}% of the time, up from ${pct(rep.before)}%.`
+      : `It now tells your trails apart ${Math.max(1, Math.round(((rep.marginAfter - rep.marginBefore) / Math.max(0.05, Math.abs(rep.marginBefore))) * 100))}% more clearly, so new pages join the right one more often.`;
+    const src = r.sources ? [r.sources.you && `${r.sources.you} of yours`, r.sources.ai && `${r.sources.ai} from your AIs' research`].filter(Boolean).join(' and ') : `${rep.items}`;
+    return `The Orb learned your words from ${src} pages and searches, in ${rep.trails} trails. ${gain}`;
+  }
+  if (rep.reason === 'not-enough') return 'Not enough browsing yet for the Orb to learn from. It will offer again later.';
+  return 'The Orb checked your latest browsing: it already files your pages well, so nothing changed.';
+}
+let learnProgress = null;
+function renderLearnCard(home) {
+  const card = $('learnCard');
+  const show = home.learning || learnProgress != null || home.learn || home.learned;
+  card.hidden = !show;
+  if (!show) return;
+  card.innerHTML = '';
+  const ic = h('div', 'ti-ic', icon('sparkle', 16));
+  const text = h('div', 'ti-text');
+  const acts = h('div', 'ti-acts');
+  card.append(ic, text, acts);
+  if (home.learning || learnProgress != null) {
+    text.innerHTML = `<b>The Orb is learning your words…</b><div class="learn-bar"><i style="width:${Math.round((learnProgress || 0) * 100)}%"></i></div>`;
+    return;
+  }
+  if (home.learned) {
+    text.innerHTML = `<b>The Orb learned.</b> ${esc(learnResultText(home.learned))}`;
+    acts.append(btn('OK', 'ghost', async () => {
+      await skillerr.invoke('kilr-learned-seen');
+      renderTrailsHome();
+    }));
+    return;
+  }
+  const parts = [home.learn.you && `${home.learn.you} of yours`, home.learn.ai && `${home.learn.ai} your AIs researched`].filter(Boolean).join(', ');
+  text.innerHTML = `<b>The Orb can learn from your browsing.</b> ${home.learn.newPages} new pages since last time (${esc(parts)}). It learns the words you and your AIs use (the places, products and jargon) so new pages join the right trail. A few seconds, on this computer.`;
+  acts.append(
+    btn('Learn now', 'primary', () => skillerr.invoke('kilr-learn')),
+    btn('Always, automatically', 'ghost', async () => {
+      await saveSettings({ kilrLearn: 'auto' });
+      skillerr.invoke('kilr-learn');
+    }),
+    btn('Not now', 'ghost', async () => {
+      await skillerr.invoke('kilr-learn-snooze');
+      renderTrailsHome();
+    }),
+  );
+}
+// A skill Kilr noticed: the kind of task the user keeps doing, written down the way they do it.
+function renderSkillCard(home) {
+  const card = $('skillCard');
+  const x = home.skill;
+  card.hidden = !x;
+  if (!x) return;
+  card.innerHTML = '';
+  const text = h('div', 'ti-text');
+  const acts = h('div', 'ti-acts');
+  const pre = h('pre', 'skill-preview');
+  pre.textContent = x.preview;
+  pre.hidden = true;
+  text.innerHTML = `<b>${x.update ? 'The Orb can update a skill' : 'The Orb noticed a habit'}: ${esc(x.title.toLowerCase())}.</b> ${esc(x.why)} ` +
+    `${x.update ? 'Update the skill with what it learned since?' : 'Save it as a skill, so your AI does it your way next time?'}`;
+  text.append(pre);
+  card.append(h('div', 'ti-ic', icon('sparkle', 16)), text, acts);
+  const see = btn('See skill', 'ghost', () => {
+    pre.hidden = !pre.hidden;
+    see.textContent = pre.hidden ? 'See skill' : 'Hide';
+  });
+  acts.append(
+    btn(x.update ? 'Update skill' : 'Save skill', 'primary', async () => {
+      const r = await skillerr.invoke('kilr-suggestion-save', x.id);
+      flash(r.ok ? `Saved “${r.name}”. Your AI can use it now: ask it to use the ${r.name} skill, or type /${r.name}.` : r.message, 7000);
+      renderTrailsHome();
+    }),
+    see,
+    btn('Not now', 'ghost', async () => {
+      await skillerr.invoke('kilr-suggestion-dismiss', x.id);
+      renderTrailsHome();
+    }),
+  );
+}
+skillerr.on('kilr-learning', ({ progress }) => {
+  const first = learnProgress == null;
+  learnProgress = progress;
+  const bar = document.querySelector('#learnCard .learn-bar i');
+  if (bar) bar.style.width = `${Math.round(progress * 100)}%`;
+  else if (first && !$('start').hidden) renderTrailsHome();
+  window.trailsView?.learning?.(progress);
+});
+skillerr.on('kilr-learned', (r) => {
+  learnProgress = null;
+  if (!$('start').hidden) renderTrailsHome();
+  window.trailsView?.learned?.(r);
+});
+$('allTrails').onclick = () => skillerr.send('open-trails');
+$('manageTrails').onclick = (e) => {
+  e.preventDefault();
+  closeSheets();
+  skillerr.send('open-trails');
+};
+skillerr.on('trails-changed', () => {
+  if (!$('start').hidden) renderTrailsHome();
+  window.trailsView?.refresh();
+});
+
 // ================= intent-aware inputs (address bar + start page) =================
 
 function intentInput({ input, badge, form, hint, idleIcon, onValue, idleWhenBlurred, emptyHint }) {
@@ -394,6 +726,91 @@ function intentInput({ input, badge, form, hint, idleIcon, onValue, idleWhenBlur
   render();
   return { render, clearManual: () => (manual = null) };
 }
+
+// ================= find anything by meaning =================
+// Typing in the address bar (or the start page's box) shows matching tabs, tucked tabs and trail pages, by words and by
+// Kilr's sense of meaning. ↑/↓ choose, ↵ opens the chosen one (or does what the bar would do if none is chosen).
+const jump = { input: null, items: [], sel: -1, seq: 0 };
+const JUMP_KIND = { tab: 'Open tab', tucked: 'Waiting in a trail', page: 'Visited' };
+function jumpHide() {
+  $('jump').hidden = true;
+  $('jump').innerHTML = '';
+  jump.items = [];
+  jump.sel = -1;
+  skillerr.send('chrome-on-top', false);
+}
+function jumpRender() {
+  const box = $('jump');
+  if (!jump.items.length || !jump.input || document.activeElement !== jump.input) return jumpHide();
+  const r = (jump.input.closest('form') || jump.input).getBoundingClientRect();
+  Object.assign(box.style, { left: `${r.left}px`, top: `${r.bottom + 6}px`, width: `${r.width}px` });
+  box.innerHTML = `<div class="jump-head">${icon('sparkle', 11)} The Orb found</div>`;
+  jump.items.forEach((c, i) => {
+    const el = h('button', 'jump-item' + (i === jump.sel ? ' on' : ''));
+    el.type = 'button';
+    const fav = c.favicon ? `<img src="${esc(c.favicon)}" width="16" height="16">` : icon('globe', 15);
+    let host = '';
+    try {
+      host = new URL(c.url).hostname.replace(/^www\./, '');
+    } catch {}
+    el.innerHTML = `<span class="ji-fav">${fav}</span><span class="ji-text"><b>${esc(c.title || c.url)}</b><span>${esc(host)}${c.trail ? ` · ${esc(c.trail)}` : ''}${c.why === 'meaning' ? ' · similar in meaning' : ''}</span></span><span class="ji-kind k-${c.kind}">${JUMP_KIND[c.kind]}</span>`;
+    el.querySelectorAll('img').forEach((img) => (img.onerror = () => (img.outerHTML = icon('globe', 15))));
+    el.onmousedown = (e) => e.preventDefault(); // keep focus in the input
+    el.onclick = () => jumpChoose(i);
+    box.appendChild(el);
+  });
+  box.hidden = false;
+  if (jump.input === $('url')) skillerr.send('chrome-on-top', true); // over the page, or it would be hidden behind it
+}
+function jumpChoose(i) {
+  const c = jump.items[i];
+  if (!c) return;
+  const input = jump.input;
+  jumpHide();
+  skillerr.send('jump-open', c);
+  input.value = '';
+  input.dispatchEvent(new Event('input'));
+  input.blur();
+}
+function wireJump(input) {
+  let timer = null;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    // An address being typed or edited is navigation, not a search of what the user remembers.
+    if (q.length < 2 || settings.trails === false || looksLikeUrl(q) || /^[a-z]+:\/\//i.test(q)) return jumpHide();
+    timer = setTimeout(async () => {
+      const seq = ++jump.seq;
+      const items = await skillerr.invoke('jump-search', q);
+      if (seq !== jump.seq || input.value.trim() !== q) return;
+      jump.input = input;
+      jump.items = items;
+      jump.sel = -1;
+      jumpRender();
+    }, 60);
+  });
+  // Capture phase: before the bar's own Tab/Enter handling.
+  input.addEventListener('keydown', (e) => {
+    if ($('jump').hidden || jump.input !== input) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const n = jump.items.length;
+      jump.sel = e.key === 'ArrowDown' ? (jump.sel + 1) % n : (jump.sel - 1 + n) % n;
+      jumpRender();
+    } else if (e.key === 'Enter' && jump.sel >= 0) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      jumpChoose(jump.sel);
+    } else if (e.key === 'Escape') {
+      e.stopImmediatePropagation();
+      jumpHide();
+    }
+  }, true);
+  input.addEventListener('blur', () => setTimeout(() => document.activeElement !== input && jump.input === input && jumpHide(), 120));
+}
+wireJump($('url'));
+wireJump($('hero'));
+window.addEventListener('resize', () => !$('jump').hidden && jumpRender());
 
 function go(intent, value) {
   if (intent === 'ask') startTask(value);
@@ -1072,6 +1489,7 @@ async function loadSettingsSheet({ setup } = {}) {
   $('semanticRecall').checked = s.semanticRecall !== false;
   $('shareSkills').checked = !!s.shareSkillsWithClaudeCode;
   $('sleepTabs').checked = s.sleepTabs !== false;
+  $('trailsOn').checked = s.trails !== false;
   $('updateChecks').checked = s.updateChecks !== false;
   $('betaUpdates').checked = s.betaUpdates === true;
   $('searchEngine').value = s.searchEngine || 'google';
@@ -1121,6 +1539,7 @@ $('saveSettings').onclick = async () => {
     semanticRecall: $('semanticRecall').checked,
     shareSkillsWithClaudeCode: $('shareSkills').checked,
     sleepTabs: $('sleepTabs').checked,
+    trails: $('trailsOn').checked,
     updateChecks: $('updateChecks').checked,
     betaUpdates: $('betaUpdates').checked,
     searchApi: $('searchApi').value,
@@ -1419,7 +1838,7 @@ $('doImport').onclick = async () => {
   const b = $('doImport');
   b.disabled = true;
   b.textContent = 'Importing…';
-  const r = await skillerr.invoke('chrome-import', { profile: $('chromeProfile').value, bookmarks: $('impBookmarks').checked, history: $('impHistory').checked });
+  const r = await skillerr.invoke('chrome-import', { profile: $('chromeProfile').value, tabs: $('impTabs').checked, bookmarks: $('impBookmarks').checked, history: $('impHistory').checked });
   b.disabled = false;
   b.textContent = 'Import';
   $('importResult').className = 'small ' + (r.ok ? 'ok-text' : 'err-text');
@@ -1577,10 +1996,12 @@ async function showOnboarding() {
   paintTheme();
 
   box.querySelector('.ob-done').onclick = async () => {
-    await saveSettings({ onboarded: true, remember: $('obRemember').checked });
+    await saveSettings({ onboarded: true, remember: $('obRemember').checked, trails: $('obTrails').checked, trailsIntroSeen: true });
     if (available && $('obImport').checked) {
       const { profiles } = await skillerr.invoke('chrome-profiles');
-      if (profiles[0]) skillerr.invoke('chrome-import', { profile: profiles[0].dir, bookmarks: true, history: $('obRemember').checked });
+      if (profiles[0]) {
+        skillerr.invoke('chrome-import', { profile: profiles[0].dir, tabs: $('obTrails').checked, bookmarks: true, history: $('obRemember').checked });
+      }
     }
     box.classList.add('leaving');
     setTimeout(() => (box.hidden = true), 450);
