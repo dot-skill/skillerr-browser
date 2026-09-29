@@ -32,6 +32,31 @@ nothing to install and nothing to download, and nothing leaves the computer.
 
 Settings → Trails → **Kilr** turns it off. Trails then match by shared words, and recall by words (or an endpoint if set).
 
+## The History page
+
+History (⌘Y) shows everything the user and their AI apps looked into as one map, with Kilr at the centre
+(`src/ui/memoryview.js`, data from `src/history-graph.js`).
+
+- **The orb is Kilr:** a metal ball full of micro-holes and a few cracks, lit from inside like a dying star. With
+  nothing in History it is a cold ball with faint red embers.
+- **Glow is how much there is.** It grows on a log scale with everything in History, so the first hundred pages
+  already light it up. It reaches full brightness at about 10,000 pages, roughly a typical person's last three
+  months of browsing (Chrome keeps 90 days). Past that, up to 20,000, corona flares grow round it. The meter at the
+  bottom right shows where the user is.
+- **Every node comes out of it as a ray of light.** Trails and research sessions are the bright hubs, with their
+  pages round them. The further out a node is, the longer ago it was seen. When the page opens, the nodes shoot out
+  along their rays and the orb brightens as they arrive. Light keeps travelling out along the rays, more of it the
+  brighter Kilr burns.
+- **Colour is whose it is, on a VIBGYOR spectrum round the orb:** the user's own pages on the warm side (red,
+  orange, yellow), their AIs' on the cool side (blue, indigo, violet, with each AI app in its own band), and pages
+  both of them looked at in green. **All / Yours / Your AIs'** filters them, and the search box finds things by
+  meaning (recall) or by words.
+- **Click the orb** (or **Kilr** at the top) for Kilr's own panel: what it is, what it is doing right now (a live
+  log), its size on disk, the memory it is using, how fast it is, that it runs only on this computer's processor with
+  no internet, what it has learned and from whose pages, **Learn now**, and the skills it suggests from research
+  that keeps coming back.
+- With reduced motion on, the orb glows steadily and nothing animates.
+
 ## How it works
 
 A text's embedding is the average of its word pieces' vectors, looked up in a table. No neural network runs.
@@ -193,6 +218,8 @@ Next, in order of value:
 | `src/kilr/train.js`, `train-worker.js` | Learning from the user's trails; runs in a worker thread |
 | `src/embed.js` | Recall by meaning: Kilr built in, or an endpoint |
 | `src/trails.js` | Uses Kilr (`meaning`) when given, words otherwise |
+| `src/history-graph.js`, `src/ui/memoryview.js` | The History page: one graph of memory and trails, drawn as light coming out of Kilr |
+| `src/ui/kilrview.js` | Kilr's panel on the History page (status from `kilr-status`, polled every 2 s while open) |
 | `assets/kilr/` | The model (`kilr-embed.bin`, `vocab.txt`) and its provenance |
 | `scripts/kilr/` | Building, calibrating, benchmarking and evaluating it |
 | `test/kilr-suggest.test.js` | Suggested skills from simulated browsing |

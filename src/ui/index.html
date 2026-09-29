@@ -165,34 +165,37 @@
       </div>
     </section>
 
-    <section class="memview" id="memView" hidden>
+    <section class="memview hv-map" id="memView" hidden>
       <div class="mv-top">
-        <div>
-          <h2>Research memory</h2>
+        <div class="hv-title">
+          <h2>History</h2>
           <div class="muted small" id="mvStats"></div>
         </div>
         <div class="seg small-seg mv-mode" id="mvMode"><button type="button" data-m="map" class="on">Map</button><button type="button" data-m="folders">Folders</button></div>
-        <form class="mv-search" id="mvSearch" autocomplete="off"><input id="mvQuery" spellcheck="false" placeholder="Ask your memory, e.g. “Tokyo hotels”" /></form>
+        <div class="seg small-seg hv-filter" id="hvFilter"><button type="button" data-f="all" class="on">All</button><button type="button" data-f="you">Yours</button><button type="button" data-f="ai">Your AIs'</button></div>
+        <form class="mv-search" id="mvSearch" autocomplete="off"><input id="mvQuery" spellcheck="false" placeholder="Find by meaning, e.g. “Tokyo hotels”" /></form>
+        <button type="button" class="hv-kilr-btn" id="hvKilrBtn" title="What Kilr is doing on this computer"><canvas id="hvKilrIcon" width="44" height="44"></canvas><span>Kilr</span></button>
       </div>
       <div class="mv-body">
         <canvas id="mvCanvas"></canvas>
+        <canvas id="hvFx" aria-hidden="true"></canvas>
+        <canvas id="hvOrb" aria-hidden="true"></canvas>
+        <div class="hv-tip" id="hvTip" hidden></div>
         <aside class="mv-side" id="mvSide" hidden></aside>
         <div class="mv-empty" id="mvEmpty" hidden>
-          <h3>Nothing remembered yet</h3>
-          <p class="muted">As your AIs research in Skillerr, their sessions, notes, skills, topics and the pages they read appear here, connected.</p>
-          <button type="button" class="btn ghost sm" data-sheet="settings">Import Chrome bookmarks and history</button>
+          <h3>Kilr is waiting in the dark</h3>
+          <p class="muted">Every page you visit, and every page your AI apps read for you, comes out of it as a thread of light. The more you and your AIs look into, the brighter it burns.</p>
+          <button type="button" class="btn ghost sm" data-sheet="settings">Bring in your Chrome history</button>
         </div>
+        <aside class="kp" id="kilrPanel" hidden aria-label="Kilr"></aside>
       </div>
       <div class="mv-folders" id="mvFolders" hidden>
         <nav class="fd-tree" id="fdTree"></nav>
         <div class="fd-detail" id="fdDetail"></div>
       </div>
       <div class="mv-bottom" id="mvBottom">
-        <div class="mv-show">
-          <label class="mv-toggle" title="Warm glow where you research most: often, recently, and together"><input type="checkbox" id="mvHeat" checked /> Attention glow</label>
-          <label class="mv-toggle" title="Include every web page your AI read, not just sessions, notes, skills and topics"><input type="checkbox" id="mvPages" checked /> Show web pages</label>
-        </div>
         <div class="mv-legend" id="mvLegend"></div>
+        <div class="hv-glow" id="hvGlow"></div>
       </div>
     </section>
   </main>
@@ -447,6 +450,7 @@
   <script src="shared.js"></script>
   <script src="ui.js"></script>
   <script src="memoryview.js"></script>
+  <script src="kilrview.js"></script>
   <script src="dataview.js"></script>
   <script src="trailsview.js"></script>
 </body>
