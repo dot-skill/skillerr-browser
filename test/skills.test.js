@@ -68,7 +68,7 @@ test('drafts: kept as suggestions, refined by name, installed only when accepted
 // The approval gate lives in src/main.js (Electron): an unanswered save_skill (or Later) becomes a draft, never a skill,
 // and "Later" can't count as a yes for anything.
 test('save_skill without an answer is kept as a suggestion, and Later is never a yes', () => {
-  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8').replace(/\r\n/g, '\n'); // Windows checks out CRLF
   assert.match(main, /const ok = answer === 'later' \? null : answer;/);
   assert.match(main, /if \(name === 'save_skill' && ok === null\) \{\n\s+const \{ draft, refined \} = skills\.draft\(/);
   assert.ok(main.indexOf('skills.checkShareable(args)') < main.indexOf('const answer = await requestApproval('), 'personal details are refused before anyone is asked');

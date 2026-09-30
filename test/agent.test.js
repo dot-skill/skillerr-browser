@@ -69,10 +69,10 @@ test('built-in AI: when it is idle, tell() says so (the panel starts a new task 
 test('the panel message box reaches the built-in AI directly', () => {
   const fs = require('fs');
   const path = require('path');
-  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8').replace(/\r\n/g, '\n'); // Windows checks out CRLF
   const h = main.slice(main.indexOf("ipcMain.handle('pilot-message'"), main.indexOf("ipcMain.on('ask-choice'"));
   assert.match(h, /if \(target\.via === 'builtin'\) \{\n\s+if \(agent\.tell\(text\)\)/);
   assert.match(h, /return \{ ok: false, start: true \}/);
-  const ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'ui.js'), 'utf8');
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'ui.js'), 'utf8').replace(/\r\n/g, '\n');
   assert.match(ui, /if \(r\.start\) return startTask\(text\);/);
 });
