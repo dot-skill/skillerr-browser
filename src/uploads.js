@@ -66,12 +66,24 @@ function inside(p, dir, platform) {
   return a === b || a.startsWith(b + '/');
 }
 
+// A folder as given and where it really is: a link's target resolves to the real path (on macOS /var is really
+// /private/var, and a home folder can be a link), so blocked folders are matched both ways.
+function bothWays(dir) {
+  try {
+    const real = fs.realpathSync.native(dir);
+    return real === dir ? [dir] : [dir, real];
+  } catch {
+    return [dir];
+  }
+}
+
 // Why `real` (a resolved absolute path) may not be uploaded, or null if it may.
 function blockedReason(real, { home = os.homedir(), platform = process.platform } = {}) {
-  const home_ = (d) => path.join(home, ...d.split('/'));
-  if (HOME_BLOCKED.some((d) => inside(real, home_(d), platform))) return 'it is in a folder that holds keys, passwords or Skillerr\'s own data';
-  if (SYSTEM_BLOCKED.some((d) => inside(real, d, platform))) return 'it is a system file';
-  if (extraBlocked.some((d) => inside(real, d, platform))) return 'it is part of Skillerr\'s own data';
+  const homes = bothWays(path.resolve(home));
+  const inAny = (dirs) => dirs.some((d) => bothWays(d).some((x) => inside(real, x, platform)));
+  if (homes.some((h) => HOME_BLOCKED.some((d) => inside(real, path.join(h, ...d.split('/')), platform)))) return 'it is in a folder that holds keys, passwords or Skillerr\'s own data';
+  if (inAny(SYSTEM_BLOCKED)) return 'it is a system file';
+  if (inAny(extraBlocked)) return 'it is part of Skillerr\'s own data';
   if (/^[a-z]:[\\/]windows[\\/](system32|syswow64)[\\/]config([\\/]|$)/i.test(real)) return 'it is a system file';
   if (SECRET_NAMES.some((re) => re.test(path.basename(real)))) return 'it looks like a key, password or credentials file';
   return null;

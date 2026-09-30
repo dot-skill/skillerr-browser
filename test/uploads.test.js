@@ -63,6 +63,18 @@ test('a link can\'t smuggle out a blocked file', { skip: process.platform === 'w
   assert.throws(() => uploads.checkPaths([path.join(home, 'Pictures', '..', '.ssh', 'id_work')], { home, platform: 'linux' }), /won't upload/);
 });
 
+test('a home folder reached through a link is matched at its real path too', { skip: process.platform === 'win32' }, () => {
+  const { home: real, put } = makeHome();
+  const key = put('.ssh/id_work', 'secret');
+  const home = real + '-link';
+  fs.symlinkSync(real, home);
+  const link = path.join(real, 'Pictures', 'holiday.png');
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  fs.symlinkSync(key, link);
+  assert.throws(() => uploads.checkPaths([path.join(home, 'Pictures', 'holiday.png')], { home, platform: 'linux' }), /won't upload/);
+  assert.strictEqual(uploads.checkPaths([put('Pictures/ok.png')], { home, platform: 'linux' }).length, 1);
+});
+
 test('blocked folders match case-insensitively on macOS and Windows', () => {
   const { home } = makeHome();
   assert.ok(uploads.blockedReason(path.join(home, '.SSH', 'config'), { home, platform: 'darwin' }));
