@@ -565,13 +565,23 @@ function attachView(tab) {
     // Fleet view: clicking anywhere on a tile opens that tab (the tile's page guard swallows the click). AI clicks don't count.
     if (ev.type === 'mouseDown' && mosaic?.includes(tab.id) && Date.now() - (wc.skillerrAiInputAt || 0) > 1000) setImmediate(() => switchTab(tab.id));
   });
-  wc.setWindowOpenHandler(({ url: target }) => {
+  wc.setWindowOpenHandler(({ url: target, disposition, features }) => {
     let host = '';
     try {
       host = new URL(wc.getURL()).hostname;
     } catch {}
-    if (Date.now() - tab.lastInput < 1500 || store.getSettings().popupsAllowed?.[host]) newTab(target, { opener: tab.id });
-    else ui('popup-blocked', { tabId: tab.id, host, url: target });
+    if (!(Date.now() - tab.lastInput < 1500 || store.getSettings().popupsAllowed?.[host])) {
+      ui('popup-blocked', { tabId: tab.id, host, url: target });
+      return { action: 'deny' };
+    }
+    // A real pop-up (Sign in with Google or Apple, a payment window) stays a pop-up window: the page and the pop-up
+    // talk through window.opener, which a tab would cut (Google's sign-in then hangs on accounts.google.com/gsi/transform).
+    if (disposition === 'new-window') {
+      const size = (k, d) => Math.min(1200, Math.max(320, Number(new RegExp(`${k}=(\\d+)`).exec(features || '')?.[1]) || d));
+      return { action: 'allow', overrideBrowserWindowOptions: { parent: win, width: size('width', 500), height: size('height', 640),
+        autoHideMenuBar: true, backgroundColor: '#ffffff', minimizable: false, fullscreenable: false } };
+    }
+    newTab(target, { opener: tab.id });
     return { action: 'deny' };
   });
   wc.on('context-menu', (_e, params) => showPageMenu(tab, params));
