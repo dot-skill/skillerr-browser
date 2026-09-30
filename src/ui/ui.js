@@ -19,6 +19,7 @@ const OTHER_PRESETS = {
   openai: { baseUrl: 'https://api.openai.com/v1', model: '' },
   custom: { baseUrl: '', model: '' },
 };
+let aiReady = true; // is a built-in AI set up? (applyAiReady keeps it current)
 const PRO_GATEWAY = 'https://ai-gateway.vercel.sh/v1'; // direct, for a gateway key (the owner's own)
 const PRO_API = 'https://skillerr.com/api/pro/v1'; // licensed: skillerr.com checks the license, then calls the gateway
 const PRO_NAMES = { 'anthropic/claude-sonnet-5': 'Claude Sonnet 5', 'anthropic/claude-opus-5.5': 'Claude Opus 5.5', 'anthropic/claude-haiku-4.5': 'Claude Haiku 4.5', 'google/gemini-3.5-flash': 'Gemini 3.5 Flash' };
@@ -201,6 +202,11 @@ skillerr.on('shot-saved', () => flash('Screenshot saved to Pictures/Skillerr'));
 
 // Right-click → "Ask Skillerr about …" fills the composer.
 skillerr.on('prefill-task', (text) => {
+  if (!aiReady) { // no built-in AI: hand it to the user's AI app instead
+    skillerr.send('copy', text);
+    skillerr.send('toggle-panel', true);
+    return flash('Copied. Paste it into Claude Desktop, Claude Code or Cursor.', 6000);
+  }
   taskInput.value = text;
   autosize();
   taskInput.focus();
@@ -247,7 +253,7 @@ skillerr.on('tabs', (list) => {
     const el = h('div', 'tab' + (t.active ? ' on' : '') + (t.loading ? ' loading' : '') + (t.ai ? ' ai' : '') + (grp ? ' grouped' : '') + (t.asleep ? ' asleep' : ''));
     if (grp) el.style.setProperty('--g', grp.color);
     el.title = t.asleep ? `${t.title}\nSleeping to keep Skillerr light. Click to wake it.` : t.title;
-    const fav = t.favicon ? `<img src="${esc(t.favicon)}">` : icon(t.isStart ? 'sparkle' : 'globe', 13);
+    const fav = t.favicon ? `<img src="${esc(iconSrc(t.favicon))}">` : icon(t.isStart ? 'sparkle' : 'globe', 13);
     el.innerHTML = `<span class="fav">${fav}</span><span class="title">${esc(t.title)}</span><button class="x" title="Close  ⌘W">${icon('x', 12)}</button>`;
     el.onmousedown = (e) => e.button === 0 && !e.target.closest('.x') && skillerr.send('switch-tab', t.id);
     el.onauxclick = (e) => e.button === 1 && skillerr.send('close-tab', t.id);
@@ -290,24 +296,26 @@ $('newtab').onclick = () => skillerr.send('new-tab');
 // The tab strip is only for the tabs being worked in. Tabs still open when Skillerr quit wait in their trails, each
 // trail a chip here with its tabs' icons. Click one for its tabs and how far through it you are; Continue brings them
 // back up to the tab strip.
-let shelfData = { trails: [], more: 0 };
+let shelfData = { yours: { trails: [], more: 0 }, ais: { trails: [], more: 0 } };
 let shelfOpen = null; // the trail whose panel is open
-const favImg = (f, size) => (f ? `<img src="${esc(f)}" width="${size}" height="${size}">` : icon('globe', size - 1));
+const favImg = (f, size) => (f ? `<img src="${esc(iconSrc(f))}" width="${size}" height="${size}">` : icon('globe', size - 1));
 function iconFallback(el, size) {
   el.querySelectorAll('img').forEach((img) => (img.onerror = () => (img.outerHTML = icon('globe', size - 1))));
 }
 const pctText = (p) => `${Math.round((p || 0) * 100)}% through`;
 function renderShelf() {
+  renderAiShelf();
   const box = $('shelf');
-  const { trails, more } = shelfData;
+  const { trails, more } = shelfData.yours;
   box.hidden = !trails.length || settings.trails === false;
   box.innerHTML = '';
   if (box.hidden) return shelfClose();
-  if (shelfOpen && !trails.some((t) => t.id === shelfOpen)) shelfClose();
+  if (shelfOpen && !String(shelfOpen).startsWith('list:') && ![...trails, ...shelfData.ais.trails].some((t) => t.id === shelfOpen)) shelfClose();
   for (const t of trails) {
     const icons = [...new Map(t.tabs.map((x) => [x.favicon || x.url, x])).values()].slice(0, 3);
     const chip = h('button', 'shelf-trail' + (shelfOpen === t.id ? ' open' : ''));
     chip.type = 'button';
+    chip.dataset.trail = t.id;
     chip.title = `${t.title} · ${t.count} tab${t.count === 1 ? '' : 's'} waiting · ${pctText(t.progress)}`;
     chip.innerHTML = `<span class="st-icons">${icons.map((x) => `<span class="st-fav">${favImg(x.favicon, 14)}</span>`).join('')}</span><span class="st-n">${t.count}</span>` +
       `<span class="st-bar"><i style="width:${Math.round((t.progress || 0) * 100)}%"></i></span>`;
@@ -322,11 +330,100 @@ function renderShelf() {
     m.onclick = () => skillerr.send('open-trails');
     box.appendChild(m);
   }
+  stackIfCrowded(box, 'yours');
 }
-function shelfShow(t, chip) {
-  shelfOpen = t.id;
+
+// A side whose chips don't fit next to the address bar becomes one box: its trails' icons stacked and how many. Click
+// it for all of that side's trails in one panel. The address bar never moves or changes size for them.
+function stackIfCrowded(box, side) {
+  box.classList.remove('stacked');
+  if (box.hidden) return;
+  // The chips' own widths, not scrollWidth: chips aligned to the address bar overflow leftwards, which scrollWidth misses.
+  const gap = parseFloat(getComputedStyle(box).columnGap) || 0;
+  const need = [...box.children].reduce((w, c) => w + c.getBoundingClientRect().width, 0) + gap * Math.max(0, box.children.length - 1);
+  if (need <= box.clientWidth + 1) return;
+  const { trails, more } = shelfData[side];
+  const n = trails.length + more;
+  box.classList.add('stacked');
+  box.innerHTML = '';
+  const chip = h('button', 'shelf-trail stack' + (shelfOpen === `list:${side}` ? ' open' : '') +
+    (side === 'ais' && trails.some((t) => t.open.length) ? ' open-work' : side === 'ais' && trails.some((t) => !t.seen) ? ' new' : ''));
+  chip.type = 'button';
+  const marks = side === 'ais'
+    ? [...new Set(trails.map((t) => t.by || ''))].slice(0, 3).map((by) => `<span class="st-fav st-app">${brandIcon(by, 13) || icon('sparkle', 12)}</span>`)
+    : trails.slice(0, 3).map((t) => `<span class="st-fav">${favImg(t.tabs[0]?.favicon, 14)}</span>`);
+  chip.innerHTML = `<span class="st-icons">${marks.join('')}</span><span class="st-n">${n}</span>${side === 'ais' ? '<span class="st-dot"></span>' : ''}`;
+  chip.title = side === 'ais' ? `Your AIs' research: ${n}` : `Your trails: ${n} waiting`;
+  chip.setAttribute('aria-label', chip.title);
+  chip.onclick = () => (shelfOpen === `list:${side}` ? shelfClose() : shelfListShow(side, chip));
+  iconFallback(chip, 14);
+  box.appendChild(chip);
+}
+
+// All of one side's trails in one panel: yours with their tabs and how far through; your AIs' with who did them and
+// whether they're new or unfinished. A row opens that trail's own panel, which has a way back to the list.
+function shelfListShow(side, chip) {
+  shelfOpen = `list:${side}`;
   const pop = $('shelfPop');
   pop.innerHTML = '';
+  pop.classList.add('list');
+  const { trails, more } = shelfData[side];
+  pop.append(h('div', `sl-head ${side}`, `<span class="sl-dot"></span><span>${side === 'ais' ? "Your AIs' research" : 'Your trails'}</span><span class="sl-n">${trails.length + more}</span>`));
+  const list = h('div', 'sl-rows');
+  for (const t of trails) {
+    const row = h('button', 'sl-row' + (side === 'ais' ? (t.open.length ? ' open-work' : !t.seen ? ' new' : '') : ''));
+    row.type = 'button';
+    if (side === 'ais') {
+      row.innerHTML = `<span class="sl-mark">${brandIcon(t.by || '', 16) || icon('sparkle', 15)}</span>` +
+        `<span class="sl-text"><b>${esc(t.title)}</b><span>${esc(t.by || 'Your AI')} · ${t.count} page${t.count === 1 ? '' : 's'} · ${agoText(t.doneAt)}${t.open.length ? ' · unfinished' : !t.seen ? ' · new' : ''}</span></span><span class="st-dot"></span>`;
+      row.onclick = () => aiShelfShow(t, chip, true);
+    } else {
+      const icons = [...new Map(t.tabs.map((x) => [x.favicon || x.url, x])).values()].slice(0, 3);
+      row.innerHTML = `<span class="sl-mark st-icons">${icons.map((x) => `<span class="st-fav">${favImg(x.favicon, 14)}</span>`).join('')}</span>` +
+        `<span class="sl-text"><b>${esc(t.title)}</b><span>${t.count} tab${t.count === 1 ? '' : 's'} waiting · ${pctText(t.progress)}</span>` +
+        `<span class="st-bar"><i style="width:${Math.round((t.progress || 0) * 100)}%"></i></span></span>`;
+      row.onclick = () => shelfShow(t, chip, true);
+    }
+    iconFallback(row, 14);
+    list.appendChild(row);
+  }
+  pop.append(list);
+  pop.append(h('div', 'sp-acts', ''));
+  pop.lastChild.append(btn(more ? `All trails (${trails.length + more})` : 'All trails', 'ghost', () => { shelfClose(); skillerr.send('open-trails'); }));
+  placePop(chip, side);
+}
+// Opens the panel under its chip. The shelves are drawn again first (to mark the open chip), which replaces the chip the
+// panel was opened from, so it's found again: by its trail, or the side's stacked box.
+function placePop(chip, side) {
+  const pop = $('shelfPop');
+  renderShelf();
+  const box = side === 'ais' ? '#shelfAi' : '#shelf';
+  const anchor = [chip, document.querySelector(`${box} .shelf-trail[data-trail="${chip?.dataset?.trail}"]`), document.querySelector(`${box} .shelf-trail.stack`), document.querySelector(box)]
+    .find((el) => el && el.isConnected && el.getBoundingClientRect().width);
+  const r = anchor ? anchor.getBoundingClientRect() : { left: 8, right: 8, bottom: 46 };
+  const top = Math.max(46, r.bottom + 6);
+  pop.style.top = `${top}px`;
+  pop.style.maxHeight = `${window.innerHeight - top - 12}px`; // its buttons stay on screen however long the list
+  pop.style.left = '0px';
+  pop.hidden = false;
+  // Placed by its real width: the AIs' shelf (right of the address bar) opens leftward from its box's right edge.
+  const w = pop.getBoundingClientRect().width;
+  const want = side === 'ais' ? r.right - w : r.left;
+  pop.style.left = `${Math.max(8, Math.min(want, window.innerWidth - w - 8))}px`;
+  skillerr.send('chrome-on-top', true); // over the page, or it would be hidden behind it
+}
+// A trail's panel opened from the list gets a way back to it.
+function backToList(pop, side, chip) {
+  const back = h('button', 'sp-back', `${icon('left', 12)}${side === 'ais' ? "Your AIs' research" : 'Your trails'}`);
+  back.type = 'button';
+  back.onclick = () => shelfListShow(side, chip);
+  pop.prepend(back);
+}
+function shelfShow(t, chip, fromList = false) {
+  shelfOpen = fromList ? 'list:yours' : t.id;
+  const pop = $('shelfPop');
+  pop.innerHTML = '';
+  pop.classList.remove('list');
   const head = h('div', 'sp-head', `<div class="sp-title">${esc(t.title)}</div>` +
     `<div class="sp-sub">${t.by ? `Research by ${esc(t.by)} · ` : ''}${t.count} tab${t.count === 1 ? '' : 's'} waiting${t.unfinished ? ` · ${t.unfinished} unfinished` : ''}</div>` +
     `<div class="sp-progress"><span class="st-bar big"><i style="width:${Math.round((t.progress || 0) * 100)}%"></i></span><span>${pctText(t.progress)}</span></div>`);
@@ -359,24 +456,97 @@ function shelfShow(t, chip) {
     }),
   );
   pop.append(head, list, acts);
-  const r = chip.getBoundingClientRect();
-  pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 348))}px`;
-  pop.style.top = `${r.bottom + 6}px`;
-  pop.hidden = false;
-  skillerr.send('chrome-on-top', true); // over the page, or it would be hidden behind it
-  renderShelf();
+  if (fromList) backToList(pop, 'yours', chip);
+  placePop(chip, 'yours');
 }
 function shelfClose() {
   if (!shelfOpen && $('shelfPop').hidden) return;
   shelfOpen = null;
   $('shelfPop').hidden = true;
+  $('shelfPop').classList.remove('list');
   skillerr.send('chrome-on-top', false);
-  $('shelf').querySelectorAll('.shelf-trail.open').forEach((c) => c.classList.remove('open'));
+  document.querySelectorAll('#shelf .shelf-trail.open, #shelfAi .shelf-trail.open').forEach((c) => c.classList.remove('open'));
 }
-document.addEventListener('mousedown', (e) => shelfOpen && !e.target.closest('#shelfPop, #shelf') && shelfClose());
+document.addEventListener('mousedown', (e) => shelfOpen && !e.target.closest('#shelfPop, #shelf, #shelfAi') && shelfClose());
+
+// Your AIs' research, right of the address bar: finished research, newest first, each chip with its AI app's icon and a
+// short name. New (not opened yet): an aurora dot. Unfinished by the facts: an amber dot.
+function renderAiShelf() {
+  const box = $('shelfAi');
+  const { trails, more } = shelfData.ais;
+  box.hidden = !trails.length || settings.trails === false;
+  box.innerHTML = '';
+  if (box.hidden) return;
+  for (const t of trails) {
+    const chip = h('button', 'shelf-trail' + (shelfOpen === t.id ? ' open' : '') + (t.open.length ? ' open-work' : !t.seen ? ' new' : ''));
+    chip.type = 'button';
+    chip.dataset.trail = t.id;
+    chip.title = `${t.title}\nResearch by ${t.by || 'your AI'} · ${t.count} page${t.count === 1 ? '' : 's'} · ${agoText(t.doneAt)}` +
+      (t.open.length ? `\n${t.open.length} thing${t.open.length === 1 ? '' : 's'} left unfinished` : !t.seen ? '\nNew' : '');
+    chip.innerHTML = `<span class="st-app">${brandIcon(t.by || '', 14) || icon('sparkle', 13)}</span><span class="st-name">${esc(t.title)}</span><span class="st-dot"></span>`;
+    chip.onclick = () => (shelfOpen === t.id ? shelfClose() : aiShelfShow(t, chip));
+    box.appendChild(chip);
+  }
+  if (more) {
+    const m = h('button', 'shelf-trail more', `+${more}`);
+    m.type = 'button';
+    m.title = `${more} more research${more === 1 ? '' : 'es'} by your AIs`;
+    m.onclick = () => skillerr.send('open-trails');
+    box.appendChild(m);
+  }
+  stackIfCrowded(box, 'ais');
+}
+// The research's sources, not its tabs: what the AI concluded, what's unfinished, the pages it read (one click opens
+// one), Open all, Continue with the AI, Done.
+function aiShelfShow(t, chip, fromList = false) {
+  shelfOpen = fromList ? 'list:ais' : t.id;
+  const pop = $('shelfPop');
+  pop.innerHTML = '';
+  pop.classList.remove('list');
+  const who = t.by || 'your AI';
+  const head = h('div', 'sp-head', `<div class="sp-title">${esc(t.title)}</div>` +
+    `<div class="sp-sub">Research by ${brandIcon(who, 12)}${esc(who)} · ${t.count} page${t.count === 1 ? '' : 's'} · ${agoText(t.doneAt)}</div>` +
+    (t.summary ? `<div class="sp-summary">${esc(t.summary)}</div>` : ''));
+  pop.append(head);
+  if (t.open.length) {
+    pop.append(h('div', 'sp-open', `<b>Not finished</b><ul>${t.open.slice(0, 5).map((x) => `<li>${esc(x.reason)}${x.title || x.url ? `: ${esc(x.title || hostOf(x.url))}` : ''}</li>`).join('')}</ul>`));
+  }
+  const list = h('div', 'sp-tabs');
+  for (const x of t.pages.slice(0, 12)) {
+    const row = h('button', 'sp-tab', `${favImg(x.favicon, 14)}<span>${esc(x.title)}</span><span class="sp-read">✓ read</span>`);
+    row.type = 'button';
+    row.title = `${x.title}\n${x.url}\n\nOpen this page`;
+    row.onclick = () => {
+      shelfClose();
+      skillerr.invoke('trails-ai-open', { id: t.id, url: x.url });
+    };
+    iconFallback(row, 14);
+    list.appendChild(row);
+  }
+  if (t.pages.length > 12) list.appendChild(h('div', 'sp-more', `and ${t.pages.length - 12} more`));
+  if (t.pages.length) pop.append(list);
+  const acts = h('div', 'sp-acts');
+  if (t.waiting) acts.append(btn(`${icon('play', 11)}Open all`, 'ghost', () => { shelfClose(); skillerr.invoke('trails-continue', t.id); }));
+  acts.append(
+    btn(`Continue with ${esc(who)}`, 'primary', async () => {
+      const r = await skillerr.invoke('trails-ai-continue', t.id);
+      shelfClose();
+      if (r) flash(`Copied. Paste it into ${who} to carry on with this research.`, 6000);
+    }),
+    btn(`${icon('check', 12)}Done`, 'ghost', async () => { shelfClose(); await skillerr.invoke('trails-state', { id: t.id, state: 'done' }); }),
+  );
+  pop.append(acts);
+  if (fromList) backToList(pop, 'ais', chip);
+  if (!t.seen) skillerr.invoke('trails-ai-seen', t.id);
+  placePop(chip, 'ais');
+}
 document.addEventListener('keydown', (e) => e.key === 'Escape' && shelfOpen && shelfClose());
+// The toolbar's sides change width with the window: chips that fitted may not any more, or the other way round.
+let refit = 0;
+new ResizeObserver(() => { cancelAnimationFrame(refit); refit = requestAnimationFrame(() => !shelfOpen && renderShelf()); }).observe(document.querySelector('.toolbar'));
 skillerr.on('trails-shelf', (data) => {
-  shelfData = data || { trails: [], more: 0 };
+  const none = { trails: [], more: 0 };
+  shelfData = { yours: data?.yours || none, ais: data?.ais || none };
   renderShelf();
 });
 $('back').onclick = () => skillerr.send('back');
@@ -413,7 +583,7 @@ function renderMosaicLabels(list) {
     if (!t) continue;
     el.classList.toggle('ai', t.ai);
     el.classList.toggle('loading', t.loading);
-    el.querySelector('.fav').innerHTML = t.favicon ? `<img src="${esc(t.favicon)}">` : icon('globe', 12);
+    el.querySelector('.fav').innerHTML = t.favicon ? `<img src="${esc(iconSrc(t.favicon))}">` : icon('globe', 12);
     const img = el.querySelector('.fav img');
     if (img) img.onerror = () => (img.outerHTML = icon('globe', 12));
     el.querySelector('.title').textContent = t.title;
@@ -462,7 +632,7 @@ function agoText(t) {
   return d === 1 ? 'yesterday' : d < 7 ? `${d} days ago` : new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 const favStack = (icons) => icons.length
-  ? icons.slice(0, 3).map((f) => `<img src="${esc(f)}">`).join('')
+  ? icons.slice(0, 3).map((f) => `<img src="${esc(iconSrc(f))}">`).join('')
   : icon('layers', 15);
 
 // One trail as a card: title, where you stopped, what's unfinished, and Continue.
@@ -678,8 +848,9 @@ skillerr.on('trails-changed', () => {
 
 function intentInput({ input, badge, form, hint, idleIcon, onValue, idleWhenBlurred, emptyHint }) {
   let manual = null;
-  const current = () => (input.value.trim() && !(idleWhenBlurred && document.activeElement !== input) ? manual || detectIntent(input.value) : null);
-  const options = () => (looksLikeUrl(input.value.trim()) ? ['go', 'search', 'ask'] : ['search', 'ask']);
+  // "Ask Skillerr" only when there's a built-in AI to ask; otherwise a long search is a search.
+  const current = () => { if (!input.value.trim() || (idleWhenBlurred && document.activeElement !== input)) return null; const it = manual || detectIntent(input.value); return it === 'ask' && !aiReady ? 'search' : it; };
+  const options = () => (looksLikeUrl(input.value.trim()) ? ['go', 'search', 'ask'] : ['search', 'ask']).filter((o) => o !== 'ask' || aiReady);
 
   function render() {
     const it = current();
@@ -689,7 +860,7 @@ function intentInput({ input, badge, form, hint, idleIcon, onValue, idleWhenBlur
     if (hint) {
       const focused = document.activeElement === input;
       const next = options().filter((o) => o !== it)[0];
-      hint.innerHTML = !it ? (emptyHint || '') : !focused ? '' :
+      hint.innerHTML = !it ? (hint.dataset.empty || emptyHint || '') : !focused ? '' :
         `<kbd>↵</kbd> ${INTENTS[it].label}${next ? ` · <kbd>Tab</kbd> ${INTENTS[next].label} instead` : ''}`;
     }
   }
@@ -748,7 +919,7 @@ function jumpRender() {
   jump.items.forEach((c, i) => {
     const el = h('button', 'jump-item' + (i === jump.sel ? ' on' : ''));
     el.type = 'button';
-    const fav = c.favicon ? `<img src="${esc(c.favicon)}" width="16" height="16">` : icon('globe', 15);
+    const fav = c.favicon ? `<img src="${esc(iconSrc(c.favicon))}" width="16" height="16">` : icon('globe', 15);
     let host = '';
     try {
       host = new URL(c.url).hostname.replace(/^www\./, '');
@@ -1304,7 +1475,7 @@ function renderComposerContext() {
   if (!currentTab || currentTab.isStart) {
     ctx.innerHTML = `${icon('sparkle', 12)}<span>Skillerr can open sites, click, type and read for you</span>`;
   } else {
-    const fav = currentTab.favicon ? `<img src="${esc(currentTab.favicon)}">` : icon('globe', 12);
+    const fav = currentTab.favicon ? `<img src="${esc(iconSrc(currentTab.favicon))}">` : icon('globe', 12);
     ctx.innerHTML = `${fav}<span>On this page · ${esc(currentTab.title)}</span>`;
     const img = ctx.querySelector('img');
     if (img) img.onerror = () => (img.outerHTML = icon('globe', 12));
@@ -1320,11 +1491,33 @@ function agentName() {
 
 async function renderModelPill() {
   const ready = await skillerr.invoke('agent-ready');
+  applyAiReady(ready);
   const p = $('modelPill');
   p.className = 'model-pill ' + (ready ? 'ready' : 'setup');
   p.innerHTML = ready ? `<span class="dot"></span><span>${esc(agentName())}</span>` : `${icon('sparkle', 12)}<span>Choose an AI to power Skillerr</span>`;
 }
 $('modelPill').onclick = () => openSheet('settings');
+
+// Without a built-in AI, nothing in Skillerr may invite the user to type a task for it: the Pilot box gives way to a card
+// that says how Skillerr is driven (by the user's AI apps), and the address bar and start page only search and go, so a
+// long search is searched, not copied as a task.
+function applyAiReady(ready) {
+  aiReady = !!ready;
+  $('composer').hidden = !aiReady;
+  $('noPilot').hidden = aiReady;
+  $('welcomeStep1').innerHTML = aiReady
+    ? '<b>Say what you want.</b> Type below or in the address bar — “find”, “compare”, “summarize”, “fill in”.'
+    : '<b>Connect your AI app.</b> Claude Desktop, Claude Code or Cursor: ask it to research or compare, and it browses here.';
+  $('welcomeAlso').hidden = !aiReady;
+  $('url').placeholder = aiReady ? 'Search, enter an address, or tell Skillerr what to do' : 'Search or enter an address';
+  $('hero').placeholder = aiReady ? 'Ask, search, or type a URL' : 'Search or type a URL';
+  $('ideas').hidden = !aiReady; // task ideas are for the built-in AI; without one they'd only copy text
+  $('heroHint').dataset.empty = aiReady ? 'Type an address, a search, or something for Skillerr to do' : 'Type an address or a search';
+  if (!$('hero').value) $('heroHint').textContent = $('heroHint').dataset.empty;
+  const lede = document.querySelector('.start .lede');
+  if (lede) lede.textContent = aiReady ? 'Browse like always — or just say what you want done, and watch it happen.' : 'Browse like always. Your AI apps can browse here too, while you watch.';
+}
+$('npSnap').onclick = () => snapForAi();
 
 // Screenshot for your AI: capture the page, copy one line, paste it into your AI and just say what's wrong.
 $('snapBtn').innerHTML = icon('camera', 13);
@@ -1354,20 +1547,25 @@ function showCaptured(r) {
 $('snapBtn').onclick = snapForAi;
 skillerr.on('captured', (r) => showCaptured({ ok: true, ...r }));
 
-// Deep research toggle: applies to the built-in AI and to connected AIs (they're told when it's on).
+// Deep research: off, or on with a depth of 1–5 hops (3 unless the user picked another). One setting, shown in the
+// composer and in Settings; applies to the built-in AI and to connected AIs (they're told when it's on).
+const deepDepthOf = (s) => Math.max(1, Math.min(5, Number(s.deepDepth) || 3));
+const deepValue = (s) => (s.deepResearch ? deepDepthOf(s) : 0); // 0 = off
+const deepPatch = (v) => (Number(v) > 0 ? { deepResearch: true, deepDepth: Math.min(5, Number(v)) } : { deepResearch: false });
 function renderDeep() {
   const on = !!settings.deepResearch;
   $('deepBtn').className = 'deep-btn' + (on ? ' on' : '');
   $('deepBtn').innerHTML = `${icon('layers', 12)}<span>Deep</span>`;
   $('deepDepth').hidden = !on;
-  $('deepDepth').value = String(settings.deepDepth || 3);
+  $('deepDepth').value = String(deepDepthOf(settings));
+  $('deepSetting').value = String(deepValue(settings));
 }
 $('deepBtn').onclick = async () => {
-  await saveSettings({ deepResearch: !settings.deepResearch });
+  await saveSettings(deepPatch(settings.deepResearch ? 0 : deepDepthOf(settings)));
   renderDeep();
 };
 $('deepDepth').onchange = async () => {
-  await saveSettings({ deepDepth: Number($('deepDepth').value) });
+  await saveSettings(deepPatch($('deepDepth').value));
   renderDeep();
 };
 
@@ -1389,7 +1587,7 @@ function openSheet(name, opts = {}) {
   closeSheets();
   $('sheet-' + name).classList.add('open');
   if (name === 'connect') renderConnectSheet();
-  if (name === 'settings') loadSettingsSheet(opts);
+  if (name === 'settings') loadSettingsSheet(opts).then(() => opts.pane && showPane(opts.pane));
   if (name === 'skills') renderSkillsSheet();
 }
 function closeSheets() {
@@ -1400,7 +1598,7 @@ document.addEventListener('click', (e) => {
   const sheetLink = e.target.closest('[data-sheet]');
   if (sheetLink) {
     e.preventDefault();
-    openSheet(sheetLink.dataset.sheet);
+    openSheet(sheetLink.dataset.sheet, sheetLink.dataset.pane ? { pane: sheetLink.dataset.pane } : {});
   }
   const link = e.target.closest('[data-url]');
   if (link) {
@@ -1496,6 +1694,7 @@ async function loadSettingsSheet({ setup } = {}) {
   $('searchApi').value = s.searchApi || '';
   $('searchApiKey').value = s.searchApiKey || '';
   $('searchApiKeyRow').hidden = !$('searchApi').value;
+  $('deepSetting').value = String(deepValue(s));
   document.querySelectorAll('#themeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.t === (s.theme || 'system')));
   renderMemStats();
   loadImportBox();
@@ -1544,6 +1743,7 @@ $('saveSettings').onclick = async () => {
     betaUpdates: $('betaUpdates').checked,
     searchApi: $('searchApi').value,
     searchApiKey: $('searchApiKey').value.trim(),
+    ...deepPatch($('deepSetting').value),
     claudeModel: $('claudeModel').value,
     anthropicKey: $('claudeKey').value.trim(),
     otherPreset: $('otherPreset').value,
@@ -1560,6 +1760,7 @@ $('saveSettings').onclick = async () => {
   else if (localChoice) active = { provider: 'openai-compatible', baseUrl: localChoice.baseUrl, model: localChoice.model, apiKey: '', localModel: localChoice.model, localBaseUrl: localChoice.baseUrl };
   else active = {};
   await saveSettings({ ...common, ...active });
+  renderDeep();
   $('saved').textContent = 'Saved ✓';
   setTimeout(() => ($('saved').textContent = ''), 1500);
   renderAiCards();

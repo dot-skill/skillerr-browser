@@ -125,7 +125,8 @@ flowchart LR
 - **Fleet view** (⇧⌘F) shows every tab your AI is working in, side by side and live. Click a tile to step in.
 - **The Pilot panel** logs every step in plain English ("Opening jal.co.jp", "Reading several tabs"), with **Pause**,
   **Take over** (Human mode) and **Undo** on actions that can be undone.
-- **Deep research** follows the links that matter, 1 to 5 hops from the first pages.
+- **Deep research** follows the links that matter, 1 to 5 hops from the first pages. Off by default; turn it on in
+  Settings (3 hops unless you pick another) or with the Deep button.
 - Tabs for one task are **grouped and named** after the AI that opened them. Show them all or close them all in one click.
 - `web_search` and `fetch_page` stand in for your AI's own search and fetch, so its flow carries on as usual and the
   sources in its answer are pages you saw.
@@ -146,20 +147,26 @@ flowchart LR
 - **Closed means done.** A page you closed never comes back with its trail.
 - **Unfinished work, noticed:** a form you typed into but never sent, an article you read partway, a cart you didn't
   check out, a long video you stopped halfway.
-- **Move over from Chrome in one click.** Your open Chrome tabs come over sorted into trails, waiting on the shelf.
+- **Move over from Chrome in one click.** Your open Chrome tabs come over sorted into journeys by the Orb (what you
+  opened together, and what it's about across days), waiting on the shelf.
 - **Yours to control:** rename, merge, mark done, forget, never learn from a site. AI apps see your trails (`my_trails`) only after you allow each one once.
 
 See [docs/trails.md](docs/trails.md).
 
 </details>
 
-### Skillerr Orb: Skillerr's own small AI
+### Your Orb: your own AI model
 
 <details>
 <summary><b>What you get</b></summary>
 
-- **Built in, tiny, fast.** One 7.9 MB file, about 26 µs per text in plain JavaScript. Runs on your CPU, no GPU
-  needed, works offline. Nothing to install, nothing leaves your computer.
+- **Yours, not ours.** The Orb is your own AI model: it runs on your computer, learns from your browsing there, and
+  sends nothing to Skillerr or anyone else. It works offline.
+- **Tiny and fast.** One 7.9 MB file, about 8 µs per page title in plain JavaScript on one CPU core: over 250 times
+  faster than the transformer it learned from, keeping 88% of its accuracy. No GPU, nothing to install.
+- **Sorts weeks of open tabs into journeys.** Moving over from Chrome, it finds what belongs together with 91% precision
+  (F1 0.83, against 0.25 for word matching), and holds up when titles say nothing ("Log In"). See
+  [docs/orb.md](docs/orb.md#how-good-it-is).
 - **Knows your work by meaning.** Pages join the right trail even in different words, "Ask the Orb" on the Trails page
   finds "plane tickets to Japan" in a trail of Tokyo flights, and the start page says where you were and what's
   unfinished.
@@ -177,16 +184,16 @@ See [docs/trails.md](docs/trails.md).
   out from your trails and your AIs', with no AI model writing it.
 - **Recall by meaning, out of the box.** No Ollama needed any more.
 - **It doesn't make things up.** The Orb chooses from the facts of your own trails; it never generates text.
-- **Ours.** Distilled from an open model (Apache-2.0) with a closed-form fit anyone can rerun on a laptop. See
+- **Open.** Distilled from an open model (Apache-2.0) with a closed-form fit anyone can rerun on a laptop. See
   [docs/orb.md](docs/orb.md).
 
 </details>
 
-### Skillerr Orb, history and folders
+### Your Orb, history and folders
 
 <table>
 <tr>
-<td width="50%"><img alt="Skillerr Orb: a glowing cracked orb at the centre, with the research of Claude Code, Claude Desktop and Cursor coming out of it as threads of light" src=".github/assets/orb.png"></td>
+<td width="50%"><img alt="Your Orb: a glowing cracked orb at the centre, with the research of Claude Code, Claude Desktop and Cursor coming out of it as threads of light" src=".github/assets/orb.png"></td>
 <td width="50%"><img alt="The Orb's panel: what it is doing, its size and memory, runs on your CPU with no GPU and no internet, learning and suggested skills" src=".github/assets/orb-panel.png"></td>
 </tr>
 <tr>
@@ -198,7 +205,7 @@ See [docs/trails.md](docs/trails.md).
 <details>
 <summary><b>What you get</b></summary>
 
-- **Skillerr Orb (⇧⌘Y)** is everything you and your AIs looked into, as one map around the Orb: your pages on the warm end of
+- **Your Orb (⇧⌘Y)** is everything you and your AIs looked into, as one map around the Orb: your pages on the warm end of
   the spectrum, your AIs' on the cool end (one colour per app), pages you both touched in green. The Orb glows brighter
   as your history grows. Click the Orb to see what it's doing on your computer: its size, memory, speed, what it learned
   and the skills it suggests.
@@ -241,8 +248,8 @@ See [docs/trails.md](docs/trails.md).
 - **The built-in AI** runs local models (Ollama, LM Studio) for free, or Claude and any OpenAI-compatible endpoint with
   your own key.
 - **Live view in Claude Desktop.** In Claude Desktop and other [MCP Apps](https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/)
-  hosts, a live view appears next to the tool call: the AI's tab, or a grid of tabs, its latest steps, and Pause /
-  Take over. See [docs/live-view.md](docs/live-view.md).
+  hosts, one live view follows the AI in the chat: only the tabs it opened, its latest steps, Pause / Take over, and
+  an **Audit** list of every page it opened or tried to. See [docs/live-view.md](docs/live-view.md).
 - **Screenshot for your AI.** Capture the page you're on, paste the one line it copies into any AI and say what's
   wrong. The AI opens exactly what you saw with `view_capture`.
 

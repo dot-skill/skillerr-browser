@@ -9,7 +9,7 @@ local text embeddings.
 
 - **What it adds:** a second signal to recall. Besides shared words, recall now counts *closeness in meaning*, measured
   by a local embedding model.
-- **Where it runs:** on the user's computer. By default it uses **The Orb**, Skillerr's own built-in embeddings
+- **Where it runs:** on the user's computer. By default it uses **the Orb**, the user's own embedding model on their computer
   ([docs/orb.md](kilr.md)): nothing to install, microseconds per text, vectors kept in memory only. Setting
   `embedBaseUrl` switches to any OpenAI-compatible `/embeddings` endpoint instead (Ollama with `nomic-embed-text`, LM
   Studio, llama.cpp server, a remote endpoint if the user chooses), and the rest of this page describes that path.

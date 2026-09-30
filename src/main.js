@@ -4,7 +4,7 @@ traceStartup('main.js running');
 const fs = require('fs');
 const path = require('path');
 const { app, BaseWindow, WebContentsView, ipcMain, Menu, clipboard, nativeTheme, dialog, shell } = require('electron');
-const { TOOLS, runTool, toUrl, setSearchTemplate, setSearchApi, inspectTarget, restoreValue } = require('./tools');
+const { TOOLS, runTool, toUrl, aiUrl, setSearchTemplate, setSearchApi, inspectTarget, restoreValue } = require('./tools');
 const { startApiServer } = require('./api-server');
 const { Agent } = require('./agent');
 const connectors = require('./connect');
@@ -28,7 +28,12 @@ const memory = new Memory(path.join(store.DIR, 'memory'), { lazy: true });
 const freshData = !fs.existsSync(path.join(store.DIR, 'settings.json'));
 let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
-// Kilr: Skillerr's own small AI (src/kilr), built in. It knows trails and research by meaning. Loaded on first use.
+const { AsyncLocalStorage } = require('async_hooks');
+const { AiActivity, pickPreviewTabs } = require('./ai-activity');
+const { Favicons } = require('./favicons');
+// Site icons: the browser UI loads them from skillerr-icon:, answered from this computer (see "site icons" below).
+require('electron').protocol.registerSchemesAsPrivileged([{ scheme: 'skillerr-icon', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+// Kilr (the user's Orb): their own AI model (src/kilr), running on their computer. It knows trails and research by meaning. Loaded on first use.
 const KILR_DIR = path.join(__dirname, '..', 'assets', 'kilr'); // src/ and out/src/ alike
 const KILR_PERSONAL = path.join(store.DIR, 'kilr', 'personal.bin'); // what Kilr learned from this user's trails
 try { // staging builds called it Wenlo
@@ -40,6 +45,39 @@ try { // staging builds called it Wenlo
 } catch {}
 const kilr = new Kilr({ dir: KILR_DIR, personalFile: KILR_PERSONAL });
 const history = new (require('./history').History)(store.DIR); // browsing history: History (⌘Y)
+
+// ---------- site icons, kept on this computer ----------
+// A page's icon is saved the moment the page shows it (from Chromium's cache, so no extra download), and the browser UI
+// shows icons only from here: tucked tabs, trails and history have real icons at once, offline, with no page loaded
+// and no request to the site. An icon asked for that isn't here yet is fetched once and kept.
+const favicons = new Favicons(path.join(store.DIR, 'favicons'));
+const iconFetches = new Map(); // icon url → pending fetch
+function keepIcon(url) {
+  if (!/^https?:/i.test(url || '') || favicons.has(url)) return Promise.resolve(favicons.get(url));
+  if (iconFetches.has(url)) return iconFetches.get(url);
+  const job = (async () => {
+    try {
+      const r = await require('electron').session.defaultSession.fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) return null;
+      const buf = Buffer.from(await r.arrayBuffer());
+      const mime = r.headers.get('content-type') || (/\.svg(\?|$)/i.test(url) ? 'image/svg+xml' : /\.ico(\?|$)/i.test(url) ? 'image/x-icon' : 'image/png');
+      return favicons.put(url, buf, mime) ? favicons.get(url) : null;
+    } catch {
+      return null;
+    } finally {
+      iconFetches.delete(url);
+    }
+  })();
+  iconFetches.set(url, job);
+  return job;
+}
+function serveIcons() {
+  require('electron').protocol.handle('skillerr-icon', async (req) => {
+    const url = new URL(req.url).searchParams.get('f') || '';
+    const icon = favicons.get(url) || (await keepIcon(url));
+    return icon ? new Response(icon.buf, { headers: { 'content-type': icon.mime, 'cache-control': 'max-age=604800' } }) : new Response(null, { status: 404 });
+  });
+}
 // What Kilr has been doing lately, for its screen: [{ at, what }], newest first.
 const kilrLog = [];
 function kilrDid(what) {
@@ -227,6 +265,12 @@ function noteStep(e) {
   if (recentSteps.size > 40) recentSteps.delete(recentSteps.keys().next().value);
 }
 const previewViews = new Map(); // client → { viewId, createdAt } of its newest preview, the only one kept live
+// What each AI app opened or tried to open in its current session (the live view's tabs and its Audit list).
+const activity = new AiActivity();
+const aiCall = new AsyncLocalStorage(); // { client, session } while an AI's tool call runs: tabs it opens are its own
+// The last thumbnail sent to each client's live view, per tab: a page that hasn't changed isn't captured (or sent) again.
+const shots = new Map(); // client → { viewId, tabs: Map(tabId → { url, width, at }) }
+const RESHOOT_MS = 2000;
 
 async function thumb(tab, width) {
   const wc = tab?.view?.webContents;
@@ -245,29 +289,59 @@ async function previewFrame(client, { viewId = '', createdAt = 0 } = {}) {
   const newest = previewViews.get(client);
   if (!newest || createdAt >= newest.createdAt) previewViews.set(client, { viewId, createdAt });
   const superseded = previewViews.get(client).viewId !== viewId;
+  const count = activity.count(client);
+  // An earlier view in the chat is just a line pointing down to the live one: no tabs, no screenshots.
+  if (superseded) return { superseded, count, ts: Date.now() };
   const now = Date.now();
-  const recentAi = tabs.filter((t) => !t.isStart && t.aiUntil && now - (t.aiUntil - IDLE_AFTER_MS) < 30000)
-    .sort((a, b) => b.aiUntil - a.aiUntil);
-  // Fleet when the AI has tabs side by side, or has been working several tabs at once; otherwise its latest tab.
-  const fleetIds = mosaic?.length > 1 ? mosaic : recentAi.length > 1 ? recentAi.slice(0, 6).map((t) => t.id) : null;
-  const shown = fleetIds ? fleetIds.map(getTab).filter(Boolean) : [recentAi[0] || activeTab()].filter((t) => t && !t.isStart);
-  const width = fleetIds ? 480 : 720; // fleet tiles are about half the view's width, on high-density screens
-  const tiles = superseded ? [] : await Promise.all(shown.map(async (t) => {
+  const session = activity.current(client);
+  const pick = pickPreviewTabs(tabs, { client, session, mosaic, now, idleMs: IDLE_AFTER_MS });
+  const shown = pick.ids.map(getTab).filter(Boolean);
+  const width = pick.mode === 'fleet' ? 480 : 720; // fleet tiles are about half the view's width, on high-density screens
+  if (shots.get(client)?.viewId !== viewId) shots.set(client, { viewId, tabs: new Map() }); // a new view has no pictures yet
+  const sent = shots.get(client).tabs;
+  const tiles = await Promise.all(shown.map(async (t) => {
     const wc = t.view.webContents;
     const url = t.sleeping ? t.sleeping.url : wc.isDestroyed() ? '' : wc.getURL();
-    return { id: t.id, title: (t.sleeping ? t.sleeping.title : wc.getTitle()) || url, url, working: (t.aiUntil || 0) > now,
-      loading: !wc.isDestroyed() && wc.isLoading(), image: await thumb(t, width) };
+    const working = (t.aiUntil || 0) > now;
+    const loading = !wc.isDestroyed() && wc.isLoading();
+    // Same page, not loading or being worked on, and captured lately: the view keeps the picture it has.
+    const last = sent.get(t.id);
+    const fresh = last && last.url === url && last.width === width && (!(working || loading) || now - last.at < RESHOOT_MS);
+    let image = null;
+    if (!fresh) {
+      image = await thumb(t, width);
+      if (image) sent.set(t.id, { url, width, at: now });
+    }
+    return { id: t.id, title: (t.sleeping ? t.sleeping.title : wc.getTitle()) || url, url, working, loading, image, same: !!fresh };
   }));
-  const steps = [...recentSteps.values()].filter((e) => !client || e.controller === client).slice(-4)
+  for (const id of sent.keys()) if (!pick.ids.includes(id)) sent.delete(id); // a tile that comes back is captured again
+  const steps = [...recentSteps.values()].filter((e) => e.controller === client && e.session === session).slice(-4)
     .map((e) => ({ id: e.id, tool: e.tool, args: e.args, target: e.target, state: e.state, reason: e.reason, summary: e.summary, ts: e.ts }));
+  const deep = deepSettings();
   return {
-    superseded, mode: fleetIds ? 'fleet' : 'single', tiles, steps,
-    controller: status.controller?.name || null, live: !!(status.active || status.agentRunning), paused: status.paused,
+    superseded, mode: pick.mode, tiles, steps, count, deep: deep.on ? deep.depth : 0,
+    // The view is this app's: it's live while this app is the one at work, and says so by name.
+    controller: client || status.controller?.name || null, live: !!(status.active || status.agentRunning) && (!client || status.controller?.name === client), paused: status.paused,
     awaitingApproval: status.awaitingApproval, ts: now,
   };
 }
 
-function previewAction(client, { action, tabId } = {}) {
+// The Audit list: every page this client's current session opened, read or tried to, most recent first.
+function previewAudit(client) {
+  return { pages: activity.list(client).map(({ url, title, tool, state, reason, attempts, ts }) => ({ url, title, tool, state, reason, attempts, ts })) };
+}
+
+function previewAction(client, { action, tabId, url } = {}) {
+  if (action === 'open') { // from the Audit list: the AI's tab still showing that page, or a new tab
+    if (!/^https?:\/\//i.test(String(url || ''))) throw new Error('Only web pages can be opened from the live view.');
+    const session = activity.current(client);
+    const key = (u) => String(u || '').replace(/#.*$/, '').replace(/\/$/, '');
+    const t = tabs.find((x) => !x.isStart && x.aiBy === client && x.aiSession === session && key(tabUrl(x)) === key(url));
+    if (mosaic) exitMosaic();
+    if (t) switchTab(t.id);
+    else newTab(url);
+    action = 'focus';
+  }
   if (action === 'pause') setPaused(true);
   else if (action === 'resume') setPaused(false);
   else if (action === 'focus' || action === 'takeover') {
@@ -299,7 +373,7 @@ function baseTabInfo(t) {
   const wc = t.view.webContents;
   return {
     id: t.id,
-    title: t.internal === 'memory' ? 'Skillerr Orb' : t.internal === 'data' ? 'History & Bookmarks' : t.internal === 'trails' ? 'Trails' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
+    title: t.internal === 'memory' ? 'Your Orb' : t.internal === 'data' ? DATA_TITLES[t.dataTab] || 'History' : t.internal === 'trails' ? 'Trails' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
     url: t.isStart ? '' : wc.getURL(),
     internal: t.internal || null,
     isStart: t.isStart,
@@ -336,7 +410,8 @@ function assignGroup(controller, tabIds) {
   if (!list.length) return;
   const g = groupFor(controller);
   for (const t of list) t.groupId = g.id;
-  researchTrailOf(g);
+  const trailId = researchTrailOf(g);
+  if (trailId) try { trailsDb().researchResumed(trailId); } catch {}
   for (const t of list) researchVisit(t);
   pushTabs();
 }
@@ -402,6 +477,77 @@ function pruneGroups() {
   for (const id of groups.keys()) if (!groupTabs(id).length) groups.delete(id);
 }
 
+// ---------- an AI's finished research is put away, right of the address bar ----------
+// The AI app never says it's done, so Skillerr infers it: no tool call from it for AI_DONE_MS and none of its tabs
+// loading or being worked in. Its tabs are then tucked into its research trail and closed, except a tab the user is
+// looking at (Skillerr in front) or touched in the last minute: those stay, and go the next time round once the user
+// has moved on. The research is marked done, with what's unfinished about it from the facts (the Audit list's): pages
+// it couldn't open, a robot check or approval it met, pages it opened but never read, the user pausing it. If the AI
+// uses one of those tabs again, it comes back with the same number (see executeInSession) and the research resumes.
+const AI_DONE_MS = 90 * 1000;
+const tuckedAiTabs = new Map(); // tab id → { url, title, trailId, groupId }
+const openFacts = (client) => activity.list(client).flatMap((p) => {
+  const why = { failed: `Couldn't open it${p.reason ? `: ${p.reason}` : ''}`, blocked: p.reason || 'A robot check stopped it', declined: p.reason || 'Not allowed' }[p.state]
+    || (p.state === 'opened' && ['open_tabs', 'new_tab'].includes(p.tool) ? 'Opened, but not read' : null);
+  return why ? [{ url: p.url, title: p.title, reason: why }] : [];
+});
+function tuckFinishedResearch() {
+  if (!win || !learningTrails()) return;
+  const now = Date.now();
+  const watching = win.isFocused() && win.isVisible() && !win.isMinimized();
+  for (const g of [...groups.values()]) {
+    const last = activity.active.get(g.controller)?.last || 0;
+    if (now - last < AI_DONE_MS || (status.agentRunning && g.controller === agentLabel())) continue;
+    const list = groupTabs(g.id);
+    if (list.some((t) => (t.aiUntil || 0) > now || (!t.sleeping && t.view && !t.view.webContents.isDestroyed() && t.view.webContents.isLoading()))) continue;
+    const trailId = researchTrailOf(g);
+    if (!trailId) continue;
+    const go = list.filter((t) => !t.isStart && !(watching && isShown(t)) && now - (t.lastInput || 0) > 60000);
+    if (!go.length) continue;
+    const db = trailsDb();
+    db.tuck(trailId, go.map((t) => ({ url: tabUrl(t), title: t.sleeping ? t.sleeping.title : t.view.webContents.getTitle(), favicon: t.favicon })), 'ai-done');
+    for (const t of go) {
+      tuckedAiTabs.set(t.id, { url: tabUrl(t), trailId, groupId: g.id, controller: g.controller });
+      closeTab(t.id, { tucked: true });
+    }
+    const open = openFacts(g.controller);
+    if (status.paused) open.push({ url: '', title: '', reason: 'You paused it before it finished' });
+    db.researchDone(trailId, { open });
+    trailsChanged();
+  }
+}
+setInterval(() => {
+  try {
+    tuckFinishedResearch();
+  } catch {}
+}, 15 * 1000);
+
+const waitForLoadOf = (t, ms = 10000) => new Promise((resolve) => {
+  const wc = t?.view?.webContents;
+  if (!wc || wc.isDestroyed()) return resolve();
+  const done = () => { clearTimeout(timer); resolve(); };
+  const timer = setTimeout(done, ms);
+  wc.once('did-stop-loading', done);
+  wc.once('did-fail-load', done);
+});
+
+// An AI reaching for one of its tucked tabs gets it back, with the same number, and its research is no longer done.
+function bringBackTucked(id) {
+  const x = tuckedAiTabs.get(id);
+  if (!x || getTab(id)) return null;
+  tuckedAiTabs.delete(id);
+  const t = newTab(x.url, { background: true, id });
+  if (groups.has(x.groupId)) t.groupId = x.groupId;
+  else assignGroup({ name: x.controller }, [t.id]); // its group went when its last tab was put away: same research
+  t.trailId = x.trailId;
+  try {
+    trailsDb().untuck(x.trailId, (y) => y.url === x.url);
+    trailsDb().researchResumed(x.trailId);
+    trailsChanged();
+  } catch {}
+  return t;
+}
+
 const pushTabs = () => ui('tabs', tabs.map(tabInfo));
 
 // A tab's web view, with everything wired. Also used to wake a sleeping tab (its old view was closed to free memory).
@@ -465,6 +611,11 @@ function attachView(tab) {
   wc.on('page-title-updated', (_e, title) => tab.historyId && history.update(tab.historyId, { title }));
   // Trails: what the user (not an AI) visits, and where they were on the page.
   wc.on('did-navigate', (_e, u) => trailNavigated(tab, u));
+  // The last main-frame load that failed (bad host, offline, refused): the Audit list counts it as a failed attempt.
+  wc.on('did-start-navigation', (e) => (e?.isMainFrame ?? true) && !e?.isSameDocument && (tab.loadFailed = null));
+  wc.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
+    if (isMainFrame && code !== -3) tab.loadFailed = { url, reason: desc ? `${desc.replace(/^ERR_/, '').replace(/_/g, ' ').toLowerCase()}` : "The page didn't load" }; // -3: aborted by a newer load
+  });
   wc.on('did-navigate-in-page', (_e, u, isMain) => isMain && trailNavigated(tab, u, true));
   wc.on('did-stop-loading', () => {
     if (tab.trailPage?.pending) trailObserve(tab);
@@ -477,17 +628,20 @@ function attachView(tab) {
   });
   // Chromium remembers zoom per site; Skillerr keeps it per tab instead (fleet tiles zoom out, the user's zoom stays theirs).
   wc.on('did-navigate', () => wc.setZoomFactor(tab.zoom || tab.userZoom || 1));
-  wc.on('page-favicon-updated', (_e, favicons) => {
-    tab.favicon = favicons[0];
-    if (tab.historyId) history.update(tab.historyId, { favicon: favicons[0] });
+  wc.on('page-favicon-updated', (_e, icons) => {
+    tab.favicon = icons[0];
+    keepIcon(icons[0]).catch(() => {});
+    if (tab.historyId) history.update(tab.historyId, { favicon: icons[0] });
     pushTabs();
   });
   win.contentView.addChildView(view);
   return view;
 }
 
-function newTab(url, { background = false, opener = null } = {}) {
-  const tab = { id: nextTabId++, view: null, favicon: null, isStart: !url, userZoom: 1, lastInput: 0, lastUsed: Date.now(), openerId: opener };
+function newTab(url, { background = false, opener = null, id = null } = {}) {
+  const tab = { id: id ?? nextTabId++, view: null, favicon: null, isStart: !url, userZoom: 1, lastInput: 0, lastUsed: Date.now(), openerId: opener };
+  const call = aiCall.getStore(); // opened during an AI's tool call: it's that AI session's tab
+  if (call) Object.assign(tab, { aiBy: call.client, aiSession: call.session });
   attachView(tab);
   const wc = tab.view.webContents;
   tabs.push(tab);
@@ -529,6 +683,17 @@ function bookmarkActive() {
 }
 
 // Skillerr's own full-page views (drawn by the browser chrome, like the start page).
+// History (with Clear browsing data on it) and Bookmarks are one internal page in two modes, each opened by its own menu
+// item and titled for what it shows (never a page of tabs that repeats the other).
+const DATA_TITLES = { history: 'History', bookmarks: 'Bookmarks', clear: 'History' }; // clearing data is a panel on History
+function openData(which = 'history') {
+  openInternal('data');
+  const t = tabs.find((x) => x.internal === 'data');
+  if (t) t.dataTab = which;
+  ui('data-tab', which);
+  pushTabs();
+}
+
 function openInternal(kind) {
   const existing = tabs.find((t) => t.internal === kind);
   if (existing) return switchTab(existing.id);
@@ -598,7 +763,7 @@ function switchTab(id) {
   pushTabs();
 }
 
-function closeTab(id) {
+function closeTab(id, { tucked = false } = {}) {
   const i = tabs.findIndex((t) => t.id === id);
   if (i < 0) throw new Error(`No tab ${id}`);
   const [tab] = tabs.splice(i, 1);
@@ -612,7 +777,7 @@ function closeTab(id) {
       if (trailsDb().closePage(trailId, url)) trailsChanged();
     } catch {}
   }
-  if (!tab.isStart && !tab.internal) closedTabs.push(tab.sleeping ? tab.sleeping.url : tab.view.webContents.getURL());
+  if (!tab.isStart && !tab.internal && !tucked) closedTabs.push(tab.sleeping ? tab.sleeping.url : tab.view.webContents.getURL());
   if (closedTabs.length > 25) closedTabs.shift();
   if (tab.view) win.contentView.removeChildView(tab.view);
   if (mosaic) {
@@ -926,7 +1091,8 @@ let trailsTimer = null;
 let lastShelf = '';
 // The trail shelf between reload and the address bar: journeys waiting, by their tabs' icons.
 function pushShelf() {
-  const shelf = learningTrails() ? trailsDb().shelf() : { trails: [], more: 0 };
+  const none = { trails: [], more: 0 };
+  const shelf = learningTrails() ? { yours: trailsDb().shelf(12), ais: trailsDb().aiShelf(12) } : { yours: none, ais: none };
   const json = JSON.stringify(shelf);
   if (json === lastShelf) return;
   lastShelf = json;
@@ -989,43 +1155,46 @@ function reopenTuckedTab(id, url) {
 }
 
 // ---------- moving over from Chrome: its open tabs, sorted into trails ----------
-// All the tabs are grouped at once (average-linkage clustering on the Orb's meaning plus shared keywords; settings
-// chosen on scripts/kilr/eval-trails.js), then each group is filed as one trail, joining an existing trail when it's
-// about the same thing. They all wait on the shelf, like the tabs of a last session: the tab strip stays clean, and
-// Continue brings a journey back. Nothing is closed in Chrome.
-const IMPORT_CLUSTER = { threshold: 0.2, wordBonus: 0.1 };
+// The Orb sorts them on this computer, with no other AI (src/kilr/journeys.js): tabs opened in one sitting stay
+// together, sittings on different days join when they're about the same thing, and everyday pages (an inbox, a plain
+// AI chat page) aren't a journey. Each journey is filed as one trail, led by the tab that says most about it (the
+// trail is named after it), joining an existing trail when it's about the same thing. Everything waits on the shelf,
+// like the tabs of a last session: the tab strip stays clean, and Continue brings a journey back. Nothing is closed
+// in Chrome.
 function importChromeTabs(profile) {
   const db = trailsDb();
-  const seen = new Set(userTabs().map((t) => pageKey(tabUrl(t))));
+  const seen = new Set(userTabs().map((t) => tabUrl(t)));
   const list = [];
   for (const t of chrome_.openTabs(profile)) {
-    const key = pageKey(t.url);
-    if (seen.has(key) || !db.tuckable(t.url)) continue;
-    seen.add(key);
-    list.push({ ...t, title: t.title || t.url });
+    if (seen.has(t.url) || !db.tuckable(t.url)) continue; // a mail thread isn't its inbox: same page means same URL
+    seen.add(t.url);
+    if (t.favicon && t.faviconData) favicons.put(t.favicon, t.faviconData, 'image/png'); // Chrome's own copy of its icon
+    list.push({ ...t, title: t.title || t.url, faviconData: undefined });
   }
-  const { pageWords, cleanTitle } = require('./trails');
-  const vecs = list.map((t) => (kilrOn() ? kilr.vec(cleanTitle(t.title)) : null)); // without the site's name, as Trails compares titles
-  const words = list.map((t) => new Set(pageWords({ url: t.url, title: t.title })));
-  const sim = (i, j) => {
-    const shared = [...words[i]].filter((w) => words[j].has(w)).length;
-    return (vecs[i] && vecs[j] ? kilrCosine(vecs[i], vecs[j]) : 0) + IMPORT_CLUSTER.wordBonus * Math.min(shared, 2);
-  };
-  const groupsOfTabs = require('./trails').clusterItems(list.length, sim, { threshold: IMPORT_CLUSTER.threshold });
+  const { groupTabs } = require('./kilr/journeys');
+  const { journeys, everyday } = groupTabs(list, kilrOn() ? { vec: (x) => kilr.vec(x), cosine: kilrCosine } : null);
   const at = Date.now();
   const tucked = new Map(); // trail id → tabs
-  for (const g of groupsOfTabs) {
-    let trailId = null;
-    for (const i of g) {
-      const t = list[i];
-      trailId = db.observe({ url: t.url, title: t.title }, trailId ? { tabTrail: trailId, tabAt: at } : { typed: true }) || trailId || db.loose();
-      (tucked.get(trailId) || tucked.set(trailId, []).get(trailId)).push({ url: t.url, title: t.title });
+  const put = (trailId, t) => (tucked.get(trailId) || tucked.set(trailId, []).get(trailId)).push({ url: t.url, title: t.title, favicon: t.favicon || null });
+  const made = new Set(); // trails this import started: another journey never joins them (the Orb kept them apart)
+  for (const g of journeys) {
+    // The journey's lead (the tab that says most about it) picks its trail: a new one, or one it's about already.
+    const lead = list[g[0]];
+    const before = new Set(db.trails.map((t) => t.id));
+    const trailId = db.observe({ url: lead.url, title: lead.title, favicon: lead.favicon || null }, { typed: true, exclude: made }) || db.loose();
+    if (!before.has(trailId)) made.add(trailId);
+    put(trailId, lead);
+    for (const i of g.slice(1)) {
+      db.addPage(trailId, { url: list[i].url, title: list[i].title, favicon: list[i].favicon || null });
+      put(trailId, list[i]);
     }
   }
+  for (const i of everyday) put(db.loose(), list[i]);
   for (const [trailId, tabsOf] of tucked) db.tuck(trailId, tabsOf, 'chrome');
   trailsChanged();
-  kilrDid(`Sorted ${list.length} tabs from Chrome into ${tucked.size} trails`);
-  return { count: list.length, open: 0, trails: tucked.size };
+  const trailCount = [...tucked.keys()].filter((id) => !db.get(id)?.loose).length;
+  kilrDid(`Sorted ${list.length} tabs from Chrome into ${trailCount} trails${everyday.length ? `, and ${everyday.length} everyday pages` : ''}`);
+  return { count: list.length, open: 0, trails: trailCount };
 }
 
 // "Continue": the tabs the trail was put away with come back up to the tab strip, scrolled where the user was. Pages
@@ -1080,7 +1249,7 @@ function trailsHome() {
     trails: all.slice(0, 3),
     total: all.length,
     // Kilr's one line about where you were, built from the facts of the top trail.
-    kilr: s.kilr !== false && all[0] ? kilrLine(all[0]) : null,
+    kilr: s.kilr !== false && all[0] ? kilrLine(all.find((t) => !t.by) || all[0]) : null, // where *you* were, first
     // Kilr offering to learn (setting "suggest"), or what it just learned.
     learn: s.kilrLearn === 'suggest' ? learnDue() : null,
     learning: !!learning,
@@ -1344,7 +1513,7 @@ function kilrSaveSuggestion(id) {
   const x = kilrSuggestions().find((y) => y.id === id);
   if (!x) return { ok: false, message: 'That suggestion is gone.' };
   try {
-    const r = skills.learn({ name: x.slug, description: x.description, instructions: x.instructions, topics: x.topics, by: 'Skillerr Orb' });
+    const r = skills.learn({ name: x.slug, description: x.description, instructions: x.instructions, topics: x.topics, by: 'your Orb' });
     const s = store.getSettings();
     store.saveSettings({ ...s, kilrSkillsSaved: { ...(s.kilrSkillsSaved || {}), [id]: x.count } });
     if (s.shareSkillsWithClaudeCode) skills.shareWithClaudeCode();
@@ -1857,7 +2026,26 @@ function flagInjection(controller, p) {
     `Skillerr removed it before ${controller.name} read the page. Payments, passwords, sign-ins and deletions still wait for your OK.` });
 }
 
-async function execute(controller, name, args) {
+// Every AI tool call runs inside its session (see ai-activity.js): tabs it opens are that session's, and the pages it
+// opens or tries to are listed in the live view's Audit. Calls a tool makes itself (deep_research) stay in the same one.
+function execute(controller, name, args) {
+  const outer = aiCall.getStore();
+  const session = outer?.client === controller.name ? outer.session : activity.touch(controller.name);
+  return aiCall.run({ client: controller.name, session }, () => executeInSession(controller, name, args, session));
+}
+
+// Page tools and what their success means for the Audit list.
+const AUDIT_STATE = { navigate: 'opened', new_tab: 'opened', web_search: 'opened', go_back: 'opened', go_forward: 'opened', fetch_page: 'read', read_page: 'read' };
+const requestedUrls = (name, args) => {
+  const safe = (u) => { try { return aiUrl(u); } catch { return null; } };
+  if (name === 'open_tabs') return (args.urls || []).slice(0, 10).map(safe).filter(Boolean);
+  if (['navigate', 'new_tab', 'fetch_page'].includes(name) && args.url) return [safe(args.url)].filter(Boolean);
+  if (name === 'web_search' && args.query) return [safe(String(args.query))].filter(Boolean);
+  return [];
+};
+const tabTitle = (t) => (t?.sleeping ? t.sleeping.title : t?.view && !t.view.webContents.isDestroyed() ? t.view.webContents.getTitle() : '');
+
+async function executeInSession(controller, name, args, session) {
   if (!TOOLS.some((t) => t.name === name)) throw new Error(`Unknown tool: ${name}`);
   if (blocked(controller)) throw new Error(`The user has turned off ${controller.name} in Skillerr, so it can't use the browser. Ask them to turn it back on in Skillerr → Connected AI apps.`);
   if (status.paused) throw new Error('The user has paused AI control of the browser. Wait for them to resume.');
@@ -1869,16 +2057,36 @@ async function execute(controller, name, args) {
   }
 
   const id = ++seq;
+  if (args.tab_id != null && !getTab(Number(args.tab_id)) && tuckedAiTabs.has(Number(args.tab_id))) {
+    const back = bringBackTucked(Number(args.tab_id));
+    if (back) await waitForLoadOf(back);
+  }
+  if (name === 'read_tabs' && Array.isArray(args.tab_ids)) {
+    for (const n of args.tab_ids.map(Number)) if (!getTab(n) && tuckedAiTabs.has(n)) { const back = bringBackTucked(n); if (back) await waitForLoadOf(back); }
+  }
   // fetch_page opens its own tab (grouped with this AI's research) unless told which tab to use.
   if (name === 'fetch_page' && args.tab_id == null) args = { ...args, tab_id: newTab(undefined, { background: !activeTab()?.isStart }).id };
+  // So does web_search, rather than taking over a page the user has open (a blank tab or this AI's own is fine).
+  const mine = (t) => t && t.aiBy === controller.name && t.aiSession === session;
+  // read_tabs with no ids reads your tabs and this AI's own, never the tabs another AI app is researching in.
+  if (name === 'read_tabs' && !args.tab_ids?.length) {
+    args = { ...args, tab_ids: tabs.filter((t) => !t.isStart && (!t.aiBy || t.aiBy === controller.name)).map((t) => t.id) };
+  }
+  if (name === 'web_search' && args.tab_id == null && activeTab() && !activeTab().isStart && !mine(activeTab())) {
+    args = { ...args, tab_id: newTab(undefined, { background: true }).id };
+  }
   const tab = targetTab(args);
+  // A tab the AI loads pages in is its session's (the live view shows it); tabs it only looks at stay the user's.
+  if (tab && AUDIT_STATE[name] && !['read_page', 'new_tab'].includes(name)) Object.assign(tab, { aiBy: controller.name, aiSession: session });
+  const audit = (url, state, extra = {}) => activity.record(session, { url, tool: name, state, ...extra });
   if (tab?.sleeping || tab?.waking) await browser.awake(tab); // an AI touching a sleeping tab wakes it first
   const info = await inspectTarget(browser, name, args, id);
-  const entry = { id, ts: Date.now(), controller: controller.name, via: controller.via, tool: name, args, target: info?.label || '', tabId: tab?.id, state: 'running' };
+  const entry = { id, ts: Date.now(), controller: controller.name, via: controller.via, session, tool: name, args, target: info?.label || '', tabId: tab?.id, state: 'running' };
   if (name === 'record_start' || name === 'record_stop') entry.tabId = null; // not a page action, nothing to highlight
 
   if (['click', 'type', 'press_key'].includes(name) && (CHECK_FRAME.test(info?.frameUrl || '') || CHECK_LABEL.test(info?.label || ''))) {
     await humanCheck(controller, tab);
+    audit(tabUrl(tab), 'blocked', { title: tabTitle(tab), reason: 'Robot check: waiting for you', tabId: tab?.id });
     throw new Error('That is a robot check. Only the user may complete it: Skillerr has asked them to. Carry on with your other tabs meanwhile, then come back to this one and take a new snapshot.');
   }
 
@@ -1896,6 +2104,7 @@ async function execute(controller, name, args) {
     const ok = await requestApproval(entry, reason);
     if (!ok) {
       ui('log', { ...entry, state: 'error', summary: ok === null ? 'No one approved in time' : 'You declined this action' });
+      for (const u of requestedUrls(name, args)) audit(u, 'declined', { reason: ok === null ? 'No one approved in time' : 'You declined it' });
       throw new Error(ok === null
         ? 'This action needs the user\'s approval in Skillerr and nobody approved it in time. Ask the user to watch Skillerr and approve, then retry.'
         : 'The user declined this action. Do not retry it.');
@@ -1924,7 +2133,10 @@ async function execute(controller, name, args) {
     // Group what this AI opened (and a fresh tab it started working in) under its current research task.
     const opened = tabs.filter((t) => !before.tabIds.includes(t.id)).map((t) => t.id);
     if (opened.length) assignGroup(controller, opened);
-    if ((name === 'navigate' && tab && before.wasStart) || name === 'fetch_page') assignGroup(controller, [tab.id]);
+    if ((name === 'navigate' && tab && before.wasStart) || name === 'fetch_page' || (name === 'web_search' && tab && (before.wasStart || mine(tab)))) assignGroup(controller, [tab.id]);
+    try {
+      auditResult(name, args, tab, opened, before, audit);
+    } catch {} // nor may the Audit list
     try {
       researchNote(controller, name, args, getTab(opened[0]) || tab);
     } catch {} // research trails must never break a tool call
@@ -1934,10 +2146,30 @@ async function execute(controller, name, args) {
     return result;
   } catch (err) {
     ui('log', { ...entry, state: 'error', summary: err.message });
+    for (const u of requestedUrls(name, args)) audit(u, 'failed', { reason: err.message, tabId: tab?.id });
     throw err;
   } finally {
     touchTab(tab);
     markActive(controller);
+  }
+}
+
+// What a successful call opened or read, for the Audit list. A page that didn't load counts as a failed attempt.
+function auditResult(name, args, tab, opened, before, audit) {
+  const note = (t, state) => (t.loadFailed ? audit(tabUrl(t), 'failed', { reason: t.loadFailed.reason, tabId: t.id }) : audit(tabUrl(t), state, { title: tabTitle(t), tabId: t.id }));
+  if (name === 'open_tabs' || name === 'new_tab') {
+    for (const t of opened.map(getTab).filter(Boolean)) note(t, 'opened');
+  } else if (name === 'read_tabs') {
+    const ids = args.tab_ids?.length ? args.tab_ids.map(Number) : tabs.filter((t) => !t.isStart).map((t) => t.id);
+    for (const t of ids.map(getTab).filter(Boolean)) note(t, 'read');
+  } else if (AUDIT_STATE[name] && tab) {
+    const url = tabUrl(tab);
+    if (!url || url === 'about:blank' || /^chrome-error:/.test(url) || tab.loadFailed) {
+      const urls = requestedUrls(name, args);
+      for (const u of urls.length ? urls : [url]) audit(u, 'failed', { reason: tab.loadFailed?.reason || "The page didn't load", tabId: tab.id });
+    } else note(tab, AUDIT_STATE[name]);
+  } else if (name === 'click' && tab && !tab.isStart && tabUrl(tab) !== before.url) {
+    note(tab, 'opened'); // a link the AI followed
   }
 }
 
@@ -2001,7 +2233,7 @@ const BROWSER_TOOLS = {
       '',
       `Research folders (one folder per topic, with an index and the notes): ${RESEARCH_DIR}`,
       `Research memory: ${st.session} sessions, ${st.page} pages, ${st.topic} topics, stored on this computer in ${path.join(store.DIR, 'memory')}. ` +
-        'Use recall to search it. The user can browse it in Skillerr → ⋮ → Skillerr Orb.',
+        'Use recall to search it. The user can browse it in Skillerr → ⋮ → Your Orb.',
     ].join('\n') };
   },
   my_trails: async (args) => {
@@ -2078,10 +2310,11 @@ const BROWSER_TOOLS = {
     const v = String(args.view || '');
     if (v === 'trails') {
       openInternal('trails');
-    } else if (v === 'memory' || v === 'folders' || v === 'history' || v === 'bookmarks') {
-      openInternal(v === 'memory' || v === 'folders' ? 'memory' : 'data');
+    } else if (v === 'history' || v === 'bookmarks') {
+      openData(v);
+    } else if (v === 'memory' || v === 'folders') {
+      openInternal('memory');
       if (v === 'folders') setTimeout(() => ui('memory-mode', { mode: 'folders', query: args.query || '' }), 300);
-      if (v === 'bookmarks' || v === 'history') ui('data-tab', v);
       if (v === 'memory' && args.query) setTimeout(() => ui('memory-search', String(args.query)), 400);
     } else if (['settings', 'skills', 'connect'].includes(v)) {
       togglePanel(true);
@@ -2146,7 +2379,7 @@ async function deepResearch(controller, args) {
   const depth = Math.max(1, Math.min(5, Number(args.depth) || deepSettings().depth));
   const max = Math.max(3, Math.min(60, Number(args.max_pages) || 30));
   const keyOf = (u) => String(u).replace(/[#?].*$/, '').replace(/\/$/, '');
-  let frontier = (args.urls || []).slice(0, 6).map((u) => ({ url: toUrl(u), from: null, fromUrl: null }));
+  let frontier = (args.urls || []).slice(0, 6).map((u) => ({ url: aiUrl(u), from: null, fromUrl: null }));
   if (!frontier.length) {
     frontier = tabs.filter((t) => !t.isStart && !t.internal).map((t) => ({ url: t.sleeping ? t.sleeping.url : t.view.webContents.getURL(), from: null, fromUrl: null }));
     if (!frontier.length) throw new Error('Open a page first, or pass starting urls.');
@@ -2212,7 +2445,7 @@ async function dispatch(controller, { instruction, tab_ids = [], urls = [] }) {
   if (!agentReady()) {
     throw new Error("dispatch needs Skillerr's built-in AI (set it up in Skillerr's Settings). Without it: use open_tabs, act on each tab via tab_id, then read_tabs.");
   }
-  const targets = [...tab_ids.map((id) => getTab(Number(id))).filter(Boolean), ...urls.map((u) => newTab(toUrl(u), { background: true }))];
+  const targets = [...tab_ids.map((id) => getTab(Number(id))).filter(Boolean), ...urls.map((u) => newTab(aiUrl(u), { background: true }))];
   if (!targets.length) throw new Error('Give tab_ids of open tabs and/or urls to open.');
   if (targets.length > MAX_WORKERS) throw new Error(`At most ${MAX_WORKERS} tabs per dispatch.`);
   enterMosaic(targets.map((t) => t.id));
@@ -2399,7 +2632,8 @@ function wireIpc() {
   });
   ipcMain.on('sign-in-google', () => newTab('https://accounts.google.com/signin'));
   ipcMain.on('open-memory', () => openInternal('memory'));
-  ipcMain.on('open-data', () => openInternal('data'));
+  ipcMain.on('open-data', () => openData('history'));
+  ipcMain.on('data-mode', (_e, which) => { const t = tabs.find((x) => x.internal === 'data'); if (t) { t.dataTab = which; pushTabs(); } });
 
   // Trails (see the trails section above).
   const changed = (r) => (trailsChanged(), r);
@@ -2458,6 +2692,22 @@ function wireIpc() {
     pushShelf();
   });
   ipcMain.handle('trails-restore-session', () => restoreLastSession());
+  // Your AIs' shelf: opening research marks it seen; a page from it opens in a new tab (and joins that research);
+  // "Continue with <AI>" copies a line to paste into the AI app, which then finds the research with my_trails.
+  ipcMain.handle('trails-ai-seen', (_e, id) => changed(trailsDb().researchSeen(String(id))));
+  ipcMain.handle('trails-ai-open', (_e, { id, url }) => {
+    if (!/^https?:\/\//i.test(String(url || ''))) return false;
+    const t = newTab(String(url));
+    t.trailId = String(id);
+    return true;
+  });
+  ipcMain.handle('trails-ai-continue', (_e, id) => {
+    const t = trailsDb().get(String(id));
+    if (!t?.research) return null;
+    const line = `Continue the research "${t.title}" you did in Skillerr: call my_trails with the query "${t.title}" to see what you already read, then carry on.`;
+    clipboard.writeText(line);
+    return { by: t.research.by, line };
+  });
   ipcMain.handle('trails-dismiss-session', () => changed(trailsDb().markQuit(0)));
   ipcMain.handle('trails-state', (_e, { id, state }) => changed(trailsDb().setState(String(id), state)));
   ipcMain.handle('trails-rename', (_e, { id, title }) => changed(trailsDb().rename(String(id), title)));
@@ -2496,6 +2746,7 @@ function wireIpc() {
     const { session } = require('electron');
     if (what.history) {
       history.deleteSince(since);
+      if (!since) favicons.clear(); // all of history: its sites' icons go too, as in Chrome
       done.push('browsing history');
     }
     if (what.browsing) {
@@ -2504,6 +2755,7 @@ function wireIpc() {
     }
     if (what.cache) {
       await session.defaultSession.clearCache();
+      favicons.clear();
       done.push('cached images and files');
     }
     if (what.memory) {
@@ -2653,10 +2905,10 @@ function wireIpc() {
       { label: 'New Tab', accelerator: 'CmdOrCtrl+T', click: () => newTab() },
       { label: 'Fleet View', accelerator: 'CmdOrCtrl+Shift+F', type: 'checkbox', checked: !!mosaic, click: () => (mosaic ? exitMosaic() : enterMosaic(tabs.map((t) => t.id))) },
       { type: 'separator' },
-      { label: 'History', accelerator: 'CmdOrCtrl+Y', click: () => { openInternal('data'); ui('data-tab', 'history'); } },
-      { label: 'Skillerr Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: () => openInternal('memory') },
+      { label: 'History', accelerator: 'CmdOrCtrl+Y', click: () => openData('history') },
+      { label: 'Your Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: () => openInternal('memory') },
       { label: 'Trails', click: () => openInternal('trails') },
-      { label: 'Bookmarks', click: () => { openInternal('data'); ui('data-tab', 'bookmarks'); } },
+      { label: 'Bookmarks', click: () => openData('bookmarks') },
       { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: () => bookmarkActive() },
       { label: 'Skills…', click: sheet('skills') },
       { label: 'Connected AI Apps…', click: sheet('connect') },
@@ -2677,7 +2929,7 @@ function wireIpc() {
       { label: status.paused ? 'Resume AI' : 'Pause AI', accelerator: 'CmdOrCtrl+Shift+P', click: () => setPaused(!status.paused) },
       { label: 'Remember Research', type: 'checkbox', checked: s.remember !== false, click: (item) => store.saveSettings({ ...store.getSettings(), remember: item.checked }) },
       { type: 'separator' },
-      { label: 'Clear Browsing Data…', accelerator: 'CmdOrCtrl+Shift+Backspace', click: () => { openInternal('data'); ui('data-tab', 'clear'); } },
+      { label: 'Clear Browsing Data…', accelerator: 'CmdOrCtrl+Shift+Backspace', click: () => openData('clear') },
       { label: 'Recordings Folder', click: open(path.join(app.getPath('videos'), 'Skillerr')) },
       { label: 'Notes Folder', click: open(NOTES_DIR) },
       { type: 'separator' },
@@ -2949,9 +3201,9 @@ function buildMenu() {
         { label: 'Open Location…', accelerator: 'CmdOrCtrl+L', click: guard(() => ui('focus-url')) },
         { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', click: guard(() => closedTabs.length && newTab(closedTabs.pop())) },
         { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: guard(() => activeTab()?.view.webContents.print()) },
-        { label: 'History', accelerator: 'CmdOrCtrl+Y', click: guard(() => { openInternal('data'); ui('data-tab', 'history'); }) },
-        { label: 'Skillerr Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: guard(() => openInternal('memory')) },
-        { label: 'Bookmarks', click: guard(() => { openInternal('data'); ui('data-tab', 'bookmarks'); }) },
+        { label: 'History', accelerator: 'CmdOrCtrl+Y', click: guard(() => openData('history')) },
+        { label: 'Your Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: guard(() => openInternal('memory')) },
+        { label: 'Bookmarks', click: guard(() => openData('bookmarks')) },
         { label: 'Trails', accelerator: 'CmdOrCtrl+Shift+L', click: guard(() => openInternal('trails')) },
         { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: guard(() => bookmarkActive()) },
       ],
@@ -3075,6 +3327,7 @@ app.whenReady().then(async () => {
   applyTheme();
   setSearchTemplate(searchTemplateFor());
   applySearchApi();
+  serveIcons();
   wirePermissions(require('electron').session.defaultSession);
   setupPasskeys(require('electron').session.defaultSession);
   if (process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, '..', 'assets', 'icon.png'));
@@ -3125,7 +3378,7 @@ app.whenReady().then(async () => {
     tools: TOOLS,
     onPreview: async (client, op, args) => {
       await ready;
-      return op === 'action' ? previewAction(client, args) : previewFrame(client, args);
+      return op === 'action' ? previewAction(client, args) : op === 'audit' ? previewAudit(client) : previewFrame(client, args);
     },
     onHello: (client) => ready.then(() => markActive({ name: client, via: 'mcp' })),
     onCall: async (client, name, args) => {

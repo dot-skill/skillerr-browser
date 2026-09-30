@@ -30,7 +30,7 @@ const DEFAULTS = {
   sitePermissions: {}, // origin → { permission: 'allow' | 'block' }
   popupsAllowed: {}, // host → true
   sleepTabs: true, // unload tabs nobody is using, to stay light
-  kilr: true, // Skillerr's own small AI (src/kilr): trails and recall by meaning, on this computer
+  kilr: true, // the user's Orb, their own AI model (src/kilr): trails and recall by meaning, on this computer
   kilrLearn: 'suggest', // retraining on the user's own trails: 'suggest' (ask when due) | 'auto' (when the computer is idle) | 'off'
   kilrLearnEvery: 'weekly', // 'daily' | 'weekly' | 'monthly'
   kilrLearnFromYou: true, // learn from the user's own browsing

@@ -717,11 +717,12 @@
     const t = data.totals.all || 0;
     const pct = clamp(data.glow || 0, 0, 1) * 100;
     const extra = extraGlow();
-    $('hvGlow').innerHTML = `<span class="hv-glow-l">The Orb's glow</span><span class="hv-meter" title="Glow grows with everything you and your AIs look into, on a log scale. Full at about ${fmt(data.glowFull)} pages: a typical person's last three months of browsing."><i style="width:${pct.toFixed(1)}%"></i>${extra ? `<b style="width:${(extra * 100).toFixed(1)}%"></b>` : ''}</span><span class="hv-glow-n">${t >= data.glowFull ? `${fmt(t)}: past a typical three months` : `${fmt(t)} of ~${fmt(data.glowFull)}`}</span>`;
+    $('hvGlow').innerHTML = `<span class="hv-meter" title="Glow grows with everything you and your AIs look into, on a log scale. Full at about ${fmt(data.glowFull)} pages: a typical person's last three months of browsing."><i style="width:${pct.toFixed(1)}%"></i>${extra ? `<b style="width:${(extra * 100).toFixed(1)}%"></b>` : ''}</span>`;
   }
 
   function drawKilrIcon() {
     const c = $('hvKilrIcon');
+    if (!c) return; // the button is just "Orb" now: the big orb is on the page
     const g = c.getContext('2d');
     g.clearRect(0, 0, c.width, c.height);
     KilrOrb.draw(g, c.width / 2, c.height / 2, c.width * 0.36, Math.max(0.35, data.glow || 0), 1.2, { withBloom: true });
@@ -1146,7 +1147,7 @@
     if (!dragging && !panning) return;
     if (dragging && !moved) select(dragging);
     else if (panning && !moved) {
-      if (downOrb) window.kilrPanel?.toggle();
+      if (downOrb) window.orbPanel?.toggle();
       else select(null);
     }
     dragging = null;
@@ -1168,7 +1169,7 @@
       tip.innerHTML = `<b>${esc(trunc(n.label, 70))}</b><span><i style="background:hsl(${n.hue},100%,66%)"></i>${TYPE_LABEL[n.type] || 'Page'} · ${esc(whose(n))}${n.at ? ` · ${esc(n.at)}` : ''}</span>`;
     } else if (orb) {
       tip.hidden = false;
-      tip.innerHTML = `<b>Skillerr Orb</b><span>Skillerr's own small AI, on this computer. Click to see what it's doing.</span>`;
+      tip.innerHTML = `<b>Your Orb</b><span>Your own AI model, on this computer. Nothing is sent anywhere. Click to see what it's doing.</span>`;
     } else tip.hidden = true;
     if (!tip.hidden) {
       const tw = tip.offsetWidth;
@@ -1210,7 +1211,7 @@
   }));
   $('hvKilrBtn').onclick = () => {
     if (mode !== 'map') setMode('map');
-    window.kilrPanel?.toggle();
+    window.orbPanel?.toggle();
   };
 
   $('mvSearch').onsubmit = async (e) => {
@@ -1264,7 +1265,7 @@
     if ($('memView').hidden) {
       visible = false;
       tip.hidden = true;
-      window.kilrPanel?.close();
+      window.orbPanel?.close();
     }
   }).observe($('memView'), { attributes: true, attributeFilter: ['hidden'] });
   document.addEventListener('visibilitychange', () => {
@@ -1288,7 +1289,7 @@
     $('hvFilter').hidden = m !== 'map';
     $('mvFolders').hidden = m !== 'folders';
     if (m === 'folders') {
-      window.kilrPanel?.close();
+      window.orbPanel?.close();
       loadFolders();
     } else {
       // Back to the map: start clean, not stuck on an old search highlight or selection.

@@ -2,7 +2,7 @@
 //
 // A trail is one journey on the web, like "Kyoto trip" or "Standing desk": the pages opened for it, mostly in one
 // sitting. A page joins the trail of the tab it was opened in, the tab it was opened from, or a trail it's about that's
-// going on right now (shared words, or the Skillerr Orb's sense of meaning). Nothing is tucked while the user browses:
+// going on right now (shared words, or the Orb's sense of meaning). Nothing is tucked while the user browses:
 // when Skillerr quits, the tabs still open are put away in their trails, and the next launch starts with a clean tab
 // strip. Continue brings a trail's tabs back; pages the user closed are done with and never come back. Trails remember
 // what was left unfinished (a form typed into but never sent, an article read partway, a cart not checked out, a
@@ -33,6 +33,7 @@ const EVERYDAY_DAYS = 5; // a site used on this many of the last 21 days is rout
 const EPHEMERAL_DAYS = 3; // a one-off that never became a trail is dropped after this long
 const KEEP_DAYS = 90; // trails untouched this long are dropped, unless the user named them
 const DONE_KEEP_DAYS = 30;
+const AI_SHELF_DAYS = 3; // finished AI research stays on its shelf this long
 
 // Words that say nothing about what the work is.
 const GENERIC = new Set(`best top review guide official free online buy price cheap compare comparison list latest ultimate complete tips idea
@@ -237,7 +238,7 @@ class Trails {
     let best = null;
     let bestScore = 0;
     for (const t of this.trails) {
-      if (t.state !== 'active' || t.loose) continue;
+      if (t.state !== 'active' || t.loose || ctx.exclude?.has(t.id)) continue; // exclude: trails this page may not join
       // A trail is one journey: a page joins it by topic only while that journey is going on (the same sitting). An
       // older trail takes pages only from its own tabs, when the user continues it.
       const own = ctx.tabTrail === t.id || ctx.openerTrail === t.id;
@@ -245,7 +246,7 @@ class Trails {
       // An AI's research trail takes the user's pages only when they carry on from it (same tab, or opened from it).
       if (t.research && !own) continue;
       let score = similarity(words, t);
-      if (this.meaning && !sensitive) score = Math.max(score, MEANING_WEIGHT * this.meaningOf(() => this.meaning.affinity({ title, h1, query }, t)));
+      if (this.meaning && !sensitive) score = Math.max(score, MEANING_WEIGHT * this.meaningOf(() => this.meaning.affinity({ url, title, h1, query }, t)));
       if (ctx.tabTrail === t.id && at - (ctx.tabAt || 0) < CONTINUE_MS) score += typed ? 0.15 : 0.6;
       if (ctx.openerTrail === t.id) score += 0.5;
       if (!query && t.hosts?.[host] && !this.everyday(host)) score += 0.12;
@@ -402,6 +403,17 @@ class Trails {
     return t.id;
   }
 
+  // A page filed straight into a trail the caller chose (the Orb's journeys when moving over from Chrome: the journey's
+  // lead picks the trail, and the rest of the journey follows it rather than each page choosing again on its own).
+  addPage(id, { url, title = '', favicon = null, at = this.now() }) {
+    const t = this.get(id);
+    if (!t || !/^https?:/i.test(url || '') || this.ignored(url)) return false;
+    const query = searchQuery(url);
+    this.addTo(t, { url, title, favicon, host: hostOf(url), query, words: pageWords({ url, title, query }), sensitive: false, at });
+    this.saveSoon();
+    return true;
+  }
+
   // A page the AI read or opened for the research.
   researchPage(id, { url, title = '', favicon = null, at = this.now() }) {
     const t = this.get(id);
@@ -470,15 +482,67 @@ class Trails {
 
   // The shelf between reload and the address bar: trails holding tabs put away, most recently put away first, each
   // with its tabs' icons and how far through the journey the user is.
+  // The user's own journeys waiting on the shelf, left of the address bar. Research an AI did is on its own shelf
+  // (aiShelf), right of it.
   shelf(limit = 5) {
     const newest = (t) => Math.max(0, ...t.tucked.map((x) => x.at));
-    const all = this.trails.filter((t) => t.state === 'active' && t.tucked.length).sort((a, b) => newest(b) - newest(a));
+    const all = this.trails.filter((t) => t.state === 'active' && t.tucked.length && !t.research).sort((a, b) => newest(b) - newest(a));
     return {
       trails: all.slice(0, limit).map((t) => ({ id: t.id, title: t.title || 'Untitled trail', loose: !!t.loose, by: t.research?.by || null,
         progress: this.progress(t), unfinished: this.unfinished(t).length,
         tabs: t.tucked.slice(0, 24).map((x) => ({ url: x.url, title: x.title || x.url, favicon: x.favicon || null })), count: t.tucked.length })),
       more: Math.max(0, all.length - limit),
     };
+  }
+
+  // Research an AI did and finished, right of the address bar: newest first. An AI's research counts as complete, since
+  // it read what it opened, unless the facts say otherwise (research.open: pages it couldn't open, a robot check or an
+  // approval still waiting, work the user paused or took over, pages opened but never read). Complete research leaves
+  // the shelf AI_SHELF_DAYS after it was put away (it stays on the Trails page); incomplete research stays until dealt
+  // with. Research the user hasn't opened yet is "new".
+  aiShelf(limit = 5) {
+    const at = (t) => t.research.doneAt || 0;
+    const all = this.trails.filter((t) => t.research && t.state === 'active' && t.research.doneAt &&
+      (t.research.open?.length || this.now() - t.research.doneAt < AI_SHELF_DAYS * DAY)).sort((a, b) => at(b) - at(a));
+    return {
+      trails: all.slice(0, limit).map((t) => ({
+        id: t.id, title: t.title || 'Research', by: t.research.by || null, summary: t.research.summary || '',
+        doneAt: t.research.doneAt, seen: (t.research.seenAt || 0) >= t.research.doneAt, open: t.research.open || [],
+        searches: t.searches.slice(0, 6),
+        pages: [...t.pages].filter((p) => !p.closed || t.tucked.some((x) => x.url === p.url)).sort((a, b) => b.lastAt - a.lastAt).slice(0, 30)
+          .map((p) => ({ url: p.url, title: p.title || p.url, favicon: p.favicon || null })),
+        count: t.pages.length, waiting: t.tucked.length,
+      })),
+      more: Math.max(0, all.length - limit),
+    };
+  }
+
+  // The AI finished this research: its tabs are put away (tuck), and the facts that make it incomplete, if any.
+  researchDone(id, { open = [], at = this.now() } = {}) {
+    const t = this.get(id);
+    if (!t?.research) return false;
+    t.research.doneAt = at;
+    t.research.open = open.slice(0, 20).map((x) => ({ url: String(x.url || ''), title: String(x.title || '').slice(0, 120), reason: String(x.reason || '').slice(0, 120) }));
+    this.saveSoon();
+    return true;
+  }
+
+  // The user opened this research on the shelf: it's no longer new.
+  researchSeen(id, at = this.now()) {
+    const t = this.get(id);
+    if (!t?.research) return false;
+    t.research.seenAt = at;
+    this.saveSoon();
+    return true;
+  }
+
+  // The AI is working on this research again: it's no longer done.
+  researchResumed(id) {
+    const t = this.get(id);
+    if (!t?.research?.doneAt) return false;
+    t.research.doneAt = 0;
+    this.saveSoon();
+    return true;
   }
 
   // The tabs that were open when Skillerr last quit, by trail.

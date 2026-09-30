@@ -22,3 +22,16 @@ test('toUrl: URLs, hosts, localhost and searches', () => {
   assert.strictEqual(toUrl('best ramen'), 'https://search.example/?q=best%20ramen');
   assert.strictEqual(toUrl('about:blank'), 'about:blank');
 });
+
+test("an AI's searches land on plain web results, without the engine's AI overview", () => {
+  const { webResultsUrl, aiUrl } = require('../src/tools');
+  assert.strictEqual(webResultsUrl('https://www.google.co.in/search?q=a%20b'), 'https://www.google.co.in/search?q=a+b&udm=14');
+  assert.strictEqual(webResultsUrl('https://duckduckgo.com/?q=x'), 'https://noai.duckduckgo.com/?q=x');
+  assert.strictEqual(webResultsUrl('https://www.google.com/search?q=x&tbm=isch'), 'https://www.google.com/search?q=x&tbm=isch', 'image search is left alone');
+  assert.strictEqual(webResultsUrl('https://www.google.com/search?q=x&udm=2'), 'https://www.google.com/search?q=x&udm=2');
+  assert.strictEqual(webResultsUrl('https://example.com/search?q=x'), 'https://example.com/search?q=x');
+  assert.strictEqual(webResultsUrl('not a url'), 'not a url');
+  setSearchTemplate('https://www.google.com/search?q=%s');
+  assert.strictEqual(aiUrl('largest dinosaur'), 'https://www.google.com/search?q=largest+dinosaur&udm=14');
+  assert.strictEqual(aiUrl('https://en.wikipedia.org/wiki/Dinosaur'), 'https://en.wikipedia.org/wiki/Dinosaur');
+});

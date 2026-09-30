@@ -7,11 +7,12 @@
 <style>/*CSS*/</style>
 </head>
 <body>
-<main id="root" class="state-connecting" aria-live="polite">
+<main id="root" class="state-connecting" aria-live="polite" hidden>
   <header class="bar">
     <span class="mark" aria-hidden="true"></span>
-    <div class="who"><b id="who">Skillerr</b><span id="state" class="pill">Connecting…</span></div>
+    <button type="button" id="open" class="who" title="Open Skillerr"><b id="who">Skillerr</b><span id="state" class="pill">Connecting…</span><span id="deep" class="pill deep" hidden></span></button>
     <div class="actions">
+      <button type="button" id="audit" title="Every page your AI opened or tried to open in this research" aria-expanded="false" hidden>Audit</button>
       <button type="button" id="pause" hidden></button>
       <button type="button" id="takeover" class="primary" hidden>Take over</button>
       <button type="button" id="pip" class="icon" title="Pop out" aria-label="Pop out" hidden></button>
@@ -20,6 +21,10 @@
   </header>
   <section id="stage" class="stage"></section>
   <ol id="steps" class="steps"></ol>
+  <section id="auditPanel" class="audit" hidden>
+    <p class="audit-head">Pages your AI opened or tried to open in this research. Click one to open it in Skillerr.</p>
+    <ul id="auditList"></ul>
+  </section>
   <p id="note" class="note" hidden></p>
 </main>
 <script>/*SHARED*/</script>

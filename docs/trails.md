@@ -88,12 +88,29 @@ import bring the tabs open in Chrome now. They're
 read from Chrome's session file on this computer (`<profile>/Sessions/Session_*`, the "SNSS" format; `parseSession` in
 `src/chrome-import.js`), at each tab's current page, closed tabs left out, with titles from Chrome's history.
 
-All the tabs are grouped at once (`clusterItems`: average-linkage clustering on the Orb's meaning of their titles, without
-site names, plus shared keywords; threshold 0.2 and keyword bonus 0.1, chosen on the tuning threads of
-`scripts/kilr/eval-trails.js`: precision 0.93, F1 0.62; held-out threads: precision 0.80, F1 0.73). Each group becomes a
-trail, joining an existing one when it's about the same thing. They all wait on the shelf, like the tabs of a last
-session, so the tab strip stays clean. Nothing is closed in Chrome. (Chrome's history isn't used to make trails: old
-visits aren't journeys.)
+The Orb sorts them into journeys on this computer, with no other AI (`groupTabs` in `src/kilr/journeys.js`). Tabs kept
+open for weeks often have titles that say little ("Log In", "Render Dashboard"), so it goes by when each tab was first
+opened as much as by what it's called:
+
+1. **Everyday pages aside.** A mail inbox, or a plain AI chat page, on a site used on 5+ of the last 21 days (from
+   Chrome's history), isn't a journey, unless it was opened right next to other work. These wait in "Other tabs".
+2. **Sittings.** Tabs opened in one go, each within 30 minutes of the one before (first visit, from Chrome's history),
+   stay together.
+3. **Journeys.** Sittings on different days join when they're about the same thing on the whole: average linkage over
+   their tabs of the Orb's meaning, shared words (up to 2, 0.1 each) and the same small site (+0.25, when that site has
+   at most two tabs, so Stripe's help joins Stripe's dashboard but GitHub doesn't join every repo); threshold 0.25.
+   Sittings more than a week apart are held apart (−0.2).
+
+The Orb reads a title that says nothing as its site ("Log In" on neon.tech is "neon"), and a very short title with its
+site and path words ("Releases" on github.com/…/skillerr-releases). Each journey is led by the tab most central to it
+among those whose title says something, so the trail is named after it ("How do I open a Stripe account?"
+rather than "Lemon Squeezy"). Each becomes a trail, joining an existing one when it's about the same thing. They all
+wait on the shelf, like the tabs of a last session, so the tab strip stays clean. Nothing is closed in Chrome, and
+Chrome's files are only ever read from private copies.
+
+Chosen on a real set of long-kept tabs, against four other rules (titles only, as before; topics only; sittings only;
+one trail per project). Titles alone made one trail of unrelated sign-in pages and split a single task across several;
+sittings joined by topic found the real journeys and left one-off tabs on their own. Tests: `test/journeys.test.js`.
 
 ## Research an AI did
 
@@ -106,6 +123,13 @@ own, marked **Research by Claude Desktop**, kept apart from the user's own trail
 - **Continue it later** from the start page like any trail; pages the user opens from it join it. The user's other
   pages never join it by topic. The Orb learns from it only while "from your AIs' research" is on (Trails settings).
 - When Skillerr quits, its tabs wait in its research trail, never in the user's.
+- **Put away when it's done.** The AI app never says it has finished, so Skillerr infers it: no tool call from that app
+  for 90 seconds and none of its tabs loading or being worked in. Its tabs are then tucked into the research and closed,
+  except a tab the user is looking at (Skillerr in front) or touched in the last minute, which goes once they've moved
+  on. If the AI uses one of those tabs again, it comes back with the same number and the research carries on.
+- **Complete unless the facts say otherwise.** The AI read what it opened, so its research counts as complete. The Orb
+  marks it unfinished only from facts (the live view's Audit list): pages it couldn't open, a robot check or approval it
+  met, pages opened but never read, the user pausing it.
 
 ## Find anything by meaning
 
@@ -113,9 +137,20 @@ Typing in the address bar (or the start page's box) shows open tabs, waiting tab
 (where words start) and by the Orb's sense of meaning, above web search. ↑/↓ choose, ↵ opens: it switches to the tab, or
 brings a waiting or visited page back, scrolled where the user was. Typing an address skips it. See docs/orb.md.
 
-## The trail shelf
+## The trail shelves
 
-Between reload and the address bar, each journey with tabs waiting is a chip: its tabs' site icons stacked, how many,
+The address bar sits in the middle of the toolbar. **Left of it: your trails. Right of it: your AIs' research.** Warm on
+your side, cool on theirs, as on the Your Orb page.
+
+**Your AIs' research** (right): finished research, newest first, each chip with its AI app's icon and the research's
+name. An aurora dot means new (not opened yet); an amber dot means unfinished. Click one for its sources, not its tabs:
+what the AI concluded, what's unfinished, the pages it read (click one to open it), **Open all** (its tabs come back),
+**Continue with Claude** (copies a line to paste into the AI app, which then finds the research with `my_trails`) and
+**Done**. Finished research leaves the shelf after 3 days (it stays on the Trails page and the Your Orb map); unfinished
+research stays until it's dealt with. The start page's Orb line is about where *you* were, and describes an AI's research
+as the AI's.
+
+**Your trails** (left): each journey with tabs waiting is a chip: its tabs' site icons stacked, how many,
 and a thin line for how far through it the user is (the 5 most recent, then **+N**). Click one for its tabs, **Continue**
 (they all come back up), **Done**, or a single tab to open just that one. The tab strip above stays only for the tabs
 being worked in.

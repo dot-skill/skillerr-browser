@@ -1,5 +1,5 @@
 /* global skillerr, esc, trunc, icon */
-// History & Bookmarks page (⌘Y): browsing history by day, bookmarks, and clearing browsing data by time range.
+// History (⌘Y, with Clear browsing data on it) and Bookmarks: one internal page, two modes, each its own menu item.
 (() => {
   const $ = (id) => document.getElementById(id);
   const selected = new Set();
@@ -19,9 +19,17 @@
     }
   };
 
+  // One page, three modes, each reached from its own menu item: History (with its Clear button), Bookmarks, and Clear
+  // browsing data (with a way back to History).
+  // Clearing browsing data lives on History, as in any browser: a panel at the top of it ('clear' opens History with it).
+  const TITLES = { history: 'History', bookmarks: 'Bookmarks' };
   function showTab(name) {
+    const clear = name === 'clear';
+    if (clear) name = 'history';
     tab = name;
-    document.querySelectorAll('#dvTabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+    $('dvTitle').textContent = TITLES[name] || 'History';
+    $('dvClearBox').hidden = !clear;
+    skillerr.send('data-mode', name);
     document.querySelectorAll('#dataView .dv-pane').forEach((p) => p.classList.toggle('on', p.dataset.pane === name));
     refresh();
   }
@@ -45,7 +53,7 @@
         list.appendChild(Object.assign(document.createElement('li'), { className: 'dv-day', textContent: label }));
       }
       const li = document.createElement('li');
-      const fav = it.favicon ? `<img src="${esc(it.favicon)}" width="16" height="16">` : `<span class="bm-l">${esc(letter(it.url))}</span>`;
+      const fav = it.favicon ? `<img src="${esc(iconSrc(it.favicon))}" width="16" height="16">` : `<span class="bm-l">${esc(letter(it.url))}</span>`;
       li.innerHTML = `<input type="checkbox" ${selected.has(it.url) ? 'checked' : ''} /><span class="dv-fav">${fav}</span>
         <span class="dv-t"><b>${esc(trunc(it.title || it.url, 90))}</b><span class="muted">${esc(host(it.url))}${it.by ? ` · <span class="dv-by">opened by ${esc(it.by)}</span>` : ''}</span></span>
         <span class="dv-when muted">${new Date(it.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span><button type="button" class="dv-x" title="Remove from history">${icon('x', 13)}</button>`;
@@ -101,7 +109,7 @@
     clearTimeout(t);
     t = setTimeout(refresh, 150);
   };
-  document.querySelectorAll('#dvTabs button').forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
+  $('dvClearClose').onclick = () => ($('dvClearBox').hidden = true);
   $('dvHistQ').oninput = debounced;
   $('dvBmQ').oninput = debounced;
   $('dvDelSel').onclick = async () => {
@@ -110,7 +118,7 @@
     $('dvDelSel').disabled = true;
     renderHistory();
   };
-  $('dvToClear').onclick = () => showTab('clear');
+  $('dvToClear').onclick = () => ($('dvClearBox').hidden = !$('dvClearBox').hidden);
   $('dvBmAdd').onclick = async () => {
     const r = await skillerr.invoke('bookmark-add');
     $('dvBmAdd').textContent = r.ok ? 'Bookmarked ✓' : r.message;
@@ -140,6 +148,7 @@
     what.since = range && !what.everything ? Date.now() - range : 0;
     $('dvResetMsg').textContent = await skillerr.invoke('data-reset', what);
     document.querySelectorAll('.dv-reset input').forEach((i) => (i.checked = false));
+    refresh(); // the history below reflects what was cleared
   };
   skillerr.on('data-tab', (name) => showTab(name));
 

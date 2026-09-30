@@ -1,5 +1,5 @@
 /* global skillerr, icon, esc, trunc, learnResultText */
-// The Orb's own panel, over the Skillerr Orb page: what the Orb is, what it's doing right now, and what it costs this
+// The Orb's own panel, over the Your Orb page: what the Orb is, what it's doing right now, and what it costs this
 // computer (disk, memory, speed), how it learns, and the skills it suggests from tasks done the same way again and again.
 // Opens from the orb or the Kilr button; while open it asks for kilr-status every two seconds.
 (() => {
@@ -31,11 +31,10 @@
     panel.innerHTML = `
       <button type="button" class="mv-close kp-close" title="Close">${icon('x', 14)}</button>
       <header class="kp-head">
-        <canvas class="kp-orb" id="kpOrb" width="192" height="192"></canvas>
         <div>
-          <div class="kp-eyebrow">Built into Skillerr</div>
-          <h3>Skillerr Orb</h3>
-          <p>Skillerr's own small AI. It turns page titles and searches into meaning, files them into trails and finds things by meaning. It doesn't write text, so it can't make things up.</p>
+          <div class="kp-eyebrow">Yours, on this computer</div>
+          <h3>Your Orb</h3>
+          <p>Your own AI model. It runs on this computer, learns from your trails, and sends nothing to Skillerr or anyone else. It turns page titles and searches into meaning, files them into trails and finds things by meaning. It doesn't write text, so it can't make things up.</p>
         </div>
       </header>
       <div class="kp-now" id="kpNow"></div>
@@ -244,5 +243,5 @@
     refresh();
   });
 
-  window.kilrPanel = { open: show, close, toggle: () => (open ? close() : show()), isOpen: () => open };
+  window.orbPanel = { open: show, close, toggle: () => (open ? close() : show()), isOpen: () => open };
 })();

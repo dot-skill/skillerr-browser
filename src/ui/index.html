@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * data:; style-src 'self' 'unsafe-inline'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src * data: skillerr-icon:; style-src 'self' 'unsafe-inline'" />
   <title>Skillerr</title>
   <link rel="stylesheet" href="ui.css" />
 </head>
@@ -13,12 +13,14 @@
       <button class="ibtn newtab" id="newtab" title="New tab  ⌘T"></button>
     </div>
     <div class="toolbar">
+      <div class="tb-side tb-left">
       <div class="navbtns">
         <button class="ibtn" id="back" title="Back  ⌘["></button>
         <button class="ibtn" id="forward" title="Forward  ⌘]"></button>
         <button class="ibtn" id="reload" title="Reload  ⌘R"></button>
       </div>
-      <div class="shelf" id="shelf" hidden></div>
+      <div class="shelf shelf-you" id="shelf" hidden aria-label="Your trails"></div>
+      </div>
       <form class="omni" id="omni" autocomplete="off">
         <button type="button" class="intent" id="intent" title="Tab to switch"></button>
         <input id="url" spellcheck="false" placeholder="Search, enter an address, or tell Skillerr what to do" />
@@ -26,6 +28,9 @@
         <span class="omni-hint" id="omniHint"></span>
         <button type="button" class="zoom-badge" id="zoomBadge" hidden title="Reset zoom  ⌘0"></button>
       </form>
+      <div class="tb-side tb-right">
+      <div class="shelf shelf-ai" id="shelfAi" hidden aria-label="Your AIs' research"></div>
+      <div class="tb-fill"></div>
       <div class="findbar" id="findBar" hidden>
         <input id="findInput" spellcheck="false" placeholder="Find in page" />
         <span class="find-count" id="findCount"></span>
@@ -40,6 +45,7 @@
       <button class="human-pill" id="humanPill" hidden title="AI is paused. You're browsing on your own; nothing is sent to an AI or added to research memory. Click to let AI act again  ⇧⌘P"><span class="hp-dot"></span>Human mode <span class="hp-resume">Resume AI</span></button>
       <button class="pilot-btn" id="togglePanel" title="Pilot panel  ⌘J"><span class="orb xs" id="miniOrb"></span>Pilot</button>
       <button class="ibtn more-btn" id="moreMenu" title="More"></button>
+      </div>
     </div>
   </header>
 
@@ -83,14 +89,30 @@
     </section>
     <section class="dataview" id="dataView" hidden>
       <div class="dv-top">
-        <h2>History &amp; Bookmarks</h2>
-        <div class="seg small-seg dv-tabs" id="dvTabs"><button type="button" data-tab="history" class="on">History</button><button type="button" data-tab="bookmarks">Bookmarks</button><button type="button" data-tab="clear">Clear browsing data</button></div>
+        <h2 id="dvTitle">History</h2>
       </div>
       <div class="dv-pane on" data-pane="history">
         <div class="dv-bar">
           <input id="dvHistQ" spellcheck="false" placeholder="Search history" />
           <button type="button" class="btn ghost sm" id="dvDelSel" disabled>Delete selected</button>
           <button type="button" class="btn ghost sm" id="dvToClear">Clear browsing data…</button>
+        </div>
+        <div class="dv-clearbox" id="dvClearBox" hidden>
+          <div class="dv-clearhead"><b>Clear browsing data</b><button type="button" class="ibtn" id="dvClearClose" title="Close" aria-label="Close">✕</button></div>
+          <div class="dv-range-row"><b>Time range</b>
+            <select id="dvSince"><option value="3600000">Last hour</option><option value="86400000">Last 24 hours</option><option value="604800000">Last 7 days</option><option value="2419200000">Last 4 weeks</option><option value="0" selected>All time</option></select>
+          </div>
+          <div class="dv-reset">
+            <label class="check"><input type="checkbox" data-r="history" checked /> <span><b>Browsing history</b><br /><span class="muted small">The pages you and your AIs opened, as listed under History.</span></span></label>
+            <label class="check"><input type="checkbox" data-r="browsing" /> <span><b>Cookies and site data</b><br /><span class="muted small">Signs you out of most websites. All time, whatever the range.</span></span></label>
+            <label class="check"><input type="checkbox" data-r="cache" checked /> <span><b>Cached images and files</b><br /><span class="muted small">Some sites load a little slower next time. All time, whatever the range.</span></span></label>
+            <label class="check"><input type="checkbox" data-r="memory" /> <span><b>Research memory</b><br /><span class="muted small">What your AIs looked into and learned: sessions, pages, topics and links (the map on the Your Orb page). Notes and skill files stay.</span></span></label>
+            <label class="check"><input type="checkbox" data-r="trails" /> <span><b>Trails</b><br /><span class="muted small">Your trails and the tabs waiting in them.</span></span></label>
+            <label class="check"><input type="checkbox" data-r="bookmarks" /> <span><b>Bookmarks</b></span></label>
+            <label class="check"><input type="checkbox" data-r="settings" /> <span><b>Settings</b><br /><span class="muted small">AI choice, appearance, switches.</span></span></label>
+            <label class="check"><input type="checkbox" data-r="everything" /> <span><b>Everything</b><br /><span class="muted small">All of the above, and sign out of your Skillerr account.</span></span></label>
+          </div>
+          <div class="imp-row"><button type="button" class="btn sm danger" id="dvReset">Clear data</button><span class="small" id="dvResetMsg"></span></div>
         </div>
         <ul class="dv-list" id="dvHist"></ul>
       </div>
@@ -100,22 +122,6 @@
           <button type="button" class="btn ghost sm" id="dvBmAdd">Bookmark current page  ⌘D</button>
         </div>
         <ul class="dv-list" id="dvBm"></ul>
-      </div>
-      <div class="dv-pane" data-pane="clear">
-        <div class="dv-range-row"><b>Time range</b>
-          <select id="dvSince"><option value="3600000">Last hour</option><option value="86400000">Last 24 hours</option><option value="604800000">Last 7 days</option><option value="2419200000">Last 4 weeks</option><option value="0" selected>All time</option></select>
-        </div>
-        <div class="dv-reset">
-          <label class="check"><input type="checkbox" data-r="history" checked /> <span><b>Browsing history</b><br /><span class="muted small">The pages you and your AIs opened, as listed under History.</span></span></label>
-          <label class="check"><input type="checkbox" data-r="browsing" /> <span><b>Cookies and site data</b><br /><span class="muted small">Signs you out of most websites. All time, whatever the range.</span></span></label>
-          <label class="check"><input type="checkbox" data-r="cache" checked /> <span><b>Cached images and files</b><br /><span class="muted small">Some sites load a little slower next time. All time, whatever the range.</span></span></label>
-          <label class="check"><input type="checkbox" data-r="memory" /> <span><b>Research memory</b><br /><span class="muted small">What your AIs looked into and learned: sessions, pages, topics and links (the Skillerr Orb map). Notes and skill files stay.</span></span></label>
-          <label class="check"><input type="checkbox" data-r="trails" /> <span><b>Trails</b><br /><span class="muted small">Your trails and the tabs waiting in them.</span></span></label>
-          <label class="check"><input type="checkbox" data-r="bookmarks" /> <span><b>Bookmarks</b></span></label>
-          <label class="check"><input type="checkbox" data-r="settings" /> <span><b>Settings</b><br /><span class="muted small">AI choice, appearance, switches.</span></span></label>
-          <label class="check"><input type="checkbox" data-r="everything" /> <span><b>Everything</b><br /><span class="muted small">All of the above, and sign out of your Skillerr account.</span></span></label>
-        </div>
-        <div class="imp-row"><button type="button" class="btn sm danger" id="dvReset">Clear data</button><span class="small" id="dvResetMsg"></span></div>
       </div>
     </section>
 
@@ -138,7 +144,7 @@
       <div class="dv-pane" data-tvpane="settings">
         <div class="tv-settings">
           <label class="switch-row"><div><b>Learn my trails</b><span>Files the pages you visit into threads of work, and notices what you leave unfinished. Pages your AI apps open go into trails of their own (below). Nothing leaves this computer.</span></div><input type="checkbox" id="tvLearn" /><span class="switch"></span></label>
-          <label class="switch-row"><div><b>Skillerr Orb</b><span>Skillerr's own small AI, built in. It matches pages to trails and finds your and your AIs' research by meaning, and answers “where was I?” from your own pages. Runs on this computer in microseconds, with nothing to download.</span></div><input type="checkbox" id="tvKilr" /><span class="switch"></span></label>
+          <label class="switch-row"><div><b>Your Orb</b><span>Your own AI model, running on this computer. It matches pages to trails, finds your and your AIs' research by meaning, and answers “where was I?” from your own pages. Nothing it sees or learns is sent to Skillerr or anyone else.</span></div><input type="checkbox" id="tvKilr" /><span class="switch"></span></label>
           <label class="switch-row"><div><b>Keep your AIs' research as trails</b><span>When Claude Desktop, Cursor or another AI app researches in Skillerr, its pages become a trail of their own ("Research by Claude Desktop"), named after what it was looking into, that you can continue later.</span></div><input type="checkbox" id="tvResearch" /><span class="switch"></span></label>
           <label class="switch-row"><div><b>Suggest skills from what you keep doing</b><span>When you (or your AIs) do the same kind of task again and again, like choosing what to buy or fixing errors, the Orb writes down how you do it as a skill your AI can follow: your searches, the sites you trust, in your order. Worked out on this computer from your trails; nothing is sent anywhere.</span></div><input type="checkbox" id="tvSkills" /><span class="switch"></span></label>
           <label class="switch-row"><div><b>Start with a clean tab strip</b><span>When you quit, the tabs still open wait in their trails, next to the address bar. Nothing is ever tucked while you're working. Turn this off to have them all reopen at launch instead.</span></div><input type="checkbox" id="tvFresh" /><span class="switch"></span></label>
@@ -169,13 +175,13 @@
     <section class="memview hv-map" id="memView" hidden>
       <div class="mv-top">
         <div class="hv-title">
-          <h2>Skillerr Orb</h2>
+          <h2>Your Orb</h2>
           <div class="muted small" id="mvStats"></div>
         </div>
         <div class="seg small-seg mv-mode" id="mvMode"><button type="button" data-m="map" class="on">Map</button><button type="button" data-m="folders">Folders</button></div>
         <div class="seg small-seg hv-filter" id="hvFilter"><button type="button" data-f="all" class="on">All</button><button type="button" data-f="you">Yours</button><button type="button" data-f="ai">Your AIs'</button></div>
         <form class="mv-search" id="mvSearch" autocomplete="off"><input id="mvQuery" spellcheck="false" placeholder="Find by meaning, e.g. “Tokyo hotels”" /></form>
-        <button type="button" class="hv-kilr-btn" id="hvKilrBtn" title="What the Orb is doing on this computer"><canvas id="hvKilrIcon" width="44" height="44"></canvas><span>Orb</span></button>
+        <button type="button" class="hv-kilr-btn" id="hvKilrBtn" title="What the Orb is doing on this computer"><span>Orb</span></button>
       </div>
       <div class="mv-body">
         <canvas id="mvCanvas"></canvas>
@@ -188,7 +194,7 @@
           <p class="muted">Every page you visit, and every page your AI apps read for you, comes out of it as a thread of light. The more you and your AIs look into, the brighter it burns.</p>
           <button type="button" class="btn ghost sm" data-sheet="settings">Bring in your Chrome history</button>
         </div>
-        <aside class="kp" id="kilrPanel" hidden aria-label="Skillerr Orb"></aside>
+        <aside class="kp" id="kilrPanel" hidden aria-label="Your Orb"></aside>
       </div>
       <div class="mv-folders" id="mvFolders" hidden>
         <nav class="fd-tree" id="fdTree"></nav>
@@ -261,12 +267,22 @@
       <div class="welcome" id="welcome">
         <h2>Your browser has a pilot.</h2>
         <ol class="how">
-          <li><span class="n">1</span><div><b>Say what you want.</b> Type below or in the address bar — “find”, “compare”, “summarize”, “fill in”.</div></li>
+          <li><span class="n">1</span><div id="welcomeStep1"><b>Say what you want.</b> Type below or in the address bar — “find”, “compare”, “summarize”, “fill in”.</div></li>
           <li><span class="n">2</span><div><b>Watch it work.</b> A glow shows when AI is acting. Every step appears here in plain words.</div></li>
           <li><span class="n">3</span><div><b>Take over anytime.</b> Pause stops it instantly. Payments and passwords always wait for your OK.</div></li>
         </ol>
-        <p class="also">Already use Claude Desktop, Claude Code or Cursor? <a href="#" data-sheet="connect">Connect it</a> and it can drive Skillerr too — free.</p>
+        <p class="also" id="welcomeAlso">Already use Claude Desktop, Claude Code or Cursor? <a href="#" data-sheet="connect">Connect it</a> and it can drive Skillerr too — free.</p>
       </div>
+    </div>
+
+    <!-- No built-in AI set up: the Pilot box would promise something it can't do, so this card takes its place. -->
+    <div class="no-pilot" id="noPilot" hidden>
+      <p><b>Your AI apps drive Skillerr.</b> Connect Claude Desktop, Claude Code or Cursor, then ask them to research, compare or fill things in. They browse here while you watch.</p>
+      <div class="np-acts">
+        <button type="button" class="btn sm primary" data-sheet="connect">Connect an AI app</button>
+        <button type="button" class="btn sm ghost" id="npSnap" title="Capture this page and copy a line for your AI. Paste it into Claude (or any AI) and say what's wrong.">Show my AI this page</button>
+      </div>
+      <p class="np-own">Or <a href="#" data-sheet="settings" data-pane="local">connect a local AI model</a> (Ollama or LM Studio) to run tasks right here.</p>
     </div>
 
     <form class="composer" id="composer" autocomplete="off">
@@ -392,6 +408,11 @@
           </select>
         </label>
         <label class="field" id="searchApiKeyRow">Search API key <input id="searchApiKey" type="password" spellcheck="false" /></label>
+        <label class="field">Deep research <span class="muted small">Your AI reads the pages it finds and follows their most relevant links, this many hops deep. Slower, more thorough. For Skillerr's AI and the AI apps you connect.</span>
+          <select id="deepSetting">
+            <option value="0">Off</option><option value="1">1 hop</option><option value="2">2 hops</option><option value="3">3 hops</option><option value="4">4 hops</option><option value="5">5 hops</option>
+          </select>
+        </label>
         <label class="switch-row">
           <div><b>Ask before every action</b><span>Payments, passwords and deletions always ask, even when this is off.</span></div>
           <input type="checkbox" id="requireApproval" /><span class="switch"></span>
@@ -401,7 +422,7 @@
           <input type="checkbox" id="remember" /><span class="switch"></span>
         </label>
         <label class="switch-row">
-          <div><b>Recall by meaning</b><span>Finds past research even when it was worded differently, with Skillerr Orb, Skillerr's own small AI, built in. Stays on this computer; off, recall matches words.</span></div>
+          <div><b>Recall by meaning</b><span>Finds past research even when it was worded differently, with your Orb, your own AI model on this computer. Nothing is sent anywhere; off, recall matches words.</span></div>
           <input type="checkbox" id="semanticRecall" /><span class="switch"></span>
         </label>
         <label class="switch-row">

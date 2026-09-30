@@ -147,7 +147,7 @@
       }
     })();
     const marks = Object.entries(p.unfinished || {}).map(([k, v]) => `<span class="tb warn">${esc((UNFINISHED[k] || (() => k))({ ...v }))}</span>`).join('');
-    const fav = p.favicon ? `<img src="${esc(p.favicon)}">` : '•';
+    const fav = p.favicon ? `<img src="${esc(iconSrc(p.favicon))}">` : '•';
     li.innerHTML = `<span class="bm-l">${fav}</span><span class="dv-t"><b>${esc(trunc(p.title || p.url, 90))}</b>
       <span class="muted">${esc(host)}${p.visits > 1 ? ` · ${p.visits} visits` : ''}${p.days?.length >= 3 ? ` · on ${p.days.length} days` : ''}${p.tucked ? ' · waiting' : ''}${p.closed ? ' · closed' : ''} ${marks}</span></span>
       <span class="dv-when muted">${esc(agoText(p.lastAt))}</span>

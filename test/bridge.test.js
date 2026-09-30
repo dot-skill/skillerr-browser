@@ -33,6 +33,10 @@ test('hosts with MCP Apps get the live view', async (t) => {
   // The view's poll never launches a closed Skillerr.
   const frame = await client.callTool({ name: 'skillerr_preview_frame', arguments: { viewId: 'v', createdAt: 1 } });
   assert.deepStrictEqual(frame.structuredContent, { offline: true });
+  // Nor does opening the Audit list.
+  assert.deepStrictEqual(byName.skillerr_preview_audit._meta.ui.visibility, ['app']);
+  const audit = await client.callTool({ name: 'skillerr_preview_audit', arguments: {} });
+  assert.deepStrictEqual(audit.structuredContent, { offline: true });
 });
 
 test('other hosts see plain tools only', async (t) => {

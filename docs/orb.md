@@ -1,17 +1,19 @@
-# Skillerr Orb
+# Your Orb
 
-Skillerr Orb (the Orb) is Skillerr's own small AI: the glowing orb at the centre of the Skillerr Orb page. It's built into
-the browser, runs on the user's computer, and knows their work by
+The Orb is the user's own AI model, not Skillerr's: the glowing orb at the centre of the Your Orb page. It comes with
+Skillerr, runs on the user's computer (and, later, their phone), learns from their own browsing there, and sends
+nothing to Skillerr or anyone else. It knows their work by
 meaning: which trail a page belongs to, which trails a search is about, where they were with something. There's
 nothing to install and nothing to download, and nothing leaves the computer.
 
 ## In short
 
-- **Tiny and fast.** One 7.9 MB file. It loads in about 30 ms, uses about 22 MB of memory, and embeds a page title in
-  about 26 µs: some 39,000 texts a second on one core, in plain JavaScript with no native code.
+- **Tiny and fast.** One 7.9 MB file. It loads in about 12–40 ms, uses about 22–30 MB of memory, and embeds a page
+  title in about 8 µs: over 100,000 texts a second on one core of an Apple M1, in plain JavaScript with no native code.
+  That's over 250 times faster than the model it learned from, which keeps 88% of its accuracy (below).
 - **No text generation.** The Orb embeds and then *chooses*. What it says is built from the facts of the user's own
   trails, so it can't make things up.
-- **Built from an open model, by us.** Distilled from `all-MiniLM-L6-v2` (Apache-2.0) with a closed-form fit that runs
+- **Built from an open model.** Distilled from `all-MiniLM-L6-v2` (Apache-2.0) with a closed-form fit that runs
   on a laptop CPU in minutes (below). The whole pipeline is in `scripts/kilr/`.
 - **Replaces Ollama for recall by meaning.** Recall matches past research by meaning out of the box. An
   OpenAI-compatible endpoint (`embedBaseUrl`) still takes over when set.
@@ -24,6 +26,7 @@ nothing to install and nothing to download, and nothing leaves the computer.
 | **Find anything by meaning** | Type what you remember in the address bar ("newborn feeding", "train from tokyo to kyoto"): open tabs, waiting tabs and trail pages appear above web search. ↵ switches to the tab, or brings a waiting or visited page back where you were. |
 | **Suggests skills** | When you (or your AIs) keep doing the same kind of task, like choosing what to buy, the Orb offers to save how you do it as a skill your AI can follow. Below. |
 | **Learns your words, and your AI's** | Weekly (by default it asks first), the Orb retrains on your trails and your AIs' research so your jargon joins the right trail. Below. |
+| **Moving over from Chrome** | Sorts your open Chrome tabs into journeys: tabs opened in one sitting stay together, sittings on different days join when they're about the same thing, and inboxes and plain chat pages aren't journeys. Titles that say nothing ("Log In") are read as their site. See docs/trails.md. |
 | **Trails: filing pages** | A page joins the journey going on by meaning as well as by shared words. "hotels in japan for october" joins a trail of "cheap flights to tokyo" opened an hour ago. |
 | **Trails: search** | The Trails page search box is "Ask the Orb": "plane tickets to Japan" finds the Tokyo flights trail. |
 | **Start page** | One line above the trail cards: the latest trail, where you stopped and what's unfinished, with **Continue**. |
@@ -31,11 +34,11 @@ nothing to install and nothing to download, and nothing leaves the computer.
 | **Recall by meaning** | `recall` and the research memory search match by meaning with the Orb's vectors, kept in memory (re-making them is faster than reading them). |
 | **AI apps** | `my_trails` with a `query` finds trails by meaning. |
 
-Trails settings → **Skillerr Orb** turns it off. Trails then match by shared words, and recall by words (or an endpoint if set).
+Trails settings → **Your Orb** turns it off. Trails then match by shared words, and recall by words (or an endpoint if set).
 
-## The Skillerr Orb page
+## The Your Orb page
 
-⋮ → **Skillerr Orb** (⇧⌘Y) shows everything the user and their AI apps looked into as one map, with the Orb at the
+⋮ → **Your Orb** (⇧⌘Y) shows everything the user and their AI apps looked into as one map, with the Orb at the
 centre (`src/ui/memoryview.js`, data from `src/history-graph.js`). The plain list of pages visited is History (⌘Y), in
 History & Bookmarks, with Clear browsing data.
 
@@ -159,26 +162,51 @@ The Orb does.
 
 ## How good it is
 
-**Sentence similarity** (Spearman × 100 against human scores; test sets never used for fitting):
+All measured on an Apple M1 (8 GB), with `scripts/kilr/compare.js` and `scripts/kilr/eval-journeys.js`; anyone can
+rerun them.
 
-| | Size | STS-B | SICK |
+**Against the model it learned from**, `all-MiniLM-L6-v2` run with ONNX Runtime (native code), one text at a time as a
+browser meets them (page-title-like texts; medians of several runs):
+
+| | Orb | all-MiniLM-L6-v2, 1 thread | all-MiniLM-L6-v2, 4 threads |
 |---|---|---|---|
-| Teacher, all-MiniLM-L6-v2 | 90 MB, transformer | 82.0 | 77.1 |
-| **The Orb (shipped)** | **7.9 MB, table** | **72.3** | **62.9** |
-| Token vectors only (model2vec-style, same teacher) | 7.9 MB | 52.6 | 59.3 |
-| Word overlap (Skillerr before the Orb) | none | 65.3 | 55.7 |
+| Time per text | **8.4 µs** (one core) | 4,690 µs | 2,171 µs |
+| Texts per second | **~120,000** | 213 | 466 |
+| Load time | **12–40 ms** | 270–400 ms | 130 ms |
+| Memory | **~30 MB** | ~100–120 MB | ~140–230 MB |
+| File | **7.9 MB** | 90 MB | 90 MB |
 
-**Trails** (`scripts/kilr/eval-trails.js`): realistic threads of work (searches and page titles, worded differently),
-replayed shuffled over three days with no tab or opener hints, the hardest case. Thresholds were set on the tuning set;
-the held-out threads were only used to score.
+So the Orb on one core is about 550 times faster than the transformer on one, and over 250 times faster than it on
+four, at a ninth of the memory and an eleventh of the size. (Batched on a GPU the transformer's throughput is higher;
+a browser meets titles one at a time, on the user's CPU.)
 
-| Held-out threads | Words only | With the Orb |
-|---|---|---|
-| Precision (pages grouped together that belong together) | 0.81 | **0.95** |
-| Recall (pages that belong together, grouped) | 0.30 | **0.57** |
-| F1 | 0.43 | **0.71** |
+**Sentence similarity** (Spearman × 100 against human scores; test sets never used to build the Orb):
 
-In everyday browsing most pages also come with a tab or an opener, which Trails already uses, so this is a floor.
+| | Size | STS-B test | SICK test |
+|---|---|---|---|
+| all-MiniLM-L6-v2 (the teacher) | 90 MB, transformer | 82.1 | 77.1 |
+| **The Orb** | **7.9 MB, table** | **72.3** (88% of the teacher) | **62.9** (82%) |
+| Token vectors only (model2vec-style, same teacher; from the build) | 7.9 MB | 52.6 | 59.3 |
+| Word overlap (Jaccard) | none | 56.5 | 57.5 |
+
+**Sorting tabs kept open for weeks into journeys** (`scripts/kilr/eval-journeys.js`; moving over from Chrome): 87 tabs
+from 14 threads of work (`scripts/kilr/threads.js`), each thread opened over 1–3 sittings on random days of four weeks,
+sittings of different threads interleaved, every tab on its own site; 20 random layouts. Scored over pairs of tabs.
+None of these threads were used to choose the rule.
+
+| | Precision | Recall | F1 | F1 when a quarter of titles say nothing ("Log In") |
+|---|---|---|---|---|
+| Before: titles only, words | 1.00 | 0.14 | 0.25 | 0.19 |
+| Before: titles only, with the Orb | 0.85 | 0.69 | 0.76 | 0.51 |
+| Now: sittings joined by topic, words | 0.90 | 0.61 | 0.72 | 0.72 |
+| **Now: sittings joined by topic, with the Orb** | **0.91** | **0.78** | **0.83** | **0.79** |
+
+The threads are written by us, and real tabs are messier; on a real set of long-kept tabs, the same rule found the real
+journeys where titles alone didn't (docs/trails.md).
+
+`scripts/kilr/eval-trails.js` replays browsing spread over three days and scores joining it into trails as you browse.
+Since trails became journeys scoped to a sitting, Trails deliberately doesn't join pages across days by topic while you
+browse, so that script no longer measures what Trails does (F1 0.17 with the Orb, 0.07 words only, held out).
 
 ## Limits
 
@@ -227,8 +255,8 @@ Inside the code the Orb is still called `kilr` (its earlier name): `src/kilr/`, 
 | `src/kilr/train.js`, `train-worker.js` | Learning from the user's trails; runs in a worker thread |
 | `src/embed.js` | Recall by meaning: the Orb built in, or an endpoint |
 | `src/trails.js` | Uses the Orb (`meaning`) when given, words otherwise |
-| `src/history-graph.js`, `src/ui/memoryview.js` | The Skillerr Orb page: one graph of memory and trails, drawn as light coming out of the Orb |
-| `src/ui/kilrview.js` | The Orb's panel on the Skillerr Orb page (status from `kilr-status`, polled every 2 s while open) |
+| `src/history-graph.js`, `src/ui/memoryview.js` | The Your Orb page: one graph of memory and trails, drawn as light coming out of the Orb |
+| `src/ui/kilrview.js` | The Orb's panel on the Your Orb page (status from `kilr-status`, polled every 2 s while open) |
 | `assets/kilr/` | The model (`kilr-embed.bin`, `vocab.txt`) and its provenance |
 | `scripts/kilr/` | Building, calibrating, benchmarking and evaluating it |
 | `test/kilr-suggest.test.js` | Suggested skills from simulated browsing |

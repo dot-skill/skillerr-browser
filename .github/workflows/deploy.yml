@@ -173,6 +173,21 @@ jobs:
           ENVIRONMENT: ${{ needs.plan.outputs.environment }}
         run: |
           if [ "$ENVIRONMENT" = production ]; then
+            # The installers again under names without the version, so skillerr.com, install.sh and install.ps1 always
+            # link to releases/latest/download/<name> and never need changing when a new version ships.
+            dir=$(mktemp -d)
+            while read -r from to; do
+              gh release download "v$VERSION" --repo "$RELEASES_REPO" --dir "$dir" --pattern "$from"
+              mv "$dir/$from" "$dir/$to"
+            done <<EOF
+          Skillerr-$VERSION-arm64.dmg Skillerr-mac-arm64.dmg
+          Skillerr-$VERSION.dmg Skillerr-mac-x64.dmg
+          Skillerr-Setup-$VERSION-x64.exe Skillerr-windows-x64.exe
+          Skillerr-Setup-$VERSION-arm64.exe Skillerr-windows-arm64.exe
+          Skillerr-$VERSION.AppImage Skillerr-linux-x64.AppImage
+          Skillerr-$VERSION-arm64.AppImage Skillerr-linux-arm64.AppImage
+          EOF
+            gh release upload "v$VERSION" --repo "$RELEASES_REPO" --clobber "$dir"/Skillerr-mac-* "$dir"/Skillerr-windows-* "$dir"/Skillerr-linux-*
             # Release notes come from .github/release-notes/v<version>.md when the release commit adds one.
             notes=".github/release-notes/v$VERSION.md"
             gh release edit "v$VERSION" --repo "$RELEASES_REPO" --draft=false --prerelease=false --latest \
