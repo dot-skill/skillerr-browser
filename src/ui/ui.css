@@ -971,7 +971,7 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 @keyframes kp-in { from { opacity: 0; transform: translateX(-14px) scale(.985); } }
 .kp .mv-close { color: #8a8ea6; }
 .kp .mv-close:hover { background: rgba(255, 255, 255, .08); color: #fff; }
-.kp-head { display: grid; grid-template-columns: 96px 1fr; gap: 14px; align-items: center; padding-right: 20px; }
+.kp-head { display: block; padding-right: 20px; } /* no orb picture here: the big orb is on the page */
 .kp-orb { width: 96px; height: 96px; display: block; -webkit-mask: radial-gradient(circle, #000 52%, transparent 70%); mask: radial-gradient(circle, #000 52%, transparent 70%); }
 .kp-eyebrow { font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; color: #ffb27a; }
 .kp-head h3 { margin: 1px 0 4px; font-size: 26px; letter-spacing: -.025em; font-weight: 700; }

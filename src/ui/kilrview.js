@@ -31,7 +31,6 @@
     panel.innerHTML = `
       <button type="button" class="mv-close kp-close" title="Close">${icon('x', 14)}</button>
       <header class="kp-head">
-        <canvas class="kp-orb" id="kpOrb" width="192" height="192"></canvas>
         <div>
           <div class="kp-eyebrow">Yours, on this computer</div>
           <h3>Your Orb</h3>

@@ -717,7 +717,7 @@
     const t = data.totals.all || 0;
     const pct = clamp(data.glow || 0, 0, 1) * 100;
     const extra = extraGlow();
-    $('hvGlow').innerHTML = `<span class="hv-meter" title="Glow grows with everything you and your AIs look into, on a log scale. Full at about ${fmt(data.glowFull)} pages: a typical person's last three months of browsing."><i style="width:${pct.toFixed(1)}%"></i>${extra ? `<b style="width:${(extra * 100).toFixed(1)}%"></b>` : ''}</span><span class="hv-glow-n">${t >= data.glowFull ? `${fmt(t)}: past a typical three months` : `${fmt(t)} of ~${fmt(data.glowFull)}`}</span>`;
+    $('hvGlow').innerHTML = `<span class="hv-meter" title="Glow grows with everything you and your AIs look into, on a log scale. Full at about ${fmt(data.glowFull)} pages: a typical person's last three months of browsing."><i style="width:${pct.toFixed(1)}%"></i>${extra ? `<b style="width:${(extra * 100).toFixed(1)}%"></b>` : ''}</span>`;
   }
 
   function drawKilrIcon() {
