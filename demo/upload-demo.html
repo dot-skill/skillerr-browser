@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Skillerr upload demo — fake post</title>
+  <style>
+    body { font: 15px/1.5 -apple-system, sans-serif; max-width: 560px; margin: 40px auto; padding: 0 20px; color: #1b1b22; }
+    .card { border: 1px solid #e3e3ea; border-radius: 14px; padding: 20px; margin: 16px 0; }
+    textarea { display: block; width: 100%; box-sizing: border-box; margin: 4px 0 12px; padding: 9px 11px; border: 1px solid #ccc; border-radius: 8px; font: inherit; }
+    button { padding: 10px 18px; border-radius: 9px; border: 0; background: #6d4aff; color: #fff; font: 600 14px sans-serif; cursor: pointer; }
+    button.ghost { background: #efecff; color: #4a2fd0; }
+    .note { background: #fff7e6; border-radius: 10px; padding: 10px 14px; font-size: 13px; }
+    .hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+    .previews { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+    .previews img { width: 120px; height: 68px; object-fit: cover; border-radius: 8px; border: 1px solid #ddd; }
+    .files { font-size: 13px; color: #555; }
+    #out { font-weight: 700; }
+  </style>
+</head>
+<body>
+  <p class="note">This is a <b>fake</b> page for testing Skillerr's <code>upload_file</code>. Nothing leaves your computer:
+    the files you attach are only previewed here. Try <code>demo/card-tabs.png</code>.</p>
+
+  <h1>New post</h1>
+
+  <!-- 1. A plain, visible file input. -->
+  <div class="card">
+    <h3>Attach a document</h3>
+    <label>Document <input id="doc" type="file" name="document" /></label>
+    <div class="files" id="doc-files">No file chosen.</div>
+  </div>
+
+  <!-- 2. Like X, Reddit or LinkedIn: a button that opens the file picker of a hidden input. -->
+  <div class="card">
+    <h3>Post with media</h3>
+    <textarea id="text" rows="3" placeholder="What's happening?"></textarea>
+    <input id="media" class="hidden-input" type="file" accept="image/*,video/*" multiple />
+    <button class="ghost" id="add" type="button" aria-label="Add photos or video">🖼 Add photos or video</button>
+    <div class="previews" id="previews"></div>
+    <div class="files" id="media-files">No media yet.</div>
+    <p><button id="post" type="button">Post</button></p>
+  </div>
+
+  <p id="out"></p>
+
+  <script>
+    const list = (files) => [...files].map((f) => `${f.name} (${Math.round(f.size / 1024)} KB)`).join(', ');
+    document.getElementById('doc').addEventListener('change', (e) => {
+      document.getElementById('doc-files').textContent = e.target.files.length ? 'Attached: ' + list(e.target.files) : 'No file chosen.';
+    });
+    const media = document.getElementById('media');
+    document.getElementById('add').addEventListener('click', () => media.click());
+    media.addEventListener('change', () => {
+      const box = document.getElementById('previews');
+      box.innerHTML = '';
+      for (const f of media.files) {
+        if (!f.type.startsWith('image/')) continue;
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(f);
+        img.alt = f.name;
+        box.appendChild(img);
+      }
+      document.getElementById('media-files').textContent = media.files.length ? 'Attached: ' + list(media.files) : 'No media yet.';
+    });
+    document.getElementById('post').addEventListener('click', () => {
+      document.getElementById('out').textContent = `Posted (not really — this is a demo) with ${media.files.length} attachment(s).`;
+    });
+  </script>
+</body>
+</html>

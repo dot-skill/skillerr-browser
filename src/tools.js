@@ -2,6 +2,7 @@
 // and the built-in agent. One definition list, one implementation.
 
 const guard = require('./guard');
+const uploads = require('./uploads');
 const { searchApi, resultsPage, PROVIDERS } = require('./search-api');
 
 const TAB_ID = {
@@ -41,6 +42,22 @@ const PAGE_TOOLS = [
     name: 'select_option',
     description: 'Choose an option in a <select> by [id], matching the option value or visible label.',
     input_schema: { type: 'object', properties: { id: { type: 'integer' }, option: { type: 'string' } }, required: ['id', 'option'] },
+  },
+  {
+    name: 'upload_file',
+    description: 'Attach files from the user\'s computer to the page: a file input, or a button that opens a file picker (e.g. "Add photos or video"). ' +
+      'Give the element\'s [id] from the snapshot, or a CSS selector such as "input[type=file]" when the input itself is hidden, and the full paths of ' +
+      'the files. The user must approve every upload in Skillerr (they see the file names and the site); if they decline, do not retry. ' +
+      'Files in credential folders (~/.ssh, ~/.skillerr, keychains, password managers, browser profiles) and key files are always refused.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'integer', description: 'The file input, or the button that opens the file picker.' },
+        selector: { type: 'string', description: 'CSS selector for the file input, used instead of id (searched in the page and its open shadow roots).' },
+        paths: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 10, description: 'Full paths of the files, e.g. "~/Pictures/card-tabs.png".' },
+      },
+      required: ['paths'],
+    },
   },
   {
     name: 'press_key',
@@ -840,6 +857,11 @@ async function clickAt(tab, id, visible) {
     await inFrame(frame, `(() => { ${DEEP} const el = deepFind('[data-skillerr-id="${Number(id)}"]'); if (el) { el.focus(); el.click(); } })()`);
     return;
   }
+  await clickPoint(wc, x, y);
+}
+
+// A real click at page coordinates (CSS pixels, top-level viewport), with the ghost cursor.
+async function clickPoint(wc, x, y) {
   await inFrame(wc, CURSOR_JS(x, y)).catch(() => {});
   await sleep(300);
   // Page coordinates are CSS pixels; input events use view pixels (they differ when a fleet tile is zoomed out).
@@ -869,6 +891,118 @@ async function pressKey(tab, key, visible) {
     for (const type of ['keydown', 'keypress', 'keyup']) el.dispatchEvent(new KeyboardEvent(type, { key: k, code: k, bubbles: true, cancelable: true }));
     if (k === 'Enter' && el.form) el.form.requestSubmit ? el.form.requestSubmit() : el.form.submit();
   })()`);
+}
+
+// ---------- uploads: files from the user's disk into a page, through the DevTools protocol ----------
+// The path checks live in uploads.js; main.js asks the user before this ever runs.
+
+// The element the AI pointed at: a file input (itself, a <label> for one, or a wrapper holding one) is tagged with
+// `key` so the protocol side can find it; anything else is a button that opens a picker, and we return where it is.
+const UPLOAD_PROBE_JS = (selector, key) => `(() => {
+  ${DEEP}
+  let el;
+  try { el = deepFind(${JSON.stringify(selector)}); } catch { return { error: 'bad selector' }; }
+  if (!el) return null;
+  const isFile = (n) => !!n && n.tagName === 'INPUT' && String(n.type).toLowerCase() === 'file';
+  let input = isFile(el) ? el : el.tagName === 'LABEL' && isFile(el.control) ? el.control : null;
+  if (!input && el.querySelectorAll) { const inner = el.querySelectorAll('input[type=file]'); if (inner.length === 1) input = inner[0]; }
+  if (input) {
+    input.setAttribute('data-skillerr-upload', ${JSON.stringify(key)});
+    return { input: true, multiple: input.multiple, accept: input.accept || '', disabled: input.disabled };
+  }
+  el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+  const r = el.getBoundingClientRect();
+  return { input: false, x: r.left + r.width / 2, y: r.top + r.height / 2 };
+})()`;
+
+// Runs in the top frame over the protocol: the tagged input, looking through open shadow roots and same-origin frames.
+const UPLOAD_FIND_JS = (key) => `(() => {
+  const find = (root) => {
+    const hit = root.querySelector('[data-skillerr-upload=${JSON.stringify(key)}]');
+    if (hit) return hit;
+    for (const h of root.querySelectorAll('*')) {
+      let sub = h.shadowRoot;
+      if (!sub && (h.tagName === 'IFRAME' || h.tagName === 'FRAME')) { try { sub = h.contentDocument; } catch {} }
+      const x = sub && find(sub);
+      if (x) return x;
+    }
+    return null;
+  };
+  return find(document);
+})()`;
+
+async function withDebugger(wc, fn) {
+  const dbg = wc.debugger;
+  const mine = !dbg.isAttached();
+  if (mine) dbg.attach('1.3');
+  try {
+    return await fn(dbg);
+  } finally {
+    if (mine) try { dbg.detach(); } catch {}
+  }
+}
+
+function nextEvent(dbg, method, ms) {
+  return new Promise((resolve) => {
+    const onMsg = (_e, m, params) => { if (m === method) finish(params); };
+    const timer = setTimeout(() => finish(null), ms);
+    function finish(v) {
+      clearTimeout(timer);
+      dbg.removeListener('message', onMsg);
+      resolve(v);
+    }
+    dbg.on('message', onMsg);
+  });
+}
+
+// Set `files` (checked real paths) on the element; returns the file names the input now holds.
+async function uploadFiles(tab, args, files, visible) {
+  const wc = tab.view.webContents;
+  const byId = args.id != null;
+  if (!byId && !String(args.selector || '').trim()) throw new Error('Say which element to attach to: its [id] from the snapshot, or a selector like "input[type=file]".');
+  const frame = byId ? frameFor(tab, args.id) : wc.mainFrame;
+  const selector = byId ? `[data-skillerr-id="${Number(args.id)}"]` : String(args.selector);
+  const key = Math.random().toString(36).slice(2, 10);
+  const probe = await inFrame(frame, UPLOAD_PROBE_JS(selector, key));
+  if (probe?.error) throw new Error(`“${args.selector}” is not a valid CSS selector.`);
+  if (!probe) throw new Error(byId ? `No element with id ${args.id}. Take a new snapshot.` : `Nothing on the page matches “${args.selector}”.`);
+  if (probe.input && probe.disabled) throw new Error('That file input is disabled.');
+  if (probe.input && !probe.multiple && files.length > 1) throw new Error('That file input takes one file. Attach one at a time, or find the input that takes several.');
+
+  return withDebugger(wc, async (dbg) => {
+    const send = (m, p) => dbg.sendCommand(m, p);
+    let target; // { objectId } or { backendNodeId }
+    if (probe.input) {
+      const { result } = await send('Runtime.evaluate', { expression: UPLOAD_FIND_JS(key) });
+      if (!result?.objectId) throw new Error('That file input is inside a frame from another site, which Skillerr can\'t reach. Click the page\'s own upload button instead, or ask the user to attach the file.');
+      target = { objectId: result.objectId };
+    } else {
+      // A button that opens the system file picker: catch the picker instead of showing it, then fill it in.
+      if (!visible) throw new Error(`Tab ${tab.id} is in the background, and this button opens a file picker. Use switch_tab first, or pass the file input itself with selector "input[type=file]".`);
+      await send('Page.enable');
+      await send('Page.setInterceptFileChooserDialog', { enabled: true });
+      try {
+        const opened = nextEvent(dbg, 'Page.fileChooserOpened', 5000);
+        if (byId) await clickAt(tab, args.id, true);
+        else await clickPoint(wc, Math.round(probe.x), Math.round(probe.y));
+        const ev = await opened;
+        if (!ev) throw new Error('Clicking that did not open a file picker. Take a snapshot and try the file input itself (selector "input[type=file]").');
+        if (ev.mode === 'selectSingle' && files.length > 1) throw new Error('This picker takes one file. Attach one at a time.');
+        if (ev.backendNodeId == null) throw new Error('The file picker came from a part of the page Skillerr can\'t reach. Ask the user to attach the file.');
+        target = { backendNodeId: ev.backendNodeId };
+      } finally {
+        await send('Page.setInterceptFileChooserDialog', { enabled: false }).catch(() => {});
+      }
+    }
+    await send('DOM.setFileInputFiles', { files: files.map((f) => f.path), ...target });
+    let objectId = target.objectId;
+    if (!objectId) objectId = (await send('DOM.resolveNode', { backendNodeId: target.backendNodeId }).catch(() => null))?.object?.objectId;
+    const names = objectId
+      ? (await send('Runtime.callFunctionOn', { objectId, functionDeclaration: 'function () { this.removeAttribute("data-skillerr-upload"); return [...(this.files || [])].map((f) => f.name); }', returnByValue: true })
+        .catch(() => null))?.result?.value
+      : null;
+    return Array.isArray(names) ? names : files.map((f) => f.name);
+  });
 }
 
 // ---------- tool implementations ----------
@@ -1044,6 +1178,16 @@ async function runPageTool(browser, name, args, found) {
       return { text: short(found, tab.id, frame.url, res, 4000) + where };
     }
 
+    case 'upload_file': {
+      const files = uploads.checkPaths(args.paths); // checked again here: what was approved must still be allowed
+      const names = await uploadFiles(tab, args, files, visible);
+      await settle(wc);
+      const host = /^file:/.test(wc.getURL()) ? wc.getURL().split('/').pop() : guard.hostOf(wc.getURL());
+      const on = args.id != null ? `[${args.id}]` : `“${args.selector}”`;
+      return { text: `Attached ${uploads.namesText(files.map((f) => f.name))} to ${on} on ${host}${where}. The input now holds: ` +
+        `${short(found, tab.id, wc.getURL(), names.join(', ') || '(nothing)', 400)}. Take a snapshot to see the page's preview before posting.` };
+    }
+
     case 'press_key':
       await pressKey(tab, args.key, visible);
       await settle(wc);
@@ -1137,7 +1281,8 @@ async function runPageTool(browser, name, args, found) {
 // Look at the element an action targets before running it: label for the activity feed,
 // sensitivity for the approval gate, and current value for undo. Tags it with undoKey.
 async function inspectTarget(browser, name, args, undoKey) {
-  if (!['click', 'type', 'select_option', 'press_key'].includes(name)) return null;
+  if (!['click', 'type', 'select_option', 'press_key', 'upload_file'].includes(name)) return null;
+  if (name === 'upload_file' && args.id == null) return null;
   let tab;
   try {
     tab = resolveTab(browser, args);
@@ -1161,6 +1306,7 @@ async function inspectTarget(browser, name, args, undoKey) {
     info.sensitive = 'submitting a sign-in form';
   }
   if (name === 'press_key' && !/enter|return/i.test(args.key)) info.sensitive = null;
+  if (name === 'upload_file') info.sensitive = null; // uploads always ask anyway, with their own reason (main.js)
   info.frameId = frame.frameTreeNodeId;
   info.frameUrl = frame.url;
   return info;
