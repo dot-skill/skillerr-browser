@@ -176,6 +176,12 @@ function describeStep(e) {
     case 'record_stop': return { icon: 'film', text: 'Saving the recording' };
     case 'show_tabs': return { icon: 'layers', text: (a.tab_ids || []).length ? `Showing ${a.tab_ids.length} tabs side by side` : 'Showing tabs side by side' };
     case 'say': return { icon: 'sparkle', text: 'Posting an answer' };
+    case 'wait_for': {
+      const u = a.until || {};
+      const what = u.user_clicked ? `you to click “${trunc(u.user_clicked, 30)}”` : u.text_appears ? `“${trunc(u.text_appears, 30)}” to appear`
+        : u.url_matches ? `the page to reach ${trunc(u.url_matches, 40)}` : u.element_gone ? 'an item to go away' : 'the page to change';
+      return { icon: 'clock', text: `Waiting for ${what}` };
+    }
     case 'ask': {
       const line = String(a.text || '').split('\n').find((l) => l.trim()) || 'a question';
       const q = trunc(line.replace(/^[#>\s]+/, '').replace(/\*\*|`/g, ''), 60); // the question's first line, without markdown

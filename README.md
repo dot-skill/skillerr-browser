@@ -150,6 +150,10 @@ flowchart LR
   `whoami` tool, or `"env": { "SKILLERR_MODEL": "Claude Sonnet 5.5" }` in its Skillerr MCP config), the header shows
   it under the app's name ("Claude Code / Idle · Claude Sonnet 5.5"), dotted, with a tooltip saying it's as reported.
   Skillerr never guesses a model.
+- **Wait for you, not for "done".** `wait_for` lets the AI hand a step to you and carry on when you've done it:
+  `wait_for({ tab_id, until: { user_clicked: "Reply" } })` returns once *you* click Reply (its own clicks don't count).
+  It can also wait for a URL (`"x.com/*/status/*"`), text on the page, an element to go away, or any navigation. It only
+  watches; it never clicks or types. No answer in time is `{"happened":false,"status":"not yet"}`, not an error.
 - **Deep research** follows the links that matter, 1 to 5 hops from the first pages. Off by default; turn it on in
   Settings (3 hops unless you pick another) or with the Deep button.
 - Tabs for one task are **grouped and named** after the AI that opened them. Show them all or close them all in one click.

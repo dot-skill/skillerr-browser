@@ -14,6 +14,7 @@ const uploads = require('./uploads');
 const { opensAsPopup } = require('./popups');
 const { checkAsk, Asks } = require('./ask');
 const { Inbox, deliver } = require('./inbox');
+const { checkUntil, met } = require('./wait-for');
 const { Recorder } = require('./recorder');
 const store = require('./store');
 const { Memory, recallText, tokens } = require('./memory');
@@ -1859,7 +1860,7 @@ function markActive(controller) {
 }
 
 // Never gated by "ask before every action": reading, narration, and local note/recording files.
-const READ_ONLY = new Set(['view_capture', 'web_search', 'fetch_page', 'save_screenshot', 'open_view', 'snapshot', 'read_page', 'screenshot', 'list_tabs', 'wait', 'read_tabs', 'list_skills', 'use_skill', 'caption', 'record_stop', 'show_tabs', 'save_note', 'recall', 'tag_session', 'my_research', 'read_note', 'my_trails']);
+const READ_ONLY = new Set(['wait_for', 'view_capture', 'web_search', 'fetch_page', 'save_screenshot', 'open_view', 'snapshot', 'read_page', 'screenshot', 'list_tabs', 'wait', 'read_tabs', 'list_skills', 'use_skill', 'caption', 'record_stop', 'show_tabs', 'save_note', 'recall', 'tag_session', 'my_research', 'read_note', 'my_trails']);
 const TRAIL_TOOL_NAMES = new Set(['my_trails', 'continue_trail']);
 const trunc = (s, n) => (String(s ?? '').length > n ? String(s).slice(0, n - 1) + '…' : String(s ?? ''));
 const NOTES_DIR = path.join(app.getPath('home'), 'Skillerr', store.PROFILE ? `notes-${store.PROFILE}` : 'notes');
@@ -2111,12 +2112,75 @@ const siteOf = (u) => {
   }
 };
 const sizeText = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+// ---------- wait_for: watch a tab until the user (or the page) does something (src/wait-for.js) ----------
+// Only looks: reads the URL, the page's text or whether elements are still there, and listens to the user's own clicks.
+// The label of what they clicked is read at the click point; clicks the AI makes (skillerrAiInputAt) don't count.
+const CLICKED_LABEL_JS = (x, y) => `(() => {
+  const el = document.elementFromPoint(${Number(x)}, ${Number(y)});
+  const t = el && el.closest('button, a, [role=button], [role=link], [role=menuitem], input[type=submit], input[type=button], label, summary');
+  if (!t) return '';
+  return String(t.getAttribute('aria-label') || t.innerText || t.value || t.title || '').slice(0, 200);
+})()`;
+const PRESENT_JS = (ids) => `(${JSON.stringify(ids)}).map((id) => !!document.querySelector('[data-skillerr-id="' + id + '"]'))`;
+
+// An AI waiting on the user (ask, inbox, wait_for) is still at work: keep its research session from being put away
+// (tuckFinishedResearch) while the call is open. Returns a stop function.
+function stillWorking(controller) {
+  const t = setInterval(() => activity.touch(controller.name), 30000);
+  return () => clearInterval(t);
+}
+
+async function waitFor(args, controller) {
+  const until = checkUntil(args.until, args.timeout_s);
+  const tab = targetTab(args);
+  if (!tab || tab.isStart) throw new Error('No page open in that tab to watch. Call list_tabs.');
+  const wc = tab.view.webContents;
+  const state = { startUrl: wc.getURL(), url: wc.getURL(), navigations: 0, clicks: [], present: null, text: '' };
+  const onNav = () => state.navigations++;
+  const onInput = (_e, ev) => {
+    if (ev.type !== 'mouseDown' || Date.now() - (wc.skillerrAiInputAt || 0) < 1000) return; // the AI's own clicks aren't the user's
+    const z = wc.getZoomFactor() || 1;
+    wc.executeJavaScript(CLICKED_LABEL_JS(ev.x / z, ev.y / z)).then((l) => l && state.clicks.push(l)).catch(() => {});
+  };
+  wc.on('did-navigate', onNav);
+  wc.on('did-navigate-in-page', onNav);
+  wc.on('input-event', onInput);
+  const end = Date.now() + until.ms;
+  const stop = stillWorking(controller);
+  const answer = (o) => ({ text: JSON.stringify({ ...o, url: wc.isDestroyed() ? undefined : wc.getURL() }) });
+  try {
+    for (;;) {
+      if (wc.isDestroyed()) return { text: JSON.stringify({ happened: false, status: 'tab closed' }) };
+      state.url = wc.getURL();
+      if (until.kind === 'text_appears') state.text = await wc.executeJavaScript('document.body ? document.body.innerText.slice(0, 500000) : ""').catch(() => '');
+      if (until.kind === 'element_gone') {
+        // Snapshot ids can be in frames too: an element counts as there if any frame still has it.
+        const frames = wc.mainFrame.framesInSubtree.filter((f) => !f.isDestroyed?.());
+        const seen = await Promise.all(frames.map((f) => f.executeJavaScript(PRESENT_JS(until.ids)).catch(() => null)));
+        state.present = Object.fromEntries(until.ids.map((id, i) => [id, seen.some((x) => x?.[i])]));
+      }
+      const hit = met(until, state);
+      if (hit) return answer({ happened: true, ...hit });
+      if (Date.now() >= end) return answer({ happened: false, status: 'not yet' });
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  } finally {
+    stop();
+    if (!wc.isDestroyed()) {
+      wc.removeListener('did-navigate', onNav);
+      wc.removeListener('did-navigate-in-page', onNav);
+      wc.removeListener('input-event', onInput);
+    }
+  }
+}
+
 // The `ask` tool: the question and its buttons go in the Pilot panel as a step; the call waits for the click (src/ask.js).
 async function askUser(controller, args, session) {
   const q = checkAsk(args);
   const entry = { id: ++seq, ts: Date.now(), controller: controller.name, via: controller.via, session, tool: 'ask', args: { text: q.text, options: q.options }, target: '', state: 'asking' };
   ui('log', entry);
-  const r = await asks.open(entry.id, controller.name, q.options, q.ms);
+  const stop = stillWorking(controller);
+  const r = await asks.open(entry.id, controller.name, q.options, q.ms).finally(stop);
   ui('log', { ...entry, state: r.choice != null ? 'ok' : 'done', choice: r.choice, status: r.status, ts: Date.now() });
   markActive(controller);
   return { text: JSON.stringify(r) };
@@ -2140,7 +2204,10 @@ async function executeInSession(controller, name, args, session) {
     markActive(controller);
     return { text: `Skillerr knows your app as "${controller.name}"${models.get(controller.name) ? ` and shows your model as "${models.get(controller.name).model}" (reported by you)` : ''}.` };
   }
-  if (name === 'inbox') return { text: '', inbox: await inbox.wait(controller.name, Math.min(600, Math.max(0, Number(args.wait_s) || 0)) * 1000) };
+  if (name === 'inbox') {
+    const stop = stillWorking(controller);
+    return { text: '', inbox: await inbox.wait(controller.name, Math.min(600, Math.max(0, Number(args.wait_s) || 0)) * 1000).finally(stop) };
+  }
 
   const id = ++seq;
   if (args.tab_id != null && !getTab(Number(args.tab_id)) && tuckedAiTabs.has(Number(args.tab_id))) {
@@ -2311,6 +2378,7 @@ function pageTab(args) {
 }
 
 const BROWSER_TOOLS = {
+  wait_for: (args, controller) => waitFor(args, controller),
   list_skills: async () => ({ text: skills.listText() }),
   use_skill: async (args) => ({ text: skills.useText(args.name) }),
   record_start: async (args) => {

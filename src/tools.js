@@ -231,6 +231,35 @@ const WHOAMI_TOOL = {
   input_schema: { type: 'object', properties: { model: { type: 'string', maxLength: 40 } }, required: ['model'] },
 };
 
+// Waiting for the user (or the page) instead of asking them to type "done" (src/wait-for.js). Only looks.
+const WAIT_FOR_TOOL = {
+  name: 'wait_for',
+  description: 'Wait until something happens in a tab, typically the user doing their part: e.g. after typing a reply, ' +
+    'wait_for({ tab_id, until: { user_clicked: "Reply" } }) returns once the user clicks Reply themselves; then read the result. ' +
+    'until takes exactly one of: url_matches ("x.com/*/status/*", /regex/ or text in the URL), text_appears, element_gone ([id] from ' +
+    'the snapshot), user_clicked (the button or link label; only the user\'s own clicks count, never yours) or navigated: true. ' +
+    'Returns {"happened":true,"what":…} or, after timeout_s (default 120, max 600), {"happened":false,"status":"not yet"}: not an error, wait again ' +
+    'if it makes sense. It only watches: it never clicks, types or navigates.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      tab_id: { type: 'integer', description: 'Default: the active tab.' },
+      until: {
+        type: 'object',
+        properties: {
+          url_matches: { type: 'string' },
+          text_appears: { type: 'string' },
+          element_gone: { type: 'array', items: { type: 'integer' } },
+          user_clicked: { type: 'string' },
+          navigated: { type: 'boolean' },
+        },
+      },
+      timeout_s: { type: 'number', minimum: 1, maximum: 600 },
+    },
+    required: ['until'],
+  },
+};
+
 // Messages from the user, typed in the Pilot panel (src/inbox.js).
 const INBOX_TOOL = {
   name: 'inbox',
@@ -417,7 +446,7 @@ const SHOT_TOOL = {
   },
 };
 
-const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, ASK_TOOL, INBOX_TOOL, WHOAMI_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, CAPTURE_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...TRAIL_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
+const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, ASK_TOOL, INBOX_TOOL, WHOAMI_TOOL, WAIT_FOR_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, CAPTURE_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...TRAIL_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
 
 // ---------- page-side scripts ----------
 
@@ -1113,6 +1142,7 @@ async function runPageTool(browser, name, args, found) {
       return { text: parts.join('\n\n') };
     }
     case 'dispatch':
+    case 'wait_for':
     case 'list_skills':
     case 'use_skill':
     case 'record_start':
