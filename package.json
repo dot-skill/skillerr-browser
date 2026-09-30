@@ -1,7 +1,7 @@
 {
   "name": "skillerr-browser",
   "productName": "Skillerr",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "The browser any AI can drive, while you watch every step. Research memory, deep research, fleet view.",
   "main": "src/boot.js",
   "scripts": {
