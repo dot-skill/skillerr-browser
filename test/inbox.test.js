@@ -2,7 +2,7 @@
 // reads (or waits for) them, and page text can never pass itself off as one.
 const test = require('node:test');
 const assert = require('node:assert');
-const { Inbox, deliver, scrub, recipient, line, OPEN, CLOSE } = require('../src/inbox');
+const { Inbox, deliver, listenText, scrub, recipient, line, OPEN, CLOSE } = require('../src/inbox');
 const { startApiServer } = require('../src/api-server');
 
 test('inbox: messages ride at the top of the next tool result of the app they are for, once', () => {
@@ -93,4 +93,85 @@ test('a message goes to the AI picked, else the one in the header, and only to o
   assert.strictEqual(recipient('Cursor', 'Claude Code', apps), 'Claude Code', 'not at work: the header one');
   assert.strictEqual(recipient(null, 'Claude Desktop', apps), 'Claude Code', 'header app idle: the first at work');
   assert.strictEqual(recipient(null, null, []), null);
+});
+
+test('listening: an app is listening only while its inbox wait is open', async () => {
+  let changes = 0;
+  const inbox = new Inbox({ onListening: () => changes++ });
+  assert.strictEqual(inbox.isListening('Claude Desktop'), false);
+  const got = inbox.listen('Claude Desktop', 5000);
+  assert.strictEqual(inbox.isListening('Claude Desktop'), true);
+  assert.strictEqual(inbox.isListening('Cursor'), false);
+  assert.deepStrictEqual(inbox.listening(), ['Claude Desktop']);
+  inbox.post('Claude Desktop', 'write a post');
+  assert.deepStrictEqual(await got, { messages: [{ id: 1, to: 'Claude Desktop', text: 'write a post', at: inbox.messages[0].at, read: true }], status: 'message' });
+  assert.strictEqual(inbox.isListening('Claude Desktop'), false, 'cleared once the message is handed over');
+  assert.strictEqual(changes, 2, 'the panel hears both');
+  assert.deepStrictEqual(await inbox.listen('Claude Desktop', 20), { messages: [], status: 'timeout' });
+  assert.strictEqual(inbox.isListening('Claude Desktop'), false, 'cleared on timeout');
+  const watcher = inbox.listen('*', 5000); // --watch-inbox listens for any app
+  assert.strictEqual(inbox.isListening('Claude Code'), true);
+  inbox.stop();
+  await watcher;
+});
+
+test('listening: Pause ends a waiting inbox at once, as "stopped"', async () => {
+  const inbox = new Inbox();
+  const t = Date.now();
+  const got = inbox.listen('Claude Desktop', 50000);
+  setTimeout(() => inbox.stop(), 20);
+  assert.deepStrictEqual(await got, { messages: [], status: 'stopped' });
+  assert.ok(Date.now() - t < 2000);
+  assert.strictEqual(inbox.isListening('Claude Desktop'), false);
+  assert.match(listenText('stopped', true), /paused Skillerr\. Stop listening and end your turn/);
+  const fs = require('fs');
+  const path = require('path');
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8').replace(/\r\n/g, '\n'); // Windows checks out CRLF
+  const pause = main.slice(main.indexOf('function setPaused(paused) {'), main.indexOf('function togglePanel('));
+  assert.match(pause, /if \(paused\) \{[\s\S]*inbox\.stop\(\)/, 'Pause (and Take over) stop every open wait');
+  assert.match(main, /if \(name === 'inbox'\) return \{ text: listenText\('stopped'\) \}/, 'an inbox call while paused ends cleanly');
+});
+
+test('listening: a message is the latest instruction, ahead of the result, then listen again', () => {
+  const inbox = new Inbox();
+  inbox.post('Claude Desktop', 'stop that, research X instead');
+  const r = deliver(inbox, 'Claude Desktop', 'inbox', { text: listenText('message', true), inbox: inbox.take('Claude Desktop') });
+  assert.ok(r.text.startsWith(`${OPEN}\nstop that, research X instead\n${CLOSE}\n\n`), r.text);
+  assert.match(r.text, /latest instruction: act on it now, ahead of anything you were doing\. Then call `inbox` again to keep listening\.$/);
+  // Mid-task, a message that came while the app was busy rides ahead of its next tool result too.
+  inbox.post('Claude Desktop', 'use the second flight');
+  assert.ok(deliver(inbox, 'Claude Desktop', 'snapshot', { text: 'Page: example.com' }).text.startsWith(`${OPEN}\nuse the second flight\n${CLOSE}\n\nPage: example.com`));
+  assert.strictEqual(deliver(inbox, 'Claude Desktop', 'inbox', { text: listenText('timeout', true) }).text, 'No messages yet. Keep listening: call `inbox` again with wait_s 50.');
+  assert.strictEqual(deliver(inbox, 'Claude Desktop', 'inbox', { text: listenText('timeout', false) }).text, 'No messages from the user.');
+  const { TOOLS } = require('../src/tools');
+  assert.match(TOOLS.find((t) => t.name === 'inbox').description, /latest instruction[\s\S]*Stay listening[\s\S]*wait_s 50/);
+});
+
+test('listening: "Send to Skillerr\'s AI instead" takes back a message the app has not read', () => {
+  const inbox = new Inbox();
+  const m = inbox.post('Claude Desktop', 'write a post');
+  assert.strictEqual(inbox.retract(m.id).text, 'write a post');
+  assert.deepStrictEqual(inbox.take('Claude Desktop'), [], 'the app never gets it');
+  const n = inbox.post('Claude Desktop', 'read already');
+  inbox.take('Claude Desktop');
+  assert.strictEqual(inbox.retract(n.id), null);
+});
+
+test('listening: the panel says whether the app is listening', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const vm = require('vm');
+  const ctx = {};
+  vm.runInNewContext(`${fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'shared.js'), 'utf8')}\nthis.msgStatus = msgStatus; this.isListening = isListening;`, ctx);
+  assert.strictEqual(ctx.msgStatus({ label: 'Claude Desktop', listening: true }), 'Sent. Claude Desktop is listening');
+  assert.strictEqual(ctx.msgStatus({ label: 'Claude Desktop', listening: false }), "Claude Desktop isn't listening right now; it'll see this next time it uses Skillerr");
+  assert.strictEqual(ctx.msgStatus({ label: 'qwen3:4b', builtin: true }), 'Waiting for qwen3:4b to read it (with its next step)');
+  assert.strictEqual(ctx.isListening('Claude Desktop', ['Claude Desktop']), true);
+  assert.strictEqual(ctx.isListening('Claude Desktop', ['Cursor']), false);
+  assert.strictEqual(ctx.isListening('Claude Desktop', ['*']), true);
+  assert.strictEqual(ctx.isListening('Claude Desktop', undefined), false);
+  const ui = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui', 'ui.js'), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(ui, /\$\('aiMsgListening'\)\.hidden = cur\.via === 'builtin' \|\| !isListening\(cur\.name, status\.listening\)/);
+  assert.match(ui, /!r\.builtin && !r\.listening && r\.canRedirect \? '<button[^']*redirect/);
+  assert.doesNotMatch(ui, /Waiting for \$\{esc\(r\.label\)\} to read it/, 'no promise of "with its next step" to an idle app');
 });

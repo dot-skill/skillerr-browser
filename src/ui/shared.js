@@ -196,6 +196,15 @@ function describeStep(e) {
 // for someone with no way to drive Skillerr yet: never once an AI app is connected, or has acted in this run.
 const needsConnectCard = ({ aiReady, appConnected, appActed }) => !aiReady && !appConnected && !appActed;
 
+// The line under a message sent from the Pilot panel. The built-in AI reads it at its next step; an AI app that's
+// listening (an `inbox` wait open) gets it at once; one that isn't only sees it the next time it uses Skillerr.
+function msgStatus({ label, builtin, listening }) {
+  if (builtin) return `Waiting for ${label} to read it (with its next step)`;
+  return listening ? `Sent. ${label} is listening` : `${label} isn't listening right now; it'll see this next time it uses Skillerr`;
+}
+// The "Listening" mark next to the message box: only while the app it writes to has a wait open ('*': a watcher for any app).
+const isListening = (name, listening = []) => listening.includes(name) || listening.includes('*');
+
 // ---------- tiny, safe markdown for AI replies ----------
 
 function mdInline(s) {

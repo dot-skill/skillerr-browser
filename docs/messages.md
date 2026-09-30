@@ -28,7 +28,12 @@ quits) and reaches the app:
 
    First, not after the page text, so small models don't miss it. Your bubble changes to "Read".
 
-2. **`inbox`.** The AI can check for messages, or wait for one: `inbox({ wait_s: 300 })` (up to 600 s).
+2. **`inbox`, listening.** When an app finishes a task it was doing in Skillerr, it doesn't end its turn: it calls
+   `inbox({ wait_s: 50 })` (under the 60 s many MCP clients allow a call), acts on any message, and calls again, until
+   you say stop or press **Pause** (which ends the wait with "stopped"). Your message can be anything: a new task, a
+   change of direction, a correction. The box shows **Listening** only while the app has a wait open. When it isn't
+   listening, your bubble says so ("Claude Desktop isn't listening right now; it'll see this next time it uses
+   Skillerr"), with **Send to Skillerr's AI instead** when a built-in AI is set up.
 
 3. **Optional, while it's idle:** `node mcp/bridge.js --watch-inbox [--client "Claude Code"]` prints each message as one
    line (`[Skillerr Pilot → Claude Code] I posted it, next one`) for as long as it runs, and never launches Skillerr.

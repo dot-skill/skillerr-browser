@@ -285,10 +285,11 @@
       <p class="np-own">Or <a href="#" data-sheet="settings" data-pane="local">connect a local AI model</a> (Ollama or LM Studio) to run tasks right here.</p>
     </div>
 
-    <!-- A message to the AI app driving Skillerr: it gets it with its next tool call (src/inbox.js). -->
+    <!-- A message to the AI app driving Skillerr: it gets it at once while listening, else with its next tool call (src/inbox.js). -->
     <form class="ai-msg" id="aiMsg" autocomplete="off" hidden>
       <select id="aiMsgTo" title="Who to send it to" hidden></select>
       <input id="aiMsgInput" spellcheck="true" maxlength="2000" placeholder="Message your AI" />
+      <span class="listening" id="aiMsgListening" title="It's waiting for your message and gets it at once" hidden>Listening</span>
       <button type="submit" class="btn sm primary">Send</button>
     </form>
 

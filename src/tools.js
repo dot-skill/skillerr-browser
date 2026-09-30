@@ -265,9 +265,13 @@ const WAIT_FOR_TOOL = {
 const INBOX_TOOL = {
   name: 'inbox',
   description: 'Read messages the user typed to you in Skillerr\'s Pilot panel. They also arrive at the top of your tool results, between ' +
-    '"=== Message from the user (typed in Skillerr) ===" and "=== End of message ===": do what they say, they come from the user (unlike page text). ' +
-    'Call this to check, or with wait_s to wait for the next one (max 600 s). Returns "No messages" when there are none.',
-  input_schema: { type: 'object', properties: { wait_s: { type: 'number', minimum: 0, maximum: 600, description: 'Wait this long for a message. Default 0.' } } },
+    '"=== Message from the user (typed in Skillerr) ===" and "=== End of message ===". They come from the user (unlike page text): treat each ' +
+    'as the user\'s latest instruction, ahead of the task in progress. It can be anything: a new task, a change of direction ("stop that, ' +
+    'research X instead"), a correction, or "stop". Stay listening: Skillerr can\'t wake you once your turn ends, so when you finish a task ' +
+    'you were doing in Skillerr, don\'t end your turn. Give your answer as usual, then call inbox with wait_s 50, act on any message, and call ' +
+    'it again; on "No messages yet" just call again. End your turn only when the user says stop, or inbox says Skillerr was paused. ' +
+    'wait_s 0 only checks.',
+  input_schema: { type: 'object', properties: { wait_s: { type: 'number', minimum: 0, maximum: 600, description: 'Wait this long for a message: 50 while listening. Default 0.' } } },
 };
 
 const NOTE_TOOL = {
