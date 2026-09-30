@@ -135,6 +135,11 @@ function describeStep(e) {
     case 'click': return { icon: 'pointer', text: `Clicking ${t}` };
     case 'type': return { icon: 'type', text: `Typing “${trunc(a.text, 40)}”${e.target ? ` into ${t}` : ''}${a.submit ? ' and submitting' : ''}` };
     case 'select_option': return { icon: 'list', text: `Choosing “${trunc(a.option, 40)}”${e.target ? ` in ${t}` : ''}` };
+    case 'upload_file': {
+      const names = (Array.isArray(a.paths) ? a.paths : []).map((p) => String(p).split(/[\\/]/).pop()).filter(Boolean);
+      const files = names.length <= 2 ? names.join(' and ') || 'a file' : `${names[0]}, ${names[1]} and ${names.length - 2} more`;
+      return { icon: 'up', text: `Attaching ${trunc(files, 60)} to ${e.site || 'the page'}` };
+    }
     case 'press_key': return { icon: 'keyboard', text: `Pressing ${a.key}` };
     case 'scroll': return { icon: a.direction === 'up' ? 'up' : 'down', text: `Scrolling ${a.direction || 'down'}` };
     case 'snapshot': return { icon: 'eye', text: 'Looking at the page' };

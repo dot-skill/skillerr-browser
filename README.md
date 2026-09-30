@@ -280,8 +280,14 @@ See [docs/trails.md](docs/trails.md).
   instructions …") is removed. Flagged pages are cleaned and reported in the Pilot panel.
 - **Approvals.** In auto mode, payments, passwords, sign-ins and deletions wait for you. In manual mode, Skillerr asks
   before every action. Approvals are always decided in Skillerr, next to the page, never from the chat.
+- **File uploads wait for you, every time.** `upload_file` lets your AI attach an image, video or document to a post or
+  form (X, Reddit, LinkedIn, Product Hunt, any file input or "Add photos" button). Each upload asks for your OK in
+  Skillerr, next to the page, naming the files and the site, in every approval mode; the Pilot panel logs it as
+  "Attaching card-tabs.png to x.com". Files in `~/.skillerr`, `~/.ssh`, keychains, password managers, browser profiles
+  and other credential stores, and key files like `.env` or `id_rsa`, are always refused.
 - **Robot checks** are handed to you. **Pause**, **Take over** and **Undo** are always one click away.
-- Try it: [`demo/safety-demo.html`](demo/safety-demo.html) and [`demo/injection-test.html`](demo/injection-test.html).
+- Try it: [`demo/safety-demo.html`](demo/safety-demo.html), [`demo/injection-test.html`](demo/injection-test.html) and
+  [`demo/upload-demo.html`](demo/upload-demo.html).
 
 </details>
 

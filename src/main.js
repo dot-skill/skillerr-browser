@@ -10,6 +10,7 @@ const { Agent } = require('./agent');
 const connectors = require('./connect');
 const skills = require('./skills');
 const guard = require('./guard');
+const uploads = require('./uploads');
 const { Recorder } = require('./recorder');
 const store = require('./store');
 const { Memory, recallText, tokens } = require('./memory');
@@ -22,6 +23,7 @@ const { cosine: kilrCosine } = require('./kilr/embed');
 traceStartup('modules loaded');
 // Read on first use (or in the background once the window is up), never before the window: a big memory
 // (a Chrome history import is thousands of pages) would otherwise hold up every start.
+uploads.configure({ blocked: [store.DIR, app.getPath('userData')] }); // never uploaded, wherever they live
 const memory = new Memory(path.join(store.DIR, 'memory'), { lazy: true });
 // No settings yet means Skillerr's data is new (first install, or it was deleted): AI-app connections left behind by an
 // earlier install don't belong to it (connectors.reconcile). Checked before anything can write settings.
@@ -2053,6 +2055,17 @@ const requestedUrls = (name, args) => {
   if (name === 'web_search' && args.query) return [safe(String(args.query))].filter(Boolean);
   return [];
 };
+// The site an upload goes to, as the user knows it: "x.com", or the file name of a local page.
+const siteOf = (u) => {
+  try {
+    const url = new URL(u);
+    if (url.protocol === 'file:') return decodeURIComponent(url.pathname.split('/').pop() || '') || 'a local page';
+    return url.host.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+};
+const sizeText = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 const tabTitle = (t) => (t?.sleeping ? t.sleeping.title : t?.view && !t.view.webContents.isDestroyed() ? t.view.webContents.getTitle() : '');
 
 async function executeInSession(controller, name, args, session) {
@@ -2100,13 +2113,32 @@ async function executeInSession(controller, name, args, session) {
     throw new Error('That is a robot check. Only the user may complete it: Skillerr has asked them to. Carry on with your other tabs meanwhile, then come back to this one and take a new snapshot.');
   }
 
+  // Uploading from the user's disk always needs their OK in Skillerr, in every approval mode: the approval shows the
+  // file names and the site. Paths in credential folders are refused outright, before anyone is asked.
+  let upload = null;
+  if (name === 'upload_file') {
+    upload = { site: tab ? siteOf(tabUrl(tab)) : '' };
+    const frameSite = info?.frameUrl ? siteOf(info.frameUrl) : '';
+    entry.site = frameSite && frameSite !== upload.site ? `${upload.site} (in a frame from ${frameSite})` : upload.site;
+    let files;
+    try {
+      files = upload.files = uploads.checkPaths(args.paths);
+    } catch (err) {
+      ui('log', { ...entry, state: 'error', summary: err.message });
+      throw new Error(`${err.message} Don't try another way to send it; if the user really means to share it, they can attach it themselves.`);
+    }
+    upload.reason = `${controller.name} wants to send ${files.length === 1 ? 'this file' : `these ${files.length} files`} from your computer to ` +
+      `${entry.site || 'this page'}: ${files.map((f) => `${f.name} (${sizeText(f.size)})`).join(', ')}. Allow only if you meant to share ${files.length === 1 ? 'it' : 'them'} there.`;
+  }
+
   // Sensitive actions always need a human, even with approval mode off. Enforced here, not by the prompt.
   // A learned skill steers every future task, so a page can't be allowed to plant one unseen.
   if (name === 'save_skill') entry.target = String(args.name || '');
   // Trails are the user's own browsing: each AI app asks once, and the answer is remembered.
   const trailConsent = TRAIL_TOOL_NAMES.has(name) && controller.via === 'mcp' && !(store.getSettings().trailsAllowedClients || []).includes(controller.name);
   if (trailConsent) entry.target = 'your trails';
-  const reason = name === 'save_skill' ? `Skills change how AIs work on future tasks. “${trunc(args.description, 140)}”`
+  const reason = upload ? upload.reason
+    : name === 'save_skill' ? `Skills change how AIs work on future tasks. “${trunc(args.description, 140)}”`
     : trailConsent ? `${controller.name} wants to see your trails: the titles and pages of your ongoing work in Skillerr. If you allow it, it can see them from now on (you can take that back in Trails).`
     : info?.sensitive ? `This looks like ${info.sensitive}.`
     : status.requireApproval && !READ_ONLY.has(name) ? null : undefined;
@@ -2118,6 +2150,11 @@ async function executeInSession(controller, name, args, session) {
       throw new Error(ok === null
         ? 'This action needs the user\'s approval in Skillerr and nobody approved it in time. Ask the user to watch Skillerr and approve, then retry.'
         : 'The user declined this action. Do not retry it.');
+    }
+    // The page may have moved on while the user was deciding: the files go only to the site they approved.
+    if (upload && tab && siteOf(tabUrl(tab)) !== upload.site) {
+      ui('log', { ...entry, state: 'error', summary: 'The page changed before the upload; nothing was sent' });
+      throw new Error(`The tab left ${upload.site} before the upload ran, so nothing was sent. Go back to the page and ask again.`);
     }
     if (trailConsent) {
       const s = store.getSettings();
