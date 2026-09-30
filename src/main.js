@@ -11,6 +11,7 @@ const connectors = require('./connect');
 const skills = require('./skills');
 const guard = require('./guard');
 const uploads = require('./uploads');
+const { opensAsPopup } = require('./popups');
 const { checkAsk, Asks } = require('./ask');
 const { Recorder } = require('./recorder');
 const store = require('./store');
@@ -578,8 +579,9 @@ function attachView(tab) {
       return { action: 'deny' };
     }
     // A real pop-up (Sign in with Google or Apple, a payment window) stays a pop-up window: the page and the pop-up
-    // talk through window.opener, which a tab would cut (Google's sign-in then hangs on accounts.google.com/gsi/transform).
-    if (disposition === 'new-window') {
+    // talk through window.opener, which a tab would cut (src/popups.js). Google and Apple sign-in pages get one even when
+    // the page didn't ask for a size, as Reddit's "Continue with Google" (gsi/select?ux_mode=popup) doesn't.
+    if (opensAsPopup(target, disposition)) {
       const size = (k, d) => Math.min(1200, Math.max(320, Number(new RegExp(`${k}=(\\d+)`).exec(features || '')?.[1]) || d));
       return { action: 'allow', overrideBrowserWindowOptions: { parent: win, width: size('width', 500), height: size('height', 640),
         autoHideMenuBar: true, backgroundColor: '#ffffff', minimizable: false, fullscreenable: false } };
