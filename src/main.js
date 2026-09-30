@@ -3712,6 +3712,18 @@ function startWidevine() {
 
 app.on('before-quit', snapshotForQuit);
 app.on('before-quit', () => asks.finishAll('closed')); // an AI waiting on a question hears Skillerr closed
+// Sign-ins survive a quit: Chromium writes cookies to disk in batches, so a sign-in finished just before a quit,
+// an update restart or a crash could be lost. A sign-in ends in a navigation, so write cookies out a second after
+// any page navigates (without holding up quitting, which the updater's restart relies on).
+let cookieFlush = null;
+const flushCookiesSoon = () => {
+  clearTimeout(cookieFlush);
+  cookieFlush = setTimeout(() => require('electron').session.defaultSession.cookies.flushStore().catch(() => {}), 1000);
+};
+app.on('web-contents-created', (_e, wc) => {
+  wc.on('did-navigate', flushCookiesSoon);
+  wc.on('did-redirect-navigation', flushCookiesSoon);
+});
 app.on('will-quit', () => {
   store.clearSession();
   try {
