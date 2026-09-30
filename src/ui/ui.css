@@ -206,14 +206,16 @@ body.paused .frame { background: var(--warn); box-shadow: 0 0 22px var(--warn-bg
 .panel { position: fixed; top: var(--top); right: 0; bottom: 0; width: var(--panel); display: flex; flex-direction: column; padding: 0 10px 10px 8px; }
 body.panel-closed .panel { display: none; }
 .p-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 4px 12px 6px; }
-.presence { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.presence { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.presence .orb { --size: 26px; }
+.p-actions .ibtn { width: 28px; }
 .who { min-width: 0; }
 .who-name { font-weight: 650; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .who-sub { color: var(--text-3); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .who-sub.live { color: var(--teal); }
 .who-sub.paused { color: var(--warn); }
 .p-actions { display: flex; align-items: center; gap: 2px; flex: none; }
-.pause-btn { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; margin-right: 4px; border-radius: 8px; font-size: 12px; font-weight: 600;
+.pause-btn { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; margin-right: 2px; border-radius: 8px; font-size: 12px; font-weight: 600;
   color: var(--text-2); border: 1px solid var(--line-2); transition: all .15s; }
 .pause-btn:hover { color: var(--text); background: var(--surface-3); }
 .pause-btn.live { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); background: var(--danger-bg); }
@@ -685,6 +687,7 @@ body.os-other .tab, body.os-other .ibtn, body.os-other button { -webkit-app-regi
   background: var(--surface-3); border-radius: 3px; padding: 1px 2px; }
 .conn .ic .brand, .ai-card .ic .brand, .conn .ic .brand-wrap, .ai-card .ic .brand-wrap { margin-right: 0; }
 .who-name { display: flex; align-items: center; }
+.who-name .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; } /* a flex row: the name itself takes the ellipsis */
 
 /* ---------- tab groups ---------- */
 .tab-group { -webkit-app-region: no-drag; display: flex; align-items: center; gap: 6px; height: 26px; margin: 0 2px 3px 6px; padding: 0 4px 0 9px; border-radius: 8px;

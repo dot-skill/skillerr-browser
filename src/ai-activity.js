@@ -93,4 +93,11 @@ function pickPreviewTabs(tabs, { client, session, mosaic = null, now = Date.now(
   return { mode: 'single', ids: byRecent.slice(0, 1).map((t) => t.id) };
 }
 
-module.exports = { AiActivity, pickPreviewTabs, pageKey, SESSION_GAP_MS };
+// Whose name the Pilot panel shows. An AI app says hello whenever it opens a connection (Claude Desktop does for every
+// chat, even one that never browses), so a hello only takes the header when no other app has acted within `quietMs`:
+// the app that is actually driving keeps it.
+function helloTakesHeader(current, client, lastCallAt, now, quietMs) {
+  return !current || current.name === client || now - lastCallAt >= quietMs;
+}
+
+module.exports = { AiActivity, pickPreviewTabs, pageKey, helloTakesHeader, SESSION_GAP_MS };

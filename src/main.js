@@ -32,7 +32,7 @@ const freshData = !fs.existsSync(path.join(store.DIR, 'settings.json'));
 let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
 const { AsyncLocalStorage } = require('async_hooks');
-const { AiActivity, pickPreviewTabs } = require('./ai-activity');
+const { AiActivity, pickPreviewTabs, helloTakesHeader } = require('./ai-activity');
 const { Favicons } = require('./favicons');
 // Site icons: the browser UI loads them from skillerr-icon:, answered from this computer (see "site icons" below).
 require('electron').protocol.registerSchemesAsPrivileged([{ scheme: 'skillerr-icon', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
@@ -1834,7 +1834,9 @@ function pushStatus() {
   if (hud) hud.setVisible(!!status.controller && (status.active || status.agentRunning || status.paused || status.awaitingApproval));
 }
 
+let lastCallAt = 0;
 function markActive(controller) {
+  lastCallAt = Date.now();
   status.controller = controller;
   status.active = true;
   clearTimeout(idleTimer);
@@ -3492,7 +3494,12 @@ app.whenReady().then(async () => {
       await ready;
       return op === 'action' ? previewAction(client, args) : op === 'audit' ? previewAudit(client) : previewFrame(client, args);
     },
-    onHello: (client) => ready.then(() => markActive({ name: client, via: 'mcp' })),
+    // A hello isn't driving: it names the app in the panel only if no other app is at work (helloTakesHeader).
+    onHello: (client) => ready.then(() => {
+      if (!helloTakesHeader(status.controller, client, lastCallAt, Date.now(), AI_DONE_MS)) return;
+      status.controller = { name: client, via: 'mcp' };
+      pushStatus();
+    }),
     onCall: async (client, name, args) => {
       await ready;
       const r = await execute({ name: client, via: 'mcp' }, name, args);

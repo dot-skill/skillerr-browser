@@ -76,3 +76,12 @@ test('several tabs at once show as the fleet; side-by-side tabs only if they are
   assert.deepStrictEqual(pickPreviewTabs(tabs, { client: 'Claude', session: 's1', now: now + 120_000, mosaic: [1, 2, 3] }), { mode: 'fleet', ids: [2, 3] });
   assert.deepStrictEqual(pickPreviewTabs(tabs, { client: 'Claude', session: 's1', now: now + 120_000, mosaic: [1, 3] }), { mode: 'single', ids: [3] });
 });
+
+test('a hello from another app never takes the header from the app that is driving', () => {
+  const { helloTakesHeader } = require('../src/ai-activity');
+  const code = { name: 'Claude Code', via: 'mcp' };
+  assert.strictEqual(helloTakesHeader(null, 'Claude Desktop', 0, 1000, 90000), true, 'first app to connect');
+  assert.strictEqual(helloTakesHeader(code, 'Claude Desktop', 50000, 60000, 90000), false, 'Claude Code acted 10 s ago');
+  assert.strictEqual(helloTakesHeader(code, 'Claude Code', 50000, 60000, 90000), true);
+  assert.strictEqual(helloTakesHeader(code, 'Claude Desktop', 0, 200000, 90000), true, 'nobody acted for a while');
+});
