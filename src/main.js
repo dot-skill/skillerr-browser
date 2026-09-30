@@ -10,6 +10,11 @@ const { Agent } = require('./agent');
 const connectors = require('./connect');
 const skills = require('./skills');
 const guard = require('./guard');
+const uploads = require('./uploads');
+const { opensAsPopup } = require('./popups');
+const { checkAsk, Asks } = require('./ask');
+const { Inbox, deliver, recipient } = require('./inbox');
+const { checkUntil, met } = require('./wait-for');
 const { Recorder } = require('./recorder');
 const store = require('./store');
 const { Memory, recallText, tokens } = require('./memory');
@@ -22,6 +27,7 @@ const { cosine: kilrCosine } = require('./kilr/embed');
 traceStartup('modules loaded');
 // Read on first use (or in the background once the window is up), never before the window: a big memory
 // (a Chrome history import is thousands of pages) would otherwise hold up every start.
+uploads.configure({ blocked: [store.DIR, app.getPath('userData')] }); // never uploaded, wherever they live
 const memory = new Memory(path.join(store.DIR, 'memory'), { lazy: true });
 // No settings yet means Skillerr's data is new (first install, or it was deleted): AI-app connections left behind by an
 // earlier install don't belong to it (connectors.reconcile). Checked before anything can write settings.
@@ -29,7 +35,7 @@ const freshData = !fs.existsSync(path.join(store.DIR, 'settings.json'));
 let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
 const { AsyncLocalStorage } = require('async_hooks');
-const { AiActivity, pickPreviewTabs } = require('./ai-activity');
+const { AiActivity, pickPreviewTabs, helloTakesHeader, reportedModel, SESSION_GAP_MS } = require('./ai-activity');
 const { Favicons } = require('./favicons');
 // Site icons: the browser UI loads them from skillerr-icon:, answered from this computer (see "site icons" below).
 require('electron').protocol.registerSchemesAsPrivileged([{ scheme: 'skillerr-icon', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
@@ -149,7 +155,6 @@ const HUD = { width: 560, height: 76, bottom: 18 };
 const CAPTION = { width: 1100, height: 120, bottom: 104 };
 const TILE = { label: 28, gap: 12, desktopWidth: 1280 }; // fleet tiles render a desktop-width page, zoomed to fit
 const IDLE_AFTER_MS = 4000;
-const APPROVAL_TIMEOUT_MS = 55000; // under typical MCP client timeouts; nobody may be watching
 const MAX_WORKERS = 8;
 
 app.setName('Skillerr'); // menu bar and About; the Dock name comes from the packaged app's bundle
@@ -249,6 +254,8 @@ const status = {
 let idleTimer = null;
 let seq = 0;
 const pendingApprovals = new Map();
+const asks = new Asks(); // `ask` questions waiting for a click; never mixed with approvals
+const inbox = new Inbox(); // what the user typed to their AI in the Pilot panel, until it's delivered
 
 function ui(channel, data) {
   if (chrome && !chrome.webContents.isDestroyed()) chrome.webContents.send(channel, data);
@@ -322,7 +329,7 @@ async function previewFrame(client, { viewId = '', createdAt = 0 } = {}) {
     superseded, mode: pick.mode, tiles, steps, count, deep: deep.on ? deep.depth : 0,
     // The view is this app's: it's live while this app is the one at work, and says so by name.
     controller: client || status.controller?.name || null, live: !!(status.active || status.agentRunning) && (!client || status.controller?.name === client), paused: status.paused,
-    awaitingApproval: status.awaitingApproval, ts: now,
+    awaitingApproval: status.awaitingApproval, asking: asks.size > 0, ts: now,
   };
 }
 
@@ -565,13 +572,24 @@ function attachView(tab) {
     // Fleet view: clicking anywhere on a tile opens that tab (the tile's page guard swallows the click). AI clicks don't count.
     if (ev.type === 'mouseDown' && mosaic?.includes(tab.id) && Date.now() - (wc.skillerrAiInputAt || 0) > 1000) setImmediate(() => switchTab(tab.id));
   });
-  wc.setWindowOpenHandler(({ url: target }) => {
+  wc.setWindowOpenHandler(({ url: target, disposition, features }) => {
     let host = '';
     try {
       host = new URL(wc.getURL()).hostname;
     } catch {}
-    if (Date.now() - tab.lastInput < 1500 || store.getSettings().popupsAllowed?.[host]) newTab(target, { opener: tab.id });
-    else ui('popup-blocked', { tabId: tab.id, host, url: target });
+    if (!(Date.now() - tab.lastInput < 1500 || store.getSettings().popupsAllowed?.[host])) {
+      ui('popup-blocked', { tabId: tab.id, host, url: target });
+      return { action: 'deny' };
+    }
+    // A real pop-up (Sign in with Google or Apple, a payment window) stays a pop-up window: the page and the pop-up
+    // talk through window.opener, which a tab would cut (src/popups.js). Google and Apple sign-in pages get one even when
+    // the page didn't ask for a size, as Reddit's "Continue with Google" (gsi/select?ux_mode=popup) doesn't.
+    if (opensAsPopup(target, disposition)) {
+      const size = (k, d) => Math.min(1200, Math.max(320, Number(new RegExp(`${k}=(\\d+)`).exec(features || '')?.[1]) || d));
+      return { action: 'allow', overrideBrowserWindowOptions: { parent: win, width: size('width', 500), height: size('height', 640),
+        autoHideMenuBar: true, backgroundColor: '#ffffff', minimizable: false, fullscreenable: false } };
+    }
+    newTab(target, { opener: tab.id });
     return { action: 'deny' };
   });
   wc.on('context-menu', (_e, params) => showPageMenu(tab, params));
@@ -1487,9 +1505,18 @@ function kilrStatus() {
 // From the user's own trails and their AI apps' research trails (as chosen under what Kilr learns from). A suggestion
 // the user put off comes back only once the habit has doubled; a saved one comes back as an update after two more trails.
 const kilrSuggested = new Set();
+// Skills an AI app drafted that the user hasn't decided on yet (save_skill with no answer, or Later): listed first.
+function draftSuggestions() {
+  const day = (t) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return skills.drafts().map((d) => ({ id: `ai:${d.name}`, slug: d.name, title: d.name, draftBy: d.by, update: d.update, description: d.description,
+    why: `${d.by} worked this out on ${day(d.at)} and asked to save it as a skill: ${d.description}`,
+    preview: require('./kilr/suggest').skillMarkdown({ slug: d.name, description: d.description, instructions: d.instructions }) }));
+}
+
 function kilrSuggestions() {
   const s = store.getSettings();
-  if (s.kilr === false || s.kilrSkills === false || !learningTrails()) return [];
+  const drafts = draftSuggestions();
+  if (s.kilr === false || s.kilrSkills === false || !learningTrails()) return drafts;
   const db = trailsDb();
   const found = require('./kilr/suggest').suggestSkills(db.forSkills({ you: s.kilrLearnFromYou !== false, ai: s.kilrLearnFromAi !== false }), { everyday: (h) => db.everyday(h) });
   const out = [];
@@ -1506,10 +1533,21 @@ function kilrSuggestions() {
     }
     out.push({ ...x, update: !!saved, preview: require('./kilr/suggest').skillMarkdown(x) });
   }
-  return out;
+  return [...drafts, ...out];
 }
 
 function kilrSaveSuggestion(id) {
+  if (id.startsWith('ai:')) { // the user's yes to an AI app's draft: it becomes a learned skill like any other
+    try {
+      const r = skills.acceptDraft(id.slice(3));
+      ui('skill-learned', { ...r.skill, updated: r.updated, file: r.file });
+      if (store.getSettings().shareSkillsWithClaudeCode) skills.shareWithClaudeCode();
+      trailsChanged();
+      return { ok: true, name: r.skill.name, file: r.file, updated: r.updated };
+    } catch (err) {
+      return { ok: false, message: err.message };
+    }
+  }
   const x = kilrSuggestions().find((y) => y.id === id);
   if (!x) return { ok: false, message: 'That suggestion is gone.' };
   try {
@@ -1526,6 +1564,7 @@ function kilrSaveSuggestion(id) {
 }
 
 function kilrDismissSuggestion(id) {
+  if (id.startsWith('ai:')) return (skills.dropDraft(id.slice(3)), trailsChanged());
   const x = kilrSuggestions().find((y) => y.id === id);
   const s = store.getSettings();
   store.saveSettings({ ...s, kilrSkillsDismissed: { ...(s.kilrSkillsDismissed || {}), [id]: x ? x.count : 1 } });
@@ -1796,12 +1835,37 @@ const browser = {
 // ---------------- the control gate every AI action passes through ----------------
 
 function pushStatus() {
-  ui('status', { ...status });
+  ui('status', { ...status, targets: messageTargets() });
   if (hud) hud.setVisible(!!status.controller && (status.active || status.agentRunning || status.paused || status.awaitingApproval));
 }
 
+// Who the Pilot panel's message box can write to: the app or built-in AI in the header first, then any other AI app
+// at work in this run (a call within its research session gap), and the built-in AI while it runs a task.
+// label: what the box calls it ("Message qwen3:4b").
+function messageTargets() {
+  const out = [];
+  const busy = (() => { try { return agent.running; } catch { return false; } })(); // status can go out before the agent exists
+  const add = (name, via, label = name) => name && !out.some((t) => t.name === name) && out.push({ name, via, label });
+  const builtin = () => add(agentLabel(), 'builtin', store.getSettings().model || agentLabel());
+  if (status.controller?.via === 'builtin' && busy) builtin();
+  else if (status.controller?.via === 'mcp') add(status.controller.name, 'mcp');
+  const now = Date.now();
+  for (const [name, a] of activity.active) if (name !== agentLabel() && now - a.last < SESSION_GAP_MS) add(name, 'mcp');
+  if (busy) builtin();
+  return out;
+}
+
+// Each AI app's model as it reported it: { model, how: 'whoami' | 'config' }. whoami wins over the config's SKILLERR_MODEL.
+const models = new Map();
+function noteModel(client, model, how) {
+  const m = reportedModel(model);
+  if (m && !(how === 'config' && models.get(client)?.how === 'whoami')) models.set(client, { model: m, how });
+}
+
+let lastCallAt = 0;
 function markActive(controller) {
-  status.controller = controller;
+  lastCallAt = Date.now();
+  status.controller = { ...controller, model: models.get(controller.name) || null };
   status.active = true;
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
@@ -1812,7 +1876,7 @@ function markActive(controller) {
 }
 
 // Never gated by "ask before every action": reading, narration, and local note/recording files.
-const READ_ONLY = new Set(['view_capture', 'web_search', 'fetch_page', 'save_screenshot', 'open_view', 'snapshot', 'read_page', 'screenshot', 'list_tabs', 'wait', 'read_tabs', 'list_skills', 'use_skill', 'caption', 'record_stop', 'show_tabs', 'save_note', 'recall', 'tag_session', 'my_research', 'read_note', 'my_trails']);
+const READ_ONLY = new Set(['wait_for', 'view_capture', 'web_search', 'fetch_page', 'save_screenshot', 'open_view', 'snapshot', 'read_page', 'screenshot', 'list_tabs', 'wait', 'read_tabs', 'list_skills', 'use_skill', 'caption', 'record_stop', 'show_tabs', 'save_note', 'recall', 'tag_session', 'my_research', 'read_note', 'my_trails']);
 const TRAIL_TOOL_NAMES = new Set(['my_trails', 'continue_trail']);
 const trunc = (s, n) => (String(s ?? '').length > n ? String(s).slice(0, n - 1) + '…' : String(s ?? ''));
 const NOTES_DIR = path.join(app.getPath('home'), 'Skillerr', store.PROFILE ? `notes-${store.PROFILE}` : 'notes');
@@ -1907,10 +1971,13 @@ function touchTab(tab) {
   setTimeout(pushTabs, IDLE_AFTER_MS + 50);
 }
 
+// Long enough for someone in another window to notice (settings.approvalWaitS, 2 minutes by default). The bridge keeps
+// MCP clients waiting meanwhile with progress notifications, where they honour them.
 function requestApproval(entry, reason) {
-  ui('log', { ...entry, state: 'approval', reason });
+  ui('log', { ...entry, state: 'approval', reason }); // the panel opens itself on it
+  callForAttention('Skillerr needs your OK', `${entry.controller} is waiting for you to allow or deny an action.`, entry.tabId);
   return new Promise((resolve) => {
-    const timer = setTimeout(() => finish(null), APPROVAL_TIMEOUT_MS);
+    const timer = setTimeout(() => finish(null), store.approvalWaitMs(store.getSettings()));
     function finish(ok) {
       clearTimeout(timer);
       pendingApprovals.delete(entry.id);
@@ -1994,22 +2061,29 @@ async function humanCheck(controller, tab) {
   togglePanel(true);
   win.focus();
   ui('human-check', { controller: controller.name, via: controller.via, tabId: tab.id, title: tab.view.webContents.getTitle() });
-  // If Skillerr isn't in front, make sure the user notices: a notification (once a minute per tab), a bouncing Dock
-  // icon on macOS, a flashing taskbar button on Windows. Clicking the notification opens that tab.
-  if (!win.isFocused() && Date.now() - (tab.checkNotifiedAt || 0) > 60000) {
+  if (Date.now() - (tab.checkNotifiedAt || 0) > 60000) {
     tab.checkNotifiedAt = Date.now();
     let host = '';
     try { host = new URL(tab.view.webContents.getURL()).hostname.replace(/^www\./, ''); } catch {}
-    const { Notification } = require('electron');
-    if (Notification.isSupported()) {
-      const n = new Notification({ title: 'Your turn in Skillerr', body: `${host || 'A page'} wants to check you're human. ${controller.name} is waiting for you.`, silent: false });
-      n.on('click', () => { if (win.isMinimized()) win.restore(); win.focus(); if (getTab(tab.id)) switchTab(tab.id); });
-      n.show();
-    }
-    if (process.platform === 'darwin') app.dock?.bounce('critical');
-    else win.flashFrame(true);
+    callForAttention('Your turn in Skillerr', `${host || 'A page'} wants to check you're human. ${controller.name} is waiting for you.`, tab.id);
   }
   return true;
+}
+
+// If Skillerr isn't in front, make sure the user notices: a notification, a bouncing Dock icon on macOS, a flashing
+// taskbar button on Windows, at most every 30 seconds. Clicking the notification brings Skillerr (and that tab) to the front.
+let attentionAt = 0;
+function callForAttention(title, body, tabId) {
+  if (!win || win.isDestroyed() || win.isFocused() || Date.now() - attentionAt < 30000) return;
+  attentionAt = Date.now();
+  const { Notification } = require('electron');
+  if (Notification.isSupported()) {
+    const n = new Notification({ title, body, silent: false });
+    n.on('click', () => { if (win.isMinimized()) win.restore(); win.focus(); if (tabId != null && getTab(tabId)) switchTab(tabId); });
+    n.show();
+  }
+  if (process.platform === 'darwin') app.dock?.bounce('critical');
+  else win.flashFrame(true);
 }
 
 const blocked = (controller) => controller.via === 'mcp' && (store.getSettings().blockedClients || []).includes(controller.name);
@@ -2043,6 +2117,90 @@ const requestedUrls = (name, args) => {
   if (name === 'web_search' && args.query) return [safe(String(args.query))].filter(Boolean);
   return [];
 };
+// The site an upload goes to, as the user knows it: "x.com", or the file name of a local page.
+const siteOf = (u) => {
+  try {
+    const url = new URL(u);
+    if (url.protocol === 'file:') return decodeURIComponent(url.pathname.split('/').pop() || '') || 'a local page';
+    return url.host.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+};
+const sizeText = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+// ---------- wait_for: watch a tab until the user (or the page) does something (src/wait-for.js) ----------
+// Only looks: reads the URL, the page's text or whether elements are still there, and listens to the user's own clicks.
+// The label of what they clicked is read at the click point; clicks the AI makes (skillerrAiInputAt) don't count.
+const CLICKED_LABEL_JS = (x, y) => `(() => {
+  const el = document.elementFromPoint(${Number(x)}, ${Number(y)});
+  const t = el && el.closest('button, a, [role=button], [role=link], [role=menuitem], input[type=submit], input[type=button], label, summary');
+  if (!t) return '';
+  return String(t.getAttribute('aria-label') || t.innerText || t.value || t.title || '').slice(0, 200);
+})()`;
+const PRESENT_JS = (ids) => `(${JSON.stringify(ids)}).map((id) => !!document.querySelector('[data-skillerr-id="' + id + '"]'))`;
+
+// An AI waiting on the user (ask, inbox, wait_for) is still at work: keep its research session from being put away
+// (tuckFinishedResearch) while the call is open. Returns a stop function.
+function stillWorking(controller) {
+  const t = setInterval(() => activity.touch(controller.name), 30000);
+  return () => clearInterval(t);
+}
+
+async function waitFor(args, controller) {
+  const until = checkUntil(args.until, args.timeout_s);
+  const tab = targetTab(args);
+  if (!tab || tab.isStart) throw new Error('No page open in that tab to watch. Call list_tabs.');
+  const wc = tab.view.webContents;
+  const state = { startUrl: wc.getURL(), url: wc.getURL(), navigations: 0, clicks: [], present: null, text: '' };
+  const onNav = () => state.navigations++;
+  const onInput = (_e, ev) => {
+    if (ev.type !== 'mouseDown' || Date.now() - (wc.skillerrAiInputAt || 0) < 1000) return; // the AI's own clicks aren't the user's
+    const z = wc.getZoomFactor() || 1;
+    wc.executeJavaScript(CLICKED_LABEL_JS(ev.x / z, ev.y / z)).then((l) => l && state.clicks.push(l)).catch(() => {});
+  };
+  wc.on('did-navigate', onNav);
+  wc.on('did-navigate-in-page', onNav);
+  wc.on('input-event', onInput);
+  const end = Date.now() + until.ms;
+  const stop = stillWorking(controller);
+  const answer = (o) => ({ text: JSON.stringify({ ...o, url: wc.isDestroyed() ? undefined : wc.getURL() }) });
+  try {
+    for (;;) {
+      if (wc.isDestroyed()) return { text: JSON.stringify({ happened: false, status: 'tab closed' }) };
+      state.url = wc.getURL();
+      if (until.kind === 'text_appears') state.text = await wc.executeJavaScript('document.body ? document.body.innerText.slice(0, 500000) : ""').catch(() => '');
+      if (until.kind === 'element_gone') {
+        // Snapshot ids can be in frames too: an element counts as there if any frame still has it.
+        const frames = wc.mainFrame.framesInSubtree.filter((f) => !f.isDestroyed?.());
+        const seen = await Promise.all(frames.map((f) => f.executeJavaScript(PRESENT_JS(until.ids)).catch(() => null)));
+        state.present = Object.fromEntries(until.ids.map((id, i) => [id, seen.some((x) => x?.[i])]));
+      }
+      const hit = met(until, state);
+      if (hit) return answer({ happened: true, ...hit });
+      if (Date.now() >= end) return answer({ happened: false, status: 'not yet' });
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  } finally {
+    stop();
+    if (!wc.isDestroyed()) {
+      wc.removeListener('did-navigate', onNav);
+      wc.removeListener('did-navigate-in-page', onNav);
+      wc.removeListener('input-event', onInput);
+    }
+  }
+}
+
+// The `ask` tool: the question and its buttons go in the Pilot panel as a step; the call waits for the click (src/ask.js).
+async function askUser(controller, args, session) {
+  const q = checkAsk(args);
+  const entry = { id: ++seq, ts: Date.now(), controller: controller.name, via: controller.via, session, tool: 'ask', args: { text: q.text, options: q.options }, target: '', state: 'asking' };
+  ui('log', entry);
+  const stop = stillWorking(controller);
+  const r = await asks.open(entry.id, controller.name, q.options, q.ms).finally(stop);
+  ui('log', { ...entry, state: r.choice != null ? 'ok' : 'done', choice: r.choice, status: r.status, ts: Date.now() });
+  markActive(controller);
+  return { text: JSON.stringify(r) };
+}
 const tabTitle = (t) => (t?.sleeping ? t.sleeping.title : t?.view && !t.view.webContents.isDestroyed() ? t.view.webContents.getTitle() : '');
 
 async function executeInSession(controller, name, args, session) {
@@ -2054,6 +2212,17 @@ async function executeInSession(controller, name, args, session) {
   if (name === 'say') {
     ui('say', { controller: controller.name, via: controller.via, text: String(args.text || '').slice(0, 4000) });
     return { text: 'Shown to the user.' };
+  }
+  // Returns before the approval gate below and never reaches it: an ask button steers the AI, it can't approve anything.
+  if (name === 'ask') return askUser(controller, args, session);
+  if (name === 'whoami') {
+    noteModel(controller.name, args.model, 'whoami');
+    markActive(controller);
+    return { text: `Skillerr knows your app as "${controller.name}"${models.get(controller.name) ? ` and shows your model as "${models.get(controller.name).model}" (reported by you)` : ''}.` };
+  }
+  if (name === 'inbox') {
+    const stop = stillWorking(controller);
+    return { text: '', inbox: await inbox.wait(controller.name, Math.min(600, Math.max(0, Number(args.wait_s) || 0)) * 1000).finally(stop) };
   }
 
   const id = ++seq;
@@ -2090,24 +2259,67 @@ async function executeInSession(controller, name, args, session) {
     throw new Error('That is a robot check. Only the user may complete it: Skillerr has asked them to. Carry on with your other tabs meanwhile, then come back to this one and take a new snapshot.');
   }
 
+  // Uploading from the user's disk always needs their OK in Skillerr, in every approval mode: the approval shows the
+  // file names and the site. Paths in credential folders are refused outright, before anyone is asked.
+  let upload = null;
+  if (name === 'upload_file') {
+    upload = { site: tab ? siteOf(tabUrl(tab)) : '' };
+    const frameSite = info?.frameUrl ? siteOf(info.frameUrl) : '';
+    entry.site = frameSite && frameSite !== upload.site ? `${upload.site} (in a frame from ${frameSite})` : upload.site;
+    let files;
+    try {
+      files = upload.files = uploads.checkPaths(args.paths);
+    } catch (err) {
+      ui('log', { ...entry, state: 'error', summary: err.message });
+      throw new Error(`${err.message} Don't try another way to send it; if the user really means to share it, they can attach it themselves.`);
+    }
+    upload.reason = `${controller.name} wants to send ${files.length === 1 ? 'this file' : `these ${files.length} files`} from your computer to ` +
+      `${entry.site || 'this page'}: ${files.map((f) => `${f.name} (${sizeText(f.size)})`).join(', ')}. Allow only if you meant to share ${files.length === 1 ? 'it' : 'them'} there.`;
+  }
+
   // Sensitive actions always need a human, even with approval mode off. Enforced here, not by the prompt.
   // A learned skill steers every future task, so a page can't be allowed to plant one unseen.
-  if (name === 'save_skill') entry.target = String(args.name || '');
+  if (name === 'save_skill') {
+    entry.target = String(args.name || '');
+    try {
+      skills.checkShareable(args); // a skill is for any AI: never the user's own details, and the user isn't asked to judge that
+    } catch (err) {
+      ui('log', { ...entry, state: 'error', summary: 'Not saved: it contained personal details' });
+      throw err;
+    }
+  }
   // Trails are the user's own browsing: each AI app asks once, and the answer is remembered.
   const trailConsent = TRAIL_TOOL_NAMES.has(name) && controller.via === 'mcp' && !(store.getSettings().trailsAllowedClients || []).includes(controller.name);
   if (trailConsent) entry.target = 'your trails';
-  const reason = name === 'save_skill' ? `Skills change how AIs work on future tasks. “${trunc(args.description, 140)}”`
+  const reason = upload ? upload.reason
+    : name === 'save_skill' ? `Skills change how AIs work on future tasks. “${trunc(args.description, 140)}”`
     : trailConsent ? `${controller.name} wants to see your trails: the titles and pages of your ongoing work in Skillerr. If you allow it, it can see them from now on (you can take that back in Trails).`
     : info?.sensitive ? `This looks like ${info.sensitive}.`
     : status.requireApproval && !READ_ONLY.has(name) ? null : undefined;
   if (reason !== undefined) {
-    const ok = await requestApproval(entry, reason);
+    const answer = await requestApproval(entry, reason);
+    const ok = answer === 'later' ? null : answer; // "Later" is only ever a not-yet, never a yes
+    // A skill nobody said yes or no to isn't lost: it waits among the Orb's suggested skills until the user decides.
+    if (name === 'save_skill' && ok === null) {
+      const { draft, refined } = skills.draft({ ...args, by: controller.name });
+      ui('log', { ...entry, state: 'ok', draft: true, ts: Date.now() });
+      trailsChanged();
+      return { text: `Saved "${draft.name}" as a suggested skill awaiting the user${refined ? ' (it replaces your earlier draft of it)' : ''}. It is not active yet: ` +
+        'the user can save it from Skillerr\'s suggested skills whenever they choose, and until then use_skill can\'t load it. Don\'t retry; ' +
+        'to change it, call save_skill again with the same name.' };
+    }
     if (!ok) {
-      ui('log', { ...entry, state: 'error', summary: ok === null ? 'No one approved in time' : 'You declined this action' });
-      for (const u of requestedUrls(name, args)) audit(u, 'declined', { reason: ok === null ? 'No one approved in time' : 'You declined it' });
+      ui('log', { ...entry, state: 'error', summary: ok === null ? 'No answer yet, so nothing was done' : 'You declined this action' });
+      for (const u of requestedUrls(name, args)) audit(u, 'declined', { reason: ok === null ? 'No answer yet' : 'You declined it' });
       throw new Error(ok === null
-        ? 'This action needs the user\'s approval in Skillerr and nobody approved it in time. Ask the user to watch Skillerr and approve, then retry.'
+        ? 'No answer yet: this action needs the user\'s OK in Skillerr and they haven\'t answered, so nothing was done. It was not declined. ' +
+          'Tell the user it\'s waiting for their OK in Skillerr, then make the same call again.'
         : 'The user declined this action. Do not retry it.');
+    }
+    // The page may have moved on while the user was deciding: the files go only to the site they approved.
+    if (upload && tab && siteOf(tabUrl(tab)) !== upload.site) {
+      ui('log', { ...entry, state: 'error', summary: 'The page changed before the upload; nothing was sent' });
+      throw new Error(`The tab left ${upload.site} before the upload ran, so nothing was sent. Go back to the page and ask again.`);
     }
     if (trailConsent) {
       const s = store.getSettings();
@@ -2182,6 +2394,7 @@ function pageTab(args) {
 }
 
 const BROWSER_TOOLS = {
+  wait_for: (args, controller) => waitFor(args, controller),
   list_skills: async () => ({ text: skills.listText() }),
   use_skill: async (args) => ({ text: skills.useText(args.name) }),
   record_start: async (args) => {
@@ -2449,7 +2662,7 @@ async function dispatch(controller, { instruction, tab_ids = [], urls = [] }) {
   if (!targets.length) throw new Error('Give tab_ids of open tabs and/or urls to open.');
   if (targets.length > MAX_WORKERS) throw new Error(`At most ${MAX_WORKERS} tabs per dispatch.`);
   enterMosaic(targets.map((t) => t.id));
-  const workerTools = TOOLS.filter((t) => !['list_tabs', 'new_tab', 'switch_tab', 'close_tab', 'open_tabs', 'read_tabs', 'dispatch', 'record_start', 'caption', 'record_stop', 'show_tabs', 'say', 'save_note', 'save_skill', 'recall', 'tag_session', 'deep_research', 'my_research', 'read_note', 'open_view', 'save_screenshot', 'my_trails', 'continue_trail'].includes(t.name));
+  const workerTools = TOOLS.filter((t) => !['list_tabs', 'new_tab', 'switch_tab', 'close_tab', 'open_tabs', 'read_tabs', 'dispatch', 'record_start', 'caption', 'record_stop', 'show_tabs', 'say', 'ask', 'inbox', 'whoami', 'save_note', 'save_skill', 'recall', 'tag_session', 'deep_research', 'my_research', 'read_note', 'open_view', 'save_screenshot', 'my_trails', 'continue_trail'].includes(t.name));
 
   const reports = await Promise.all(targets.map(async (t) => {
     const worker = new Agent({
@@ -2481,7 +2694,7 @@ function agentLabel() {
 
 const agent = new Agent({
   getSettings: store.getSettings,
-  tools: TOOLS.filter((t) => t.name !== 'say'),
+  tools: TOOLS.filter((t) => !['say', 'ask', 'inbox', 'whoami'].includes(t.name)), // its replies already land in the panel, where the user types back
   execute: (name, args) => execute({ name: agentLabel(), via: 'builtin' }, name, args),
   onEvent: (ev) => ui('agent', ev),
   getContext: () => `Installed skills (call use_skill to load one when a task matches):\n${skills.catalog()}` +
@@ -2496,11 +2709,19 @@ async function runAgent(task) {
   status.agentRunning = true;
   markActive({ name: agentLabel(), via: 'builtin' });
   if (remembering()) memSession({ name: agentLabel(), via: 'builtin' }, { goal: task.replace(/^Use the "[^"]+" skill[\s\S]*?Task: /, ''), fresh: true });
+  let left = [];
   try {
-    await agent.run(task);
+    const run = agent.run(task);
+    pushStatus(); // it's running now: the panel's message box can write to it
+    left = (await run).left || [];
   } finally {
     status.agentRunning = false;
     pushStatus();
+  }
+  // Told something just as it finished: that's the next task.
+  if (left.length && !status.paused) {
+    ui('agent', { type: 'next-task', text: left.join('\n') });
+    runAgent(left.join('\n'));
   }
 }
 
@@ -2530,6 +2751,7 @@ function setPaused(paused) {
     agent.stop();
     for (const w of workers) w.stop();
     for (const finish of [...pendingApprovals.values()]) finish(false);
+    asks.finishAll('paused');
   }
   pushStatus();
 }
@@ -2552,7 +2774,22 @@ function wireIpc() {
   ipcMain.on('close-tab', (_e, id) => closeTab(id));
   ipcMain.on('toggle-panel', (_e, open) => togglePanel(typeof open === 'boolean' ? open : undefined));
   ipcMain.on('pause', (_e, paused) => setPaused(paused));
-  ipcMain.on('approval', (_e, { id, ok }) => pendingApprovals.get(id)?.(!!ok));
+  ipcMain.on('approval', (_e, { id, ok }) => pendingApprovals.get(id)?.(ok === 'later' ? 'later' : !!ok));
+  // The Pilot panel's message box: to the AI in the header, or the one picked. The only way a message is ever made.
+  // The built-in AI takes it straight into its loop at its next step; an AI app gets it with its next tool call.
+  ipcMain.handle('pilot-message', (_e, { text, to: picked } = {}) => {
+    const targets = messageTargets();
+    const to = recipient(picked, status.controller?.name, targets.map((t) => t.name));
+    const target = targets.find((t) => t.name === to);
+    if (!target) return { ok: false, message: 'No AI is at work to send it to.' };
+    if (target.via === 'builtin') {
+      if (agent.tell(text)) return { ok: true, to, label: target.label, builtin: true };
+      return { ok: false, start: true }; // it just finished: the message starts a new task, as if typed below
+    }
+    const m = inbox.post(to, text);
+    return m ? { ok: true, id: m.id, to, label: target.label } : { ok: false, message: 'Type a message first.' };
+  });
+  ipcMain.on('ask-choice', (_e, { id, choice }) => asks.answer(Number(id), String(choice))); // asks only, never an approval
   ipcMain.on('undo', (_e, id) => undo(id));
   ipcMain.on('mosaic-exit', () => exitMosaic());
   ipcMain.handle('tabs-refresh', () => pushTabs());
@@ -3380,11 +3617,27 @@ app.whenReady().then(async () => {
       await ready;
       return op === 'action' ? previewAction(client, args) : op === 'audit' ? previewAudit(client) : previewFrame(client, args);
     },
-    onHello: (client) => ready.then(() => markActive({ name: client, via: 'mcp' })),
-    onCall: async (client, name, args) => {
+    // A hello isn't driving: it names the app in the panel only if no other app is at work (helloTakesHeader).
+    onHello: (client, { model } = {}) => ready.then(() => {
+      noteModel(client, model, 'config');
+      if (!helloTakesHeader(status.controller, client, lastCallAt, Date.now(), AI_DONE_MS)) return;
+      status.controller = { name: client, via: 'mcp', model: models.get(client) || null };
+      pushStatus();
+    }),
+    onCall: async (client, name, args, { model } = {}) => {
       await ready;
+      noteModel(client, model, 'config');
       const r = await execute({ name: client, via: 'mcp' }, name, args);
-      return { text: r.text, image: r.image };
+      // The user's Pilot panel messages ride along on the app's next result (src/inbox.js).
+      const { text, ids } = deliver(inbox, client, name, r);
+      if (ids.length) ui('inbox-read', ids);
+      return { text, image: r.image };
+    },
+    onInbox: async (client, waitS) => {
+      await ready;
+      const got = await inbox.wait(client, Math.min(600, Math.max(0, waitS)) * 1000);
+      if (got.length) ui('inbox-read', got.map((m) => m.id));
+      return { messages: got.map(({ to, text, at }) => ({ to, text, at })) };
     },
   }).then((api) => {
     store.writeSession({ port: api.port, token: api.token, pid: process.pid });
@@ -3458,6 +3711,19 @@ function startWidevine() {
 }
 
 app.on('before-quit', snapshotForQuit);
+app.on('before-quit', () => asks.finishAll('closed')); // an AI waiting on a question hears Skillerr closed
+// Sign-ins survive a quit: Chromium writes cookies to disk in batches, so a sign-in finished just before a quit,
+// an update restart or a crash could be lost. A sign-in ends in a navigation, so write cookies out a second after
+// any page navigates (without holding up quitting, which the updater's restart relies on).
+let cookieFlush = null;
+const flushCookiesSoon = () => {
+  clearTimeout(cookieFlush);
+  cookieFlush = setTimeout(() => require('electron').session.defaultSession.cookies.flushStore().catch(() => {}), 1000);
+};
+app.on('web-contents-created', (_e, wc) => {
+  wc.on('did-navigate', flushCookiesSoon);
+  wc.on('did-redirect-navigation', flushCookiesSoon);
+});
 app.on('will-quit', () => {
   store.clearSession();
   try {

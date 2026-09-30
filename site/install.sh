@@ -8,7 +8,7 @@
 set -e
 # The newest published release, unless SKILLERR_VERSION pins one.
 VERSION="${SKILLERR_VERSION:-$(curl -fsSL https://api.github.com/repos/dot-skill/skillerr-releases/releases/latest 2>/dev/null | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p' | head -1)}"
-VERSION="${VERSION:-0.1.4}"
+VERSION="${VERSION:-0.1.9}"
 BASE="${SKILLERR_RELEASE:-https://github.com/dot-skill/skillerr-releases/releases/download/v$VERSION}"
 CONNECT=1
 for a in "$@"; do [ "$a" = "--no-connect" ] && CONNECT=0; done

@@ -39,6 +39,19 @@ test('hosts with MCP Apps get the live view', async (t) => {
   assert.deepStrictEqual(audit.structuredContent, { offline: true });
 });
 
+test('ask is offered with its schema, and never carries the live view', async (t) => {
+  const client = await connect({ extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } } });
+  t.after(() => client.close());
+  const ask = (await client.listTools()).tools.find((x) => x.name === 'ask');
+  assert.ok(ask);
+  assert.deepStrictEqual(ask.inputSchema.required, ['text', 'options']);
+  assert.strictEqual(ask.inputSchema.properties.text.type, 'string');
+  assert.deepStrictEqual([ask.inputSchema.properties.options.minItems, ask.inputSchema.properties.options.maxItems], [2, 5]);
+  assert.strictEqual(ask.inputSchema.properties.timeout_s.maximum, 600);
+  assert.match(ask.description, /never grant approval/);
+  assert.ok(!ask._meta);
+});
+
 test('other hosts see plain tools only', async (t) => {
   const client = await connect({});
   t.after(() => client.close());
@@ -47,4 +60,46 @@ test('other hosts see plain tools only', async (t) => {
   assert.ok(!tools.some((x) => x._meta));
   const { resources } = await client.listResources();
   assert.ok(!resources.some((r) => r.uri.startsWith('ui://')));
+});
+
+// A stand-in Skillerr that asks and gets a click: the bridge waits for the answer and hands back the chosen label.
+test('ask waits for the click and returns the choice', async (t) => {
+  const { startApiServer } = require('../src/api-server');
+  const { Asks } = require('../src/ask');
+  const asks = new Asks();
+  const { server, port, token } = await startApiServer({
+    tools: [], onHello: () => {},
+    onCall: async (_c, name, args) => {
+      setTimeout(() => asks.answer(1, args.options[0]), 300); // the user clicks "Done, next"
+      return { text: JSON.stringify(await asks.open(1, 'Claude Desktop', args.options, 5000)) };
+    },
+  });
+  t.after(() => server.close());
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'skillerr-bridge-'));
+  fs.mkdirSync(path.join(home, '.skillerr', 'browser'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.skillerr', 'browser', 'session.json'), JSON.stringify({ port, token }));
+  const client = new Client({ name: 'claude-ai', version: '1.0.0' }, { capabilities: {} });
+  await client.connect(new StdioClientTransport({ command: process.execPath, args: [BRIDGE], env: { ...process.env, HOME: home, USERPROFILE: home }, stderr: 'ignore' }));
+  t.after(() => client.close());
+  const r = await client.callTool({ name: 'ask', arguments: { text: 'Posted it?', options: ['Done, next', 'Skip'] } });
+  assert.deepStrictEqual(JSON.parse(r.content[0].text), { choice: 'Done, next' });
+});
+
+// MCP's clientInfo names the app, never the model: the model only comes from the app's own config (or whoami).
+test('SKILLERR_MODEL from the app config goes along with each call, as reported', async (t) => {
+  const { startApiServer } = require('../src/api-server');
+  const seen = [];
+  const { server, port, token } = await startApiServer({ tools: [], onHello: (c, meta) => seen.push(['hello', c, meta.model]),
+    onCall: async (c, name, _args, meta) => (seen.push([name, c, meta.model]), { text: 'ok' }) });
+  t.after(() => server.close());
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'skillerr-bridge-'));
+  fs.mkdirSync(path.join(home, '.skillerr', 'browser'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.skillerr', 'browser', 'session.json'), JSON.stringify({ port, token }));
+  const client = new Client({ name: 'claude-code', version: '2.1.0' }, { capabilities: {} });
+  await client.connect(new StdioClientTransport({ command: process.execPath, args: [BRIDGE], env: { ...process.env, HOME: home, USERPROFILE: home, SKILLERR_MODEL: 'Claude Sonnet 5.5' }, stderr: 'ignore' }));
+  t.after(() => client.close());
+  await client.callTool({ name: 'snapshot', arguments: {} });
+  assert.deepStrictEqual(seen.find((x) => x[0] === 'snapshot'), ['snapshot', 'Claude Code', 'Claude Sonnet 5.5']);
+  const whoami = (await client.listTools()).tools.find((x) => x.name === 'whoami');
+  assert.deepStrictEqual(whoami.inputSchema.required, ['model']);
 });

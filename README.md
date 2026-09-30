@@ -8,8 +8,10 @@
   </picture>
 </a>
 
-<p><b>Research like it was meant to be.</b><br>
-Your AI browses in real tabs you can watch, asks before anything that matters, and keeps what it learns on your computer.</p>
+<p><b>See what your AI browses. Keep what it learns.</b><br>
+Claude, Cursor and Codex research the web in real tabs you can watch, so what your AI tells you comes from pages it
+checked today, not an old memory or a guess. Everything it reads is kept on your computer and sorted by your Orb, your
+own tiny AI model that sends nothing anywhere.</p>
 
 <p>
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-8b6cff"></a>
@@ -33,6 +35,20 @@ Your AI browses in real tabs you can watch, asks before anything that matters, a
 <img alt="Skillerr's fleet view: an AI researching power bank rules across TSA, FAA, JAL and Tokyo Cheapo in four live tabs, with the Pilot panel logging each step" src=".github/assets/fleet.png" width="100%">
 
 </div>
+
+## New in 0.1.9
+
+- **Your AI can attach files.** Adding an image or video to a post on X, Reddit, LinkedIn or Product Hunt, or a
+  document to a form, no longer stops for you to do it by hand: `upload_file` fills the file input or the "Add photos"
+  picker. **Every upload waits for your OK in Skillerr**, naming the files and the site, and files in `~/.ssh`,
+  `~/.skillerr`, keychains, password managers and other credential stores are always refused.
+  [Release notes](.github/release-notes/v0.1.9.md)
+- **Sign in with Google and Apple works on sites like X** (0.1.8): their sign-in opens as a small pop-up window, as in
+  other browsers. [Release notes](.github/release-notes/v0.1.8.md)
+- **The first-run "Get started" button responds again** on desktop installers (0.1.7).
+  [Release notes](.github/release-notes/v0.1.7.md)
+- Earlier: your Orb sorts your tabs into journeys, one live view per chat, plain web results and Deep research
+  ([0.1.6](.github/release-notes/v0.1.6.md)).
 
 ## The browser that skills your AI
 
@@ -125,6 +141,19 @@ flowchart LR
 - **Fleet view** (⇧⌘F) shows every tab your AI is working in, side by side and live. Click a tile to step in.
 - **The Pilot panel** logs every step in plain English ("Opening jal.co.jp", "Reading several tabs"), with **Pause**,
   **Take over** (Human mode) and **Undo** on actions that can be undone.
+- **Quick questions.** `ask` puts a question and a few buttons ("Done, next", "Skip this one") in the Pilot panel and
+  waits for your click; the step log keeps it as "Asked: Posted it? → Done, next". Ask buttons only steer the AI: they
+  never approve anything. See [docs/ask.md](docs/ask.md).
+- **Message your AI** from the Pilot panel while it drives: it gets what you type with its next step, from `inbox`, or
+  (when idle) through `node mcp/bridge.js --watch-inbox` under Claude Code's Monitor. See [docs/messages.md](docs/messages.md).
+- **Which model is driving.** MCP tells Skillerr the app ("Claude Code"), not the model. If the app reports it (the
+  `whoami` tool, or `"env": { "SKILLERR_MODEL": "Claude Sonnet 5.5" }` in its Skillerr MCP config), the header shows
+  it under the app's name ("Claude Code / Idle · Claude Sonnet 5.5"), dotted, with a tooltip saying it's as reported.
+  Skillerr never guesses a model.
+- **Wait for you, not for "done".** `wait_for` lets the AI hand a step to you and carry on when you've done it:
+  `wait_for({ tab_id, until: { user_clicked: "Reply" } })` returns once *you* click Reply (its own clicks don't count).
+  It can also wait for a URL (`"x.com/*/status/*"`), text on the page, an element to go away, or any navigation. It only
+  watches; it never clicks or types. No answer in time is `{"happened":false,"status":"not yet"}`, not an error.
 - **Deep research** follows the links that matter, 1 to 5 hops from the first pages. Off by default; turn it on in
   Settings (3 hops unless you pick another) or with the Deep button.
 - Tabs for one task are **grouped and named** after the AI that opened them. Show them all or close them all in one click.
@@ -228,6 +257,8 @@ See [docs/trails.md](docs/trails.md).
 <summary><b>What you get</b></summary>
 
 - Standard `SKILL.md` skills. Your AI saves procedures it worked out (with your approval) and uses them next time.
+  If you don't answer in time, or pick **Later**, the draft waits among your suggested skills until you decide. Skills
+  never hold your personal details: one with an email, handle, phone number, file path or key is refused.
 - **Research as a skill.** Turn a research folder into a skill with **Make it a skill**, so any AI can pick up where
   the last one left off.
 - Learned skills can be mirrored into Claude Code.
@@ -264,9 +295,16 @@ See [docs/trails.md](docs/trails.md).
   invisible Unicode are stripped before your AI reads a page, and text that addresses the AI ("ignore your
   instructions …") is removed. Flagged pages are cleaned and reported in the Pilot panel.
 - **Approvals.** In auto mode, payments, passwords, sign-ins and deletions wait for you. In manual mode, Skillerr asks
-  before every action. Approvals are always decided in Skillerr, next to the page, never from the chat.
+  before every action. Approvals are always decided in Skillerr, next to the page, never from the chat, and never by
+  an `ask` button: those look different and can't satisfy or skip an approval.
+- **File uploads wait for you, every time.** `upload_file` lets your AI attach an image, video or document to a post or
+  form (X, Reddit, LinkedIn, Product Hunt, any file input or "Add photos" button). Each upload asks for your OK in
+  Skillerr, next to the page, naming the files and the site, in every approval mode; the Pilot panel logs it as
+  "Attaching card-tabs.png to x.com". Files in `~/.skillerr`, `~/.ssh`, keychains, password managers, browser profiles
+  and other credential stores, and key files like `.env` or `id_rsa`, are always refused.
 - **Robot checks** are handed to you. **Pause**, **Take over** and **Undo** are always one click away.
-- Try it: [`demo/safety-demo.html`](demo/safety-demo.html) and [`demo/injection-test.html`](demo/injection-test.html).
+- Try it: [`demo/safety-demo.html`](demo/safety-demo.html), [`demo/injection-test.html`](demo/injection-test.html) and
+  [`demo/upload-demo.html`](demo/upload-demo.html).
 
 </details>
 
@@ -279,7 +317,7 @@ See [docs/trails.md](docs/trails.md).
   into robot checks.
 - **In-place updates.** Windows, the Linux AppImage and signed Mac builds update themselves ("Restart to update").
   Other Mac builds get a download link. **Settings → Beta updates** opts in to prereleases.
-- Tab groups per research task, tab sleeping to stay light, per-tab zoom, a pop-up blocker, site permission prompts,
+- Tab groups per research task, tab sleeping to stay light, per-tab zoom, a pop-up blocker (sign-in pop-ups like Google's and Apple's open as real pop-up windows), site permission prompts,
   find in page, downloads, a context menu with "Ask Skillerr", history with Clear browsing data, bookmarks, Chrome import, and light and
   dark themes.
 - Recordings of a tab or the window with captions, and screenshots, saved to your Movies and Pictures folders.
@@ -333,7 +371,7 @@ npm test                           # unit tests, including the recall quality ch
 ```
 
 Requires Node.js 22. More docs: [live view in Claude Desktop](docs/live-view.md), [passkeys](docs/passkeys.md),
-[recall by meaning](docs/recall-by-meaning.md), [trails](docs/trails.md), [the Orb](docs/orb.md), [benchmarks](docs/benchmarks.md).
+[recall by meaning](docs/recall-by-meaning.md), [ask buttons](docs/ask.md), [trails](docs/trails.md), [the Orb](docs/orb.md), [benchmarks](docs/benchmarks.md).
 
 <details>
 <summary><b>Project layout</b></summary>

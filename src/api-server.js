@@ -6,7 +6,7 @@ const crypto = require('crypto');
 
 const PREFERRED_PORT = 47821;
 
-function startApiServer({ tools, onHello, onCall, onPreview }) {
+function startApiServer({ tools, onHello, onCall, onPreview, onInbox }) {
   const token = crypto.randomBytes(24).toString('hex');
 
   const server = http.createServer(async (req, res) => {
@@ -31,15 +31,19 @@ function startApiServer({ tools, onHello, onCall, onPreview }) {
     try {
       if (req.method === 'GET' && req.url === '/tools') return send(200, { tools });
       if (req.method === 'POST' && req.url === '/hello') {
-        onHello(body.client || 'Unknown AI');
+        onHello(body.client || 'Unknown AI', { model: body.model });
         return send(200, { ok: true });
       }
       // Live preview for AI apps: frames and Pause / Take over. Not an AI action, so not logged or gated.
       if (req.method === 'POST' && req.url === '/preview' && onPreview) {
         return send(200, await onPreview(body.client || 'Unknown AI', body.op, body.args || {}));
       }
+      // Messages from the Pilot panel, for `node mcp/bridge.js --watch-inbox`. Read only: messages are made in the panel.
+      if (req.method === 'POST' && req.url === '/inbox' && onInbox) {
+        return send(200, await onInbox(body.client || '*', Number(body.wait_s) || 0));
+      }
       if (req.method === 'POST' && req.url === '/call') {
-        const result = await onCall(body.client || 'Unknown AI', body.name, body.args || {});
+        const result = await onCall(body.client || 'Unknown AI', body.name, body.args || {}, { model: body.model });
         return send(200, result);
       }
       send(404, { error: 'Not found' });

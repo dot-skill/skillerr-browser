@@ -54,6 +54,7 @@ button svg { display: block; }
 .steps li.ok i { color: var(--ok); }
 .steps li.error i { color: var(--err); }
 .steps li.approval { color: var(--warn); font-weight: 600; }
+.steps li.asking { color: var(--text); font-weight: 600; }
 .note { margin: 10px 0 0; color: var(--text-2); font-size: 12px; }
 .state-offline .stage { opacity: 0.55; }
 button.who { flex: 1; min-width: 0; height: auto; padding: 2px 4px; margin-left: -4px; border: 0; background: none; text-align: left; font-size: 13px; font-weight: 400; }

@@ -16,6 +16,7 @@ const DEFAULTS = {
   apiKey: '',
   baseUrl: '',
   requireApproval: false,
+  approvalWaitS: 120, // how long an approval waits for the user before the AI hears "no answer yet" (30 to 600)
   remember: true, // research memory (src/memory.js)
   semanticRecall: true, // recall by meaning with a local embedding model, when one is running (src/embed.js)
   embedBaseUrl: '', // OpenAI-compatible embeddings endpoint; default Ollama on this computer
@@ -85,4 +86,5 @@ module.exports = {
   writeSession: (s) => writeJson(SESSION, s),
   readSession: () => readJson(SESSION, null),
   clearSession: () => fs.rmSync(SESSION, { force: true }),
+  approvalWaitMs: (s) => Math.round(Math.min(600, Math.max(30, Number(s?.approvalWaitS) || DEFAULTS.approvalWaitS)) * 1000),
 };

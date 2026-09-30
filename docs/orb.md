@@ -148,6 +148,14 @@ The skill says, from what was observed:
   chosen under what the Orb learns from (Trails settings). The skill says who did the research.
 - **Not now** puts a suggestion off until the habit has doubled. A saved skill is offered as an update after two more
   trails. A skill of the same name the user made themselves is never overwritten.
+- **Skills your AI apps drafted** join the list. When an AI app calls `save_skill` and the user doesn't answer the
+  approval in time, or picks **Later**, the draft is kept here ("Claude Code drafted a skill: x-post-thread") instead of
+  being lost. It isn't a skill until the user saves it: `use_skill` can't load it, and `list_skills` tells the AI it's
+  waiting. Saving it again under the same name refines the draft (or, once saved, updates the skill); **Not now**
+  drops it. These show even with the Orb's own suggestions turned off.
+- **Never the user's details.** A skill an AI app writes is refused, with what to generalise, if it holds an email
+  address, phone number, a profile link or @handle, the user's account name, a home-folder path, a key, token or
+  password, or a long account or order number (`x.com/<handle>`, `<email>` and `~/<file>` are fine).
 - **Turn it off:** Trails settings → Suggest skills from what you keep doing.
 - **What it doesn't do (yet):** notice the same *subject* coming back weeks apart. The Orb's closeness between whole
   trails wasn't reliable enough for that (related trails scored as low as unrelated ones), and a wrong suggestion is

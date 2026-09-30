@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Skillerr ask demo — fake thread</title>
+  <style>
+    body { font: 15px/1.5 -apple-system, sans-serif; max-width: 560px; margin: 40px auto; padding: 0 20px; color: #1b1b22; }
+    .card { border: 1px solid #e3e3ea; border-radius: 14px; padding: 16px 20px; margin: 12px 0; }
+    .card.posted { border-color: #1f9d55; background: #f0fbf4; }
+    button { padding: 8px 16px; border-radius: 9px; border: 0; background: #6d4aff; color: #fff; font: 600 14px sans-serif; cursor: pointer; }
+    button:disabled { background: #bbb; cursor: default; }
+    .note { background: #fff7e6; border-radius: 10px; padding: 10px 14px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <p class="note">This is a <b>fake</b> page for testing Skillerr's <code>ask</code>. Nothing is posted anywhere. Ask your AI:
+    "Post the three replies on this page one at a time. After each, use <code>ask</code> with options
+    Done, next / Skip this one / Stop here, and follow my answer."</p>
+
+  <h1>Thread draft</h1>
+  <div class="card" id="r1"><p>1/3 Skillerr is a browser your AI drives while you watch.</p><button type="button">Post reply 1</button></div>
+  <div class="card" id="r2"><p>2/3 Every step shows up in the Pilot panel, in plain English.</p><button type="button">Post reply 2</button></div>
+  <div class="card" id="r3"><p>3/3 Payments, passwords and uploads always wait for your OK.</p><button type="button">Post reply 3</button></div>
+
+  <script>
+    for (const card of document.querySelectorAll('.card')) {
+      const b = card.querySelector('button');
+      b.addEventListener('click', () => {
+        card.classList.add('posted');
+        b.disabled = true;
+        b.textContent = 'Posted (not really — this is a demo)';
+      });
+    }
+  </script>
+</body>
+</html>

@@ -43,6 +43,7 @@ const ICON_PATHS = {
   record: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>',
   doc: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
   trash: '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
+  help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
   hand: '<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
 };
 
@@ -135,6 +136,11 @@ function describeStep(e) {
     case 'click': return { icon: 'pointer', text: `Clicking ${t}` };
     case 'type': return { icon: 'type', text: `Typing “${trunc(a.text, 40)}”${e.target ? ` into ${t}` : ''}${a.submit ? ' and submitting' : ''}` };
     case 'select_option': return { icon: 'list', text: `Choosing “${trunc(a.option, 40)}”${e.target ? ` in ${t}` : ''}` };
+    case 'upload_file': {
+      const names = (Array.isArray(a.paths) ? a.paths : []).map((p) => String(p).split(/[\\/]/).pop()).filter(Boolean);
+      const files = names.length <= 2 ? names.join(' and ') || 'a file' : `${names[0]}, ${names[1]} and ${names.length - 2} more`;
+      return { icon: 'up', text: `Attaching ${trunc(files, 60)} to ${e.site || 'the page'}` };
+    }
     case 'press_key': return { icon: 'keyboard', text: `Pressing ${a.key}` };
     case 'scroll': return { icon: a.direction === 'up' ? 'up' : 'down', text: `Scrolling ${a.direction || 'down'}` };
     case 'snapshot': return { icon: 'eye', text: 'Looking at the page' };
@@ -161,7 +167,7 @@ function describeStep(e) {
     case 'read_note': return { icon: 'doc', text: `Reading your note “${trunc(a.title, 40)}”` };
     case 'recall': return { icon: 'clock', text: `Recalling past research on “${trunc(a.query, 44)}”` };
     case 'tag_session': return { icon: 'layers', text: (a.topics || []).length ? `Filing this research under ${trunc(a.topics.join(', '), 50)}` : 'Filing this research' };
-    case 'save_skill': return { icon: 'blocks', text: `Learning a skill: ${a.name}` };
+    case 'save_skill': return { icon: 'blocks', text: e.draft ? `Kept ${a.name} as a suggested skill, for you to decide` : `Learning a skill: ${a.name}` };
     case 'save_note': return { icon: 'doc', text: `Saving “${trunc(a.title, 40)}” to your notes` };
     case 'list_skills': return { icon: 'blocks', text: 'Checking skills' };
     case 'use_skill': return { icon: 'blocks', text: `Using the ${a.name} skill` };
@@ -170,10 +176,25 @@ function describeStep(e) {
     case 'record_stop': return { icon: 'film', text: 'Saving the recording' };
     case 'show_tabs': return { icon: 'layers', text: (a.tab_ids || []).length ? `Showing ${a.tab_ids.length} tabs side by side` : 'Showing tabs side by side' };
     case 'say': return { icon: 'sparkle', text: 'Posting an answer' };
+    case 'wait_for': {
+      const u = a.until || {};
+      const what = u.user_clicked ? `you to click “${trunc(u.user_clicked, 30)}”` : u.text_appears ? `“${trunc(u.text_appears, 30)}” to appear`
+        : u.url_matches ? `the page to reach ${trunc(u.url_matches, 40)}` : u.element_gone ? 'an item to go away' : 'the page to change';
+      return { icon: 'clock', text: `Waiting for ${what}` };
+    }
+    case 'ask': {
+      const line = String(a.text || '').split('\n').find((l) => l.trim()) || 'a question';
+      const q = trunc(line.replace(/^[#>\s]+/, '').replace(/\*\*|`/g, ''), 60); // the question's first line, without markdown
+      return { icon: 'help', text: `Asked: ${q}${e.choice != null ? ` → ${e.choice}` : e.status ? ` → ${e.status}` : ''}` };
+    }
     case 'view_capture': return { icon: 'eye', text: 'Looking at what you shared' };
     default: { const n = String(e.tool || '').replace(/_/g, ' '); return { icon: 'sparkle', text: n.charAt(0).toUpperCase() + n.slice(1) }; }
   }
 }
+
+// The "Your AI apps drive Skillerr. Connect…" card stands in for the Pilot box when there's no built-in AI. It's only
+// for someone with no way to drive Skillerr yet: never once an AI app is connected, or has acted in this run.
+const needsConnectCard = ({ aiReady, appConnected, appActed }) => !aiReady && !appConnected && !appActed;
 
 // ---------- tiny, safe markdown for AI replies ----------
 

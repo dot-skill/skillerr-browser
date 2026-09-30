@@ -1,4 +1,4 @@
-/* global skillerr, icon, esc, trunc, detectIntent, looksLikeUrl, INTENTS, describeStep, markdown */
+/* global skillerr, icon, esc, trunc, detectIntent, looksLikeUrl, INTENTS, describeStep, markdown, needsConnectCard */
 const $ = (id) => document.getElementById(id);
 // Window buttons: macOS puts them top-left, Windows and Linux top-right; the tab strip leaves room for them.
 document.body.classList.add(/Mac/.test(navigator.platform) ? 'os-mac' : 'os-other');
@@ -20,6 +20,8 @@ const OTHER_PRESETS = {
   custom: { baseUrl: '', model: '' },
 };
 let aiReady = true; // is a built-in AI set up? (applyAiReady keeps it current)
+let appConnected = false; // is any AI app connected to Skillerr (connect-targets)?
+let appActed = false; // has an AI app called Skillerr in this run?
 const PRO_GATEWAY = 'https://ai-gateway.vercel.sh/v1'; // direct, for a gateway key (the owner's own)
 const PRO_API = 'https://skillerr.com/api/pro/v1'; // licensed: skillerr.com checks the license, then calls the gateway
 const PRO_NAMES = { 'anthropic/claude-sonnet-5': 'Claude Sonnet 5', 'anthropic/claude-opus-5.5': 'Claude Opus 5.5', 'anthropic/claude-haiku-4.5': 'Claude Haiku 4.5', 'google/gemini-3.5-flash': 'Gemini 3.5 Flash' };
@@ -86,6 +88,7 @@ skillerr.on('popup-blocked', ({ host, url }) => {
   const chip = $('popupChip');
   chip.hidden = false;
   chip.innerHTML = `${icon('x', 12)}<span>Pop-up blocked</span>`;
+  chip.title = `${host} tried to open a pop-up window`;
   const open = btn('Open', 'ghost', () => {
     skillerr.send('popup-open', url);
     chip.hidden = true;
@@ -120,9 +123,9 @@ skillerr.on('passkey-help', ({ tabId, reason, platform }) => {
   chip.hidden = false;
   const text = reason === 'failed' ? "That passkey isn't saved in Skillerr"
     : platform === 'darwin' ? 'Passkeys need the signed Skillerr for Mac' : "Passkeys aren't available here yet";
-  chip.title = reason === 'failed'
+  chip.title = `${text}. ` + (reason === 'failed'
     ? 'Skillerr can use passkeys created in Skillerr (Touch ID or Windows Hello). Passkeys saved in iCloud Keychain or another browser stay there. Sign in another way, then add a passkey for Skillerr in your account settings.'
-    : 'Sign in another way, like a password or a code sent to your phone.';
+    : 'Sign in another way, like a password or a code sent to your phone.');
   chip.innerHTML = `${icon('key', 12)}<span>${esc(text)}</span>`;
   chip.append(btn('Use another way', 'ghost', () => {
     skillerr.send('passkey-other-way', tabId);
@@ -799,7 +802,8 @@ function renderSkillCard(home) {
   const pre = h('pre', 'skill-preview');
   pre.textContent = x.preview;
   pre.hidden = true;
-  text.innerHTML = `<b>${x.update ? 'The Orb can update a skill' : 'The Orb noticed a habit'}: ${esc(x.title.toLowerCase())}.</b> ${esc(x.why)} ` +
+  text.innerHTML = x.draftBy ? `<b>${esc(x.draftBy)} drafted a skill: ${esc(x.title)}.</b> ${esc(x.why)} Save it, so your AIs can use it next time?`
+    : `<b>${x.update ? 'The Orb can update a skill' : 'The Orb noticed a habit'}: ${esc(x.title.toLowerCase())}.</b> ${esc(x.why)} ` +
     `${x.update ? 'Update the skill with what it learned since?' : 'Save it as a skill, so your AI does it your way next time?'}`;
   text.append(pre);
   card.append(h('div', 'ti-ic', icon('sparkle', 16)), text, acts);
@@ -1064,6 +1068,8 @@ IDEAS.forEach((text, i) => {
 
 async function renderAiCards() {
   const [targets, ready, local] = await Promise.all([skillerr.invoke('connect-targets'), skillerr.invoke('agent-ready'), skillerr.invoke('detect-local')]);
+  appConnected = targets.some((t) => t.connected);
+  renderNoPilot();
   const grid = $('aiGrid');
   grid.innerHTML = '';
 
@@ -1175,14 +1181,25 @@ function connCard(t, cls) {
 
 skillerr.on('status', (s) => {
   status = s;
+  renderMsgTargets(s.targets);
+  if (s.controller?.via === 'mcp' && !appActed) {
+    appActed = true;
+    renderNoPilot();
+  }
   const driving = s.active && !s.paused;
   document.body.classList.toggle('driving', driving);
   document.body.classList.toggle('paused', s.paused);
   $('orb').className = 'orb' + (s.paused ? ' paused' : driving ? ' live' : '');
   $('miniOrb').className = 'orb xs' + (s.paused ? ' paused' : driving ? ' live' : '');
-  $('whoName').innerHTML = s.paused ? 'AI paused' : s.controller ? `${brandIcon(s.controller.name, 15)}${esc(s.controller.name)}` : 'Skillerr Pilot';
+  // The model is the app's own word for it (MCP doesn't say), so it's shown as reported: after the state on the line under
+  // the name (the name keeps its room), dotted, with where it came from in the tooltip.
+  const model = !s.paused && s.controller?.model ? s.controller.model : null;
+  $('whoName').innerHTML = s.paused ? 'AI paused' : s.controller ? `${brandIcon(s.controller.name, 15)}<span class="nm">${esc(s.controller.name)}</span>` : 'Skillerr Pilot';
+  $('whoName').title = s.controller && !s.paused ? `${s.controller.name}${model ? ` · ${model.model} (model as reported by ${s.controller.name}${model.how === 'config' ? '\'s Skillerr config' : ''}; Skillerr can't check it)` : ''}` : '';
   $('whoSub').className = 'who-sub' + (s.paused ? ' paused' : driving ? ' live' : '');
-  $('whoSub').textContent = s.paused ? 'You have control' : driving ? 'Driving now' : s.controller ? (s.controller.via === 'builtin' ? 'Idle' : 'Idle · connected') : 'Ready when you are';
+  $('whoSub').textContent = s.paused ? 'You have control' : driving ? 'Driving now' : s.controller ? (s.controller.via === 'builtin' ? 'Idle' : model ? 'Idle' : 'Idle · connected') : 'Ready when you are';
+  if (model) $('whoSub').insertAdjacentHTML('beforeend', ` · <span class="model">${esc(model.model)}</span>`);
+  $('whoSub').title = model ? $('whoName').title : '';
   const pb = $('pauseBtn');
   pb.className = 'pause-btn' + (s.paused ? ' paused' : driving ? ' live' : '');
   pb.hidden = !s.controller && !s.paused; // nothing to pause until an AI has connected
@@ -1323,9 +1340,18 @@ function renderStep(el, e) {
     body = `<div class="main"><b>Needs your OK:</b> ${tag}${esc(d.text)}</div><div class="why">${esc(e.reason || 'You asked Skillerr to check before every action.')}</div>`;
   }
   if (e.state === 'error' && e.summary) body += `<div class="err">${esc(trunc(e.summary, 200))}</div>`;
+  if (e.tool === 'ask') body += askCard(e);
   el.innerHTML = `<div class="ic">${icon(e.state === 'approval' ? 'hand' : d.icon, 13)}</div><div class="txt">${body}</div>${trailing}`;
+  if (e.tool === 'ask') el.classList.add('ask');
+  if (e.state === 'asking') {
+    el.querySelectorAll('.ask-opt').forEach((b, i) => (b.onclick = () => skillerr.send('ask-choice', { id: e.id, choice: e.args.options[i] })));
+    skillerr.send('toggle-panel', true);
+    el.scrollIntoView({ block: 'nearest' });
+  }
   if (e.state === 'approval') {
-    const row = h('div', 'approve-row', '<button type="button" class="btn ghost sm deny">Deny</button><button type="button" class="btn sm allow">Allow</button>');
+    const later = e.tool === 'save_skill' ? '<button type="button" class="btn ghost sm later" title="Keep it among your suggested skills and decide later">Later</button>' : '';
+    const row = h('div', 'approve-row', `<button type="button" class="btn ghost sm deny">Deny</button>${later}<button type="button" class="btn sm allow">Allow</button>`);
+    row.querySelector('.later')?.addEventListener('click', () => skillerr.send('approval', { id: e.id, ok: 'later' }));
     row.querySelector('.allow').onclick = () => skillerr.send('approval', { id: e.id, ok: true });
     row.querySelector('.deny').onclick = () => skillerr.send('approval', { id: e.id, ok: false });
     el.appendChild(row);
@@ -1334,6 +1360,55 @@ function renderStep(el, e) {
   }
   el.querySelector('.undo')?.addEventListener('click', () => skillerr.send('undo', e.id));
 }
+
+// An `ask` from the AI: its question and one button per option. Deliberately unlike an approval (no "Needs your OK",
+// no Allow/Deny, not amber): these buttons only tell the AI what to do next, and the label says so. Labels are escaped.
+function askCard(e) {
+  const opts = (e.args?.options || []).map((o) => `<button type="button" class="btn ghost sm ask-opt${o === e.choice ? ' chosen' : ''}"${e.state === 'asking' ? '' : ' disabled'}>${esc(o)}</button>`).join('');
+  const who = esc(e.controller || 'Your AI');
+  return `<div class="say ask-q">${markdown(e.args?.text || '')}</div><div class="ask-row">${opts}</div>` +
+    `<div class="ask-note">${e.state === 'asking' ? `Your answer only steers ${who}. It never approves anything: approvals always ask “Needs your OK”.` : e.choice != null ? 'You answered.' : `No answer (${esc(e.status || 'closed')}).`}</div>`;
+}
+
+// ----- messages to the AI app that's driving (Pilot panel → inbox): it reads them with its next tool call -----
+// The built-in AI reads them straight into its loop at its next step (Agent.tell); an AI app with its next tool call.
+const sentMsgs = new Map(); // inbox id → its bubble
+let toldBubbles = []; // messages the built-in AI hasn't read yet
+$('aiMsg').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const text = $('aiMsgInput').value.trim();
+  if (!text) return;
+  const r = await skillerr.invoke('pilot-message', { text, to: $('aiMsgTo').hidden ? null : $('aiMsgTo').value });
+  $('aiMsgInput').value = '';
+  if (r.start) return startTask(text); // the built-in AI had just finished: this is its next task
+  if (!r.ok) return flash(r.message);
+  const b = h('div', 'say you', `${esc(text)}<span class="st">Waiting for ${esc(r.label)} to read it (with its next step)</span>`);
+  (r.builtin && task ? task : sessionFor({ controller: r.to })).steps.appendChild(b);
+  if (r.builtin) toldBubbles.push(b);
+  else sentMsgs.set(r.id, b);
+  keepScrolled();
+};
+
+// Who the box writes to: the AI in the header, with a picker when more than one is at work.
+function renderMsgTargets(targets = []) {
+  $('aiMsg').hidden = !targets.length;
+  if (!targets.length) return;
+  const sel = $('aiMsgTo');
+  const keep = sel.value;
+  sel.innerHTML = targets.map((t) => `<option value="${esc(t.name)}">${esc(t.label)}</option>`).join('');
+  if (targets.some((t) => t.name === keep)) sel.value = keep;
+  sel.hidden = targets.length < 2;
+  const cur = targets.find((t) => t.name === sel.value) || targets[0];
+  $('aiMsgInput').placeholder = `Message ${cur.label}`;
+}
+$('aiMsgTo').onchange = () => renderMsgTargets(status.targets);
+skillerr.on('inbox-read', (ids) => {
+  for (const id of ids) {
+    const st = sentMsgs.get(id)?.querySelector('.st');
+    if (st) st.textContent = 'Read';
+    sentMsgs.delete(id);
+  }
+});
 
 skillerr.on('undo-top', (id) => {
   undoTop = id;
@@ -1392,6 +1467,11 @@ skillerr.on('agent', (ev) => {
     task.steps.appendChild(s);
     task.says.push(s);
     keepScrolled();
+  } else if (ev.type === 'told') {
+    for (const b of toldBubbles.splice(0, ev.count)) b.querySelector('.st').textContent = 'Read';
+  } else if (ev.type === 'next-task') { // told something as it finished: it goes on with that
+    newTaskGroup(ev.text);
+    setRunning(true);
   } else if (ev.type === 'done') {
     finishTask('ok');
     setRunning(false);
@@ -1490,7 +1570,8 @@ function agentName() {
 }
 
 async function renderModelPill() {
-  const ready = await skillerr.invoke('agent-ready');
+  const [ready, targets] = await Promise.all([skillerr.invoke('agent-ready'), skillerr.invoke('connect-targets').catch(() => [])]);
+  appConnected = targets.some((t) => t.connected);
   applyAiReady(ready);
   const p = $('modelPill');
   p.className = 'model-pill ' + (ready ? 'ready' : 'setup');
@@ -1501,10 +1582,14 @@ $('modelPill').onclick = () => openSheet('settings');
 // Without a built-in AI, nothing in Skillerr may invite the user to type a task for it: the Pilot box gives way to a card
 // that says how Skillerr is driven (by the user's AI apps), and the address bar and start page only search and go, so a
 // long search is searched, not copied as a task.
+function renderNoPilot() {
+  $('noPilot').hidden = !needsConnectCard({ aiReady, appConnected, appActed });
+}
+
 function applyAiReady(ready) {
   aiReady = !!ready;
   $('composer').hidden = !aiReady;
-  $('noPilot').hidden = aiReady;
+  renderNoPilot();
   $('welcomeStep1').innerHTML = aiReady
     ? '<b>Say what you want.</b> Type below or in the address bar — “find”, “compare”, “summarize”, “fill in”.'
     : '<b>Connect your AI app.</b> Claude Desktop, Claude Code or Cursor: ask it to research or compare, and it browses here.';
