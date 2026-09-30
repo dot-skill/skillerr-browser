@@ -1500,9 +1500,18 @@ function kilrStatus() {
 // From the user's own trails and their AI apps' research trails (as chosen under what Kilr learns from). A suggestion
 // the user put off comes back only once the habit has doubled; a saved one comes back as an update after two more trails.
 const kilrSuggested = new Set();
+// Skills an AI app drafted that the user hasn't decided on yet (save_skill with no answer, or Later): listed first.
+function draftSuggestions() {
+  const day = (t) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return skills.drafts().map((d) => ({ id: `ai:${d.name}`, slug: d.name, title: d.name, draftBy: d.by, update: d.update, description: d.description,
+    why: `${d.by} worked this out on ${day(d.at)} and asked to save it as a skill: ${d.description}`,
+    preview: require('./kilr/suggest').skillMarkdown({ slug: d.name, description: d.description, instructions: d.instructions }) }));
+}
+
 function kilrSuggestions() {
   const s = store.getSettings();
-  if (s.kilr === false || s.kilrSkills === false || !learningTrails()) return [];
+  const drafts = draftSuggestions();
+  if (s.kilr === false || s.kilrSkills === false || !learningTrails()) return drafts;
   const db = trailsDb();
   const found = require('./kilr/suggest').suggestSkills(db.forSkills({ you: s.kilrLearnFromYou !== false, ai: s.kilrLearnFromAi !== false }), { everyday: (h) => db.everyday(h) });
   const out = [];
@@ -1519,10 +1528,21 @@ function kilrSuggestions() {
     }
     out.push({ ...x, update: !!saved, preview: require('./kilr/suggest').skillMarkdown(x) });
   }
-  return out;
+  return [...drafts, ...out];
 }
 
 function kilrSaveSuggestion(id) {
+  if (id.startsWith('ai:')) { // the user's yes to an AI app's draft: it becomes a learned skill like any other
+    try {
+      const r = skills.acceptDraft(id.slice(3));
+      ui('skill-learned', { ...r.skill, updated: r.updated, file: r.file });
+      if (store.getSettings().shareSkillsWithClaudeCode) skills.shareWithClaudeCode();
+      trailsChanged();
+      return { ok: true, name: r.skill.name, file: r.file, updated: r.updated };
+    } catch (err) {
+      return { ok: false, message: err.message };
+    }
+  }
   const x = kilrSuggestions().find((y) => y.id === id);
   if (!x) return { ok: false, message: 'That suggestion is gone.' };
   try {
@@ -1539,6 +1559,7 @@ function kilrSaveSuggestion(id) {
 }
 
 function kilrDismissSuggestion(id) {
+  if (id.startsWith('ai:')) return (skills.dropDraft(id.slice(3)), trailsChanged());
   const x = kilrSuggestions().find((y) => y.id === id);
   const s = store.getSettings();
   store.saveSettings({ ...s, kilrSkillsDismissed: { ...(s.kilrSkillsDismissed || {}), [id]: x ? x.count : 1 } });
@@ -2156,7 +2177,15 @@ async function executeInSession(controller, name, args, session) {
 
   // Sensitive actions always need a human, even with approval mode off. Enforced here, not by the prompt.
   // A learned skill steers every future task, so a page can't be allowed to plant one unseen.
-  if (name === 'save_skill') entry.target = String(args.name || '');
+  if (name === 'save_skill') {
+    entry.target = String(args.name || '');
+    try {
+      skills.checkShareable(args); // a skill is for any AI: never the user's own details, and the user isn't asked to judge that
+    } catch (err) {
+      ui('log', { ...entry, state: 'error', summary: 'Not saved: it contained personal details' });
+      throw err;
+    }
+  }
   // Trails are the user's own browsing: each AI app asks once, and the answer is remembered.
   const trailConsent = TRAIL_TOOL_NAMES.has(name) && controller.via === 'mcp' && !(store.getSettings().trailsAllowedClients || []).includes(controller.name);
   if (trailConsent) entry.target = 'your trails';
@@ -2166,7 +2195,17 @@ async function executeInSession(controller, name, args, session) {
     : info?.sensitive ? `This looks like ${info.sensitive}.`
     : status.requireApproval && !READ_ONLY.has(name) ? null : undefined;
   if (reason !== undefined) {
-    const ok = await requestApproval(entry, reason);
+    const answer = await requestApproval(entry, reason);
+    const ok = answer === 'later' ? null : answer; // "Later" is only ever a not-yet, never a yes
+    // A skill nobody said yes or no to isn't lost: it waits among the Orb's suggested skills until the user decides.
+    if (name === 'save_skill' && ok === null) {
+      const { draft, refined } = skills.draft({ ...args, by: controller.name });
+      ui('log', { ...entry, state: 'ok', draft: true, ts: Date.now() });
+      trailsChanged();
+      return { text: `Saved "${draft.name}" as a suggested skill awaiting the user${refined ? ' (it replaces your earlier draft of it)' : ''}. It is not active yet: ` +
+        'the user can save it from Skillerr\'s suggested skills whenever they choose, and until then use_skill can\'t load it. Don\'t retry; ' +
+        'to change it, call save_skill again with the same name.' };
+    }
     if (!ok) {
       ui('log', { ...entry, state: 'error', summary: ok === null ? 'No answer yet, so nothing was done' : 'You declined this action' });
       for (const u of requestedUrls(name, args)) audit(u, 'declined', { reason: ok === null ? 'No answer yet' : 'You declined it' });
@@ -2624,7 +2663,7 @@ function wireIpc() {
   ipcMain.on('close-tab', (_e, id) => closeTab(id));
   ipcMain.on('toggle-panel', (_e, open) => togglePanel(typeof open === 'boolean' ? open : undefined));
   ipcMain.on('pause', (_e, paused) => setPaused(paused));
-  ipcMain.on('approval', (_e, { id, ok }) => pendingApprovals.get(id)?.(!!ok));
+  ipcMain.on('approval', (_e, { id, ok }) => pendingApprovals.get(id)?.(ok === 'later' ? 'later' : !!ok));
   ipcMain.on('ask-choice', (_e, { id, choice }) => asks.answer(Number(id), String(choice))); // asks only, never an approval
   ipcMain.on('undo', (_e, id) => undo(id));
   ipcMain.on('mosaic-exit', () => exitMosaic());

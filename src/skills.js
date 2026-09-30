@@ -182,10 +182,13 @@ function remove(name) {
 
 // Tool results for list_skills / use_skill.
 function listText() {
-  return `Skills are step-by-step playbooks for common jobs. Call use_skill with a name to load one, then follow it.\n${catalog()}`;
+  return `Skills are step-by-step playbooks for common jobs. Call use_skill with a name to load one, then follow it.\n${catalog()}${draftsText()}`;
 }
 function useText(name) {
   const s = get(name);
+  if (!s && drafts().some((d) => d.name === String(name || '').trim())) {
+    throw new Error(`"${name}" is a suggested skill the user hasn't saved yet, so it can't be used. It's waiting for them in Skillerr, among the Orb's suggested skills.`);
+  }
   if (!s) throw new Error(`No skill named "${name}". Available:\n${catalog()}`);
   return `# Skill: ${s.name}\n${s.description}\n\nFollow these instructions:\n\n${s.body}`;
 }
@@ -244,4 +247,78 @@ function learn({ name, description, instructions, topics, by }) {
   return { updated: !!existing, skill: summary(readSkill(dir, 'installed')), file: path.join(dir, 'SKILL.md') };
 }
 
-module.exports = { list: () => list().map(summary), get, catalog, inspect, install, remove, learn, listText, useText, shareWithClaudeCode, USER_DIR, CLAUDE_SKILLS };
+// ---------- personal details: a skill is a workflow any AI may use, so it never carries the user's own details ----------
+// Checked on every skill an AI app writes (save_skill, and its drafts), before the user is asked. The AI is told what to
+// generalise rather than having it edited silently. Placeholders like <handle>, {email} or ~/<file> are fine.
+const PROFILE_URL = /\b(?:x\.com|twitter\.com|instagram\.com|threads\.net|tiktok\.com\/@|github\.com|facebook\.com|youtube\.com\/@|reddit\.com\/(?:u|user)|linkedin\.com\/in)\/@?([A-Za-z0-9_.-]{2,})/gi;
+const SITE_PATHS = new Set(['home', 'explore', 'search', 'settings', 'login', 'i', 'intent', 'compose', 'notifications', 'messages', 'marketplace',
+  'watch', 'results', 'feed', 'jobs', 'topics', 'orgs', 'features', 'pricing', 'about', 'help', 'hashtag', 'share', 'submit', 'r', 'new', 'trending']);
+const PERSONAL = [
+  ['an email address', '<email>', /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi],
+  ['a key or token', '<api-key>', /\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[abpr]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*)/g],
+  ['a password or secret', '<password>', /\b(?:password|passwd|pwd|passcode|api[_ -]?key|secret|token)\s*[:=]\s*(?![<{])\S{4,}/gi],
+  ['a path in the user\'s home folder', '~/<file>', /(?:\/Users\/|\/home\/|[A-Z]:\\Users\\)(?![<{])[^/\\\s]+/gi],
+  ['a phone number', '<phone>', /(?<![\w.\/-])\+?\(?\d[\d ().-]{8,}\d(?![\w.\/-])/g, (m) => { const d = m.replace(/\D/g, ''); return d.length >= 10 && d.length <= 15 && !/^\d{4}-\d\d-\d\d/.test(m); }],
+  ['a long number (an account, order or card number?)', '<id>', /(?<![\w.\/-])\d{8,}(?![\w.\/-])/g],
+  ['an @handle', '@<handle>', /(?<![\w.@])@[A-Za-z0-9_]{2,}\b/g, (m) => !/^@(media|import|keyframes|font-face|supports|page|charset|container|layer)$/i.test(m)],
+];
+
+function personalDetails(text, { home = os.homedir(), user = os.userInfo().username } = {}) {
+  const found = [];
+  const add = (what, hint, value) => found.push({ what, hint, value: value.length > 40 ? `${value.slice(0, 39)}…` : value }); // the AI's own words back, so it can find them
+  const src = String(text || '');
+  for (const [what, hint, re, keep] of PERSONAL) for (const m of src.matchAll(re)) if (!keep || keep(m[0])) add(what, hint, m[0]);
+  for (const m of src.matchAll(PROFILE_URL)) if (!SITE_PATHS.has(m[1].toLowerCase())) add('a profile link with a real handle', `${m[0].slice(0, m[0].length - m[1].length)}<handle>`, m[0]);
+  if (home && src.includes(home)) add('a path in the user\'s home folder', '~/<file>', home);
+  if (user && user.length >= 3 && new RegExp(`\\b${user.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(src)) add('the user\'s name', '<name>', user);
+  const seen = new Set();
+  return found.filter((f) => !seen.has(f.what) && seen.add(f.what));
+}
+
+// Throws, telling the AI what to generalise, if a skill carries personal details.
+function checkShareable({ name, description, instructions, topics }, opts) {
+  const found = personalDetails([name, description, instructions, ...[].concat(topics || [])].join('\n'), opts);
+  if (!found.length) return;
+  throw new Error(`Not saved: this skill contains personal details: ${found.map((f) => `${f.what} (“${f.value}”, write ${f.hint})`).join('; ')}. ` +
+    'Skills are reusable workflows any AI can use, so they never include the user\'s names, handles, emails, phone numbers, account or order ' +
+    'numbers, file paths, passwords, keys or other one-off values. Replace each with a placeholder or a general description and save again.');
+}
+
+// ---------- drafts: skills an AI app worked out that the user hasn't said yes to yet ----------
+// When nobody answers save_skill's approval in time, or the user picks Later, the draft waits here and shows among the
+// Orb's suggested skills. It becomes a skill only when the user saves it there; until then use_skill can't load it.
+const DRAFTS_FILE = 'skill-drafts.json';
+const drafts = () => store.readJson(DRAFTS_FILE, []);
+
+function draft({ name, description, instructions, topics, by }) {
+  const slug = String(name || '').trim().toLowerCase();
+  if (!NAME_RE.test(slug) || slug.length > 64) throw new Error('name must be lowercase letters, digits and hyphens, e.g. "ana-flight-search".');
+  const all = drafts();
+  const prev = all.find((d) => d.name === slug);
+  const d = { name: slug, description: String(description || '').replace(/\s+/g, ' ').trim(), instructions: String(instructions || '').trim(),
+    topics: [].concat(topics || []).map(String), by: String(by || 'an AI'), at: Date.now(), first: prev ? prev.first : Date.now(), update: !!get(slug) };
+  store.writeJson(DRAFTS_FILE, [...all.filter((x) => x.name !== slug), d]);
+  return { draft: d, refined: !!prev };
+}
+
+function dropDraft(name) {
+  store.writeJson(DRAFTS_FILE, drafts().filter((d) => d.name !== name));
+}
+
+// The user said yes: the draft becomes an ordinary learned skill.
+function acceptDraft(name) {
+  const d = drafts().find((x) => x.name === name);
+  if (!d) throw new Error('That suggestion is gone.');
+  const r = learn(d);
+  dropDraft(name);
+  return r;
+}
+
+function draftsText() {
+  const all = drafts();
+  return all.length ? `\n\n${all.length} suggested skill${all.length === 1 ? '' : 's'} awaiting the user (not usable until they save ${all.length === 1 ? 'it' : 'them'} in Skillerr): ` +
+    `${all.map((d) => d.name).join(', ')}. To change one, call save_skill with the same name.` : '';
+}
+
+module.exports = { list: () => list().map(summary), get, catalog, inspect, install, remove, learn, listText, useText, shareWithClaudeCode, USER_DIR, CLAUDE_SKILLS,
+  personalDetails, checkShareable, drafts, draft, dropDraft, acceptDraft, draftsText };

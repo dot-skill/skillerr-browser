@@ -245,13 +245,16 @@ const LEARN_TOOL = {
   description: 'Save a procedure you worked out as a reusable skill (a SKILL.md), so future tasks on that site or kind of task go faster. ' +
     'Only for non-obvious, multi-step know-how you would plausibly need again (e.g. a site\'s cookie wall must be closed before its search ' +
     'box works; its date picker needs two clicks). Not for answers (use save_note) and not for trivial steps. Call list_skills first: ' +
-    'if a skill for the same site or task exists, pass its name to refine it instead of creating a duplicate. The user approves each save.',
+    'if a skill for the same site or task exists, pass its name to refine it instead of creating a duplicate. The user approves each save; ' +
+    'if they don\'t answer in time (or pick Later), it is kept as a suggested skill they can save later, not active until they do. ' +
+    'Skills never contain the user\'s personal details (names, handles, emails, phone numbers, account or order numbers, home-folder ' +
+    'paths, passwords, keys): write placeholders such as x.com/<handle> or <email>; a skill containing them is refused.',
   input_schema: {
     type: 'object',
     properties: {
       name: { type: 'string', description: 'lowercase-with-hyphens, e.g. "ana-flight-search"' },
       description: { type: 'string', description: 'One sentence saying WHEN to use it: the site and task it applies to. This is how it gets picked later.' },
-      instructions: { type: 'string', description: 'Markdown: the steps that worked, gotchas, selectors or URL patterns, and what to check. Never include passwords, personal data or one-off values.' },
+      instructions: { type: 'string', description: 'Markdown: the steps that worked, gotchas, selectors or URL patterns, and what to check. Never include passwords, personal data or one-off values (use placeholders like <handle>).' },
       topics: { type: 'array', items: { type: 'string' }, description: 'Taxonomy paths, e.g. "Travel > Flights". Reuse known topics from recall.' },
     },
     required: ['name', 'description', 'instructions'],

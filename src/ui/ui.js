@@ -799,7 +799,8 @@ function renderSkillCard(home) {
   const pre = h('pre', 'skill-preview');
   pre.textContent = x.preview;
   pre.hidden = true;
-  text.innerHTML = `<b>${x.update ? 'The Orb can update a skill' : 'The Orb noticed a habit'}: ${esc(x.title.toLowerCase())}.</b> ${esc(x.why)} ` +
+  text.innerHTML = x.draftBy ? `<b>${esc(x.draftBy)} drafted a skill: ${esc(x.title)}.</b> ${esc(x.why)} Save it, so your AIs can use it next time?`
+    : `<b>${x.update ? 'The Orb can update a skill' : 'The Orb noticed a habit'}: ${esc(x.title.toLowerCase())}.</b> ${esc(x.why)} ` +
     `${x.update ? 'Update the skill with what it learned since?' : 'Save it as a skill, so your AI does it your way next time?'}`;
   text.append(pre);
   card.append(h('div', 'ti-ic', icon('sparkle', 16)), text, acts);
@@ -1332,7 +1333,9 @@ function renderStep(el, e) {
     el.scrollIntoView({ block: 'nearest' });
   }
   if (e.state === 'approval') {
-    const row = h('div', 'approve-row', '<button type="button" class="btn ghost sm deny">Deny</button><button type="button" class="btn sm allow">Allow</button>');
+    const later = e.tool === 'save_skill' ? '<button type="button" class="btn ghost sm later" title="Keep it among your suggested skills and decide later">Later</button>' : '';
+    const row = h('div', 'approve-row', `<button type="button" class="btn ghost sm deny">Deny</button>${later}<button type="button" class="btn sm allow">Allow</button>`);
+    row.querySelector('.later')?.addEventListener('click', () => skillerr.send('approval', { id: e.id, ok: 'later' }));
     row.querySelector('.allow').onclick = () => skillerr.send('approval', { id: e.id, ok: true });
     row.querySelector('.deny').onclick = () => skillerr.send('approval', { id: e.id, ok: false });
     el.appendChild(row);

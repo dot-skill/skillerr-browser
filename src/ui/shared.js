@@ -167,7 +167,7 @@ function describeStep(e) {
     case 'read_note': return { icon: 'doc', text: `Reading your note “${trunc(a.title, 40)}”` };
     case 'recall': return { icon: 'clock', text: `Recalling past research on “${trunc(a.query, 44)}”` };
     case 'tag_session': return { icon: 'layers', text: (a.topics || []).length ? `Filing this research under ${trunc(a.topics.join(', '), 50)}` : 'Filing this research' };
-    case 'save_skill': return { icon: 'blocks', text: `Learning a skill: ${a.name}` };
+    case 'save_skill': return { icon: 'blocks', text: e.draft ? `Kept ${a.name} as a suggested skill, for you to decide` : `Learning a skill: ${a.name}` };
     case 'save_note': return { icon: 'doc', text: `Saving “${trunc(a.title, 40)}” to your notes` };
     case 'list_skills': return { icon: 'blocks', text: 'Checking skills' };
     case 'use_skill': return { icon: 'blocks', text: `Using the ${a.name} skill` };

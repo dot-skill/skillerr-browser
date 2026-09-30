@@ -247,6 +247,8 @@ See [docs/trails.md](docs/trails.md).
 <summary><b>What you get</b></summary>
 
 - Standard `SKILL.md` skills. Your AI saves procedures it worked out (with your approval) and uses them next time.
+  If you don't answer in time, or pick **Later**, the draft waits among your suggested skills until you decide. Skills
+  never hold your personal details: one with an email, handle, phone number, file path or key is refused.
 - **Research as a skill.** Turn a research folder into a skill with **Make it a skill**, so any AI can pick up where
   the last one left off.
 - Learned skills can be mirrored into Claude Code.
