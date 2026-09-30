@@ -148,7 +148,8 @@ flowchart LR
   (when idle) through `node mcp/bridge.js --watch-inbox` under Claude Code's Monitor. See [docs/messages.md](docs/messages.md).
 - **Which model is driving.** MCP tells Skillerr the app ("Claude Code"), not the model. If the app reports it (the
   `whoami` tool, or `"env": { "SKILLERR_MODEL": "Claude Sonnet 5.5" }` in its Skillerr MCP config), the header shows
-  "Claude Code · Claude Sonnet 5.5", and its tooltip says it's as reported. Skillerr never guesses a model.
+  it under the app's name ("Claude Code / Idle · Claude Sonnet 5.5"), dotted, with a tooltip saying it's as reported.
+  Skillerr never guesses a model.
 - **Deep research** follows the links that matter, 1 to 5 hops from the first pages. Off by default; turn it on in
   Settings (3 hops unless you pick another) or with the Deep button.
 - Tabs for one task are **grouped and named** after the AI that opened them. Show them all or close them all in one click.

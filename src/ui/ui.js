@@ -1192,13 +1192,15 @@ skillerr.on('status', (s) => {
   document.body.classList.toggle('paused', s.paused);
   $('orb').className = 'orb' + (s.paused ? ' paused' : driving ? ' live' : '');
   $('miniOrb').className = 'orb xs' + (s.paused ? ' paused' : driving ? ' live' : '');
-  // The model is the app's own word for it (MCP doesn't say), so it's shown as reported, and gives way first when space is short.
+  // The model is the app's own word for it (MCP doesn't say), so it's shown as reported: after the state on the line under
+  // the name (the name keeps its room), dotted, with where it came from in the tooltip.
   const model = !s.paused && s.controller?.model ? s.controller.model : null;
-  $('whoName').innerHTML = s.paused ? 'AI paused' : s.controller ? `${brandIcon(s.controller.name, 15)}<span class="nm">${esc(s.controller.name)}</span>` +
-    (model ? `<span class="model"> · ${esc(model.model)}</span>` : '') : 'Skillerr Pilot';
+  $('whoName').innerHTML = s.paused ? 'AI paused' : s.controller ? `${brandIcon(s.controller.name, 15)}<span class="nm">${esc(s.controller.name)}</span>` : 'Skillerr Pilot';
   $('whoName').title = s.controller && !s.paused ? `${s.controller.name}${model ? ` · ${model.model} (model as reported by ${s.controller.name}${model.how === 'config' ? '\'s Skillerr config' : ''}; Skillerr can't check it)` : ''}` : '';
   $('whoSub').className = 'who-sub' + (s.paused ? ' paused' : driving ? ' live' : '');
-  $('whoSub').textContent = s.paused ? 'You have control' : driving ? 'Driving now' : s.controller ? (s.controller.via === 'builtin' ? 'Idle' : 'Idle · connected') : 'Ready when you are';
+  $('whoSub').textContent = s.paused ? 'You have control' : driving ? 'Driving now' : s.controller ? (s.controller.via === 'builtin' ? 'Idle' : model ? 'Idle' : 'Idle · connected') : 'Ready when you are';
+  if (model) $('whoSub').insertAdjacentHTML('beforeend', ` · <span class="model">${esc(model.model)}</span>`);
+  $('whoSub').title = model ? $('whoName').title : '';
   const pb = $('pauseBtn');
   pb.className = 'pause-btn' + (s.paused ? ' paused' : driving ? ' live' : '');
   pb.hidden = !s.controller && !s.paused; // nothing to pause until an AI has connected
