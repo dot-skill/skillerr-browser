@@ -865,13 +865,27 @@ function inFrame(frame, js, ms = 5000) {
 }
 
 // Read-only page scripts run in an isolated world, so a page can't tamper with innerText or getComputedStyle.
+// Electron holds executeJavaScriptInIsolatedWorld until the page has stopped loading, and many pages are slow to or
+// never quite do (a slow image, ads, a live feed): a tab just opened or just woken would "not respond in time". While
+// the page is still loading, an isolated world is made through the DevTools protocol instead, which runs at once.
 const WORLD_ID = 1917;
 function inWorld(wc, js, ms = 5000) {
   if (typeof wc.executeJavaScriptInIsolatedWorld !== 'function') return inFrame(wc, js, ms);
+  const loading = !wc.getURL() || wc.isLoadingMainFrame();
   return Promise.race([
-    wc.executeJavaScriptInIsolatedWorld(WORLD_ID, [{ code: js }]),
+    loading ? inWorldNow(wc, js) : wc.executeJavaScriptInIsolatedWorld(WORLD_ID, [{ code: js }]),
     new Promise((_, reject) => setTimeout(() => reject(new Error('The page did not respond in time.')), ms)),
   ]);
+}
+
+async function inWorldNow(wc, js) {
+  return withDebugger(wc, async (dbg) => {
+    const { frameTree } = await dbg.sendCommand('Page.getFrameTree');
+    const { executionContextId } = await dbg.sendCommand('Page.createIsolatedWorld', { frameId: frameTree.frame.id, worldName: 'skillerr-read' });
+    const r = await dbg.sendCommand('Runtime.evaluate', { expression: js, contextId: executionContextId, returnByValue: true });
+    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text || 'The page script failed.');
+    return r.result.value;
+  });
 }
 
 // ---------- injection guard: every page string an AI sees passes through here ----------
@@ -1238,16 +1252,21 @@ async function runPageTool(browser, name, args, found) {
     }
     case 'read_tabs': {
       const all = browser.listTabs().filter((t) => !t.isStart);
-      const ids = args.tab_ids && args.tab_ids.length ? args.tab_ids.map(Number) : all.map((t) => t.id);
+      const ids = args.tab_ids && args.tab_ids.length ? [...new Set(args.tab_ids.map(Number))] : all.map((t) => t.id);
+      // One tab that can't be read never costs the others: its entry says why.
       const parts = await Promise.all(ids.map(async (id) => {
         const t = browser.get(id);
         if (!t) return `## tab ${id}\n(no such tab)`;
-        await browser.awake?.(t);
-        const wc = t.view.webContents;
-        const url = wc.getURL();
-        const page = await inWorld(wc, READ_JS).catch((e) => ({ error: e.message }));
-        const body = page.error ? `(could not read: ${page.error})` : fencePage(found, id, url, page.text, page.hidden, 8000);
-        return `## tab ${id}: ${short(found, id, url, wc.getTitle(), 200)} — ${url}\n${body}`;
+        try {
+          await browser.awake?.(t); // wakes a sleeping tab, and lets a background one run at full speed while it's read
+          const wc = t.view.webContents;
+          const url = wc.getURL();
+          const page = await inWorld(wc, READ_JS).catch((e) => ({ error: e.message }));
+          const body = page.error ? `(could not read: ${page.error})` : fencePage(found, id, url, page.text, page.hidden, 8000);
+          return `## tab ${id}: ${short(found, id, url, wc.getTitle(), 200)} — ${url}\n${body}`;
+        } catch (e) {
+          return `## tab ${id}\n(could not read: ${e.message})`;
+        }
       }));
       return { text: parts.join('\n\n') };
     }

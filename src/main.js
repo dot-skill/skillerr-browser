@@ -1819,6 +1819,9 @@ const browser = {
       await wake(t);
     }
     else if (t?.waking) await t.waking;
+    // An AI is about to use it: full speed, and not put back to sleep meanwhile. The tool call's own touch covers only
+    // its one tab; read_tabs reads several (a woken tab could otherwise sleep again before it was read).
+    if (t?.view && !t.view.webContents.isDestroyed()) touchTab(t);
   },
   isVisible: (t) => isShown(t) && win.isVisible() && !win.isMinimized(),
   isRecording: (t) => !!recorder && recorder.isRecording(t),
