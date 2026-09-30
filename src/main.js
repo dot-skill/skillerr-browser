@@ -152,7 +152,6 @@ const HUD = { width: 560, height: 76, bottom: 18 };
 const CAPTION = { width: 1100, height: 120, bottom: 104 };
 const TILE = { label: 28, gap: 12, desktopWidth: 1280 }; // fleet tiles render a desktop-width page, zoomed to fit
 const IDLE_AFTER_MS = 4000;
-const APPROVAL_TIMEOUT_MS = 55000; // under typical MCP client timeouts; nobody may be watching
 const MAX_WORKERS = 8;
 
 app.setName('Skillerr'); // menu bar and About; the Dock name comes from the packaged app's bundle
@@ -1921,10 +1920,13 @@ function touchTab(tab) {
   setTimeout(pushTabs, IDLE_AFTER_MS + 50);
 }
 
+// Long enough for someone in another window to notice (settings.approvalWaitS, 2 minutes by default). The bridge keeps
+// MCP clients waiting meanwhile with progress notifications, where they honour them.
 function requestApproval(entry, reason) {
-  ui('log', { ...entry, state: 'approval', reason });
+  ui('log', { ...entry, state: 'approval', reason }); // the panel opens itself on it
+  callForAttention('Skillerr needs your OK', `${entry.controller} is waiting for you to allow or deny an action.`, entry.tabId);
   return new Promise((resolve) => {
-    const timer = setTimeout(() => finish(null), APPROVAL_TIMEOUT_MS);
+    const timer = setTimeout(() => finish(null), store.approvalWaitMs(store.getSettings()));
     function finish(ok) {
       clearTimeout(timer);
       pendingApprovals.delete(entry.id);
@@ -2008,22 +2010,29 @@ async function humanCheck(controller, tab) {
   togglePanel(true);
   win.focus();
   ui('human-check', { controller: controller.name, via: controller.via, tabId: tab.id, title: tab.view.webContents.getTitle() });
-  // If Skillerr isn't in front, make sure the user notices: a notification (once a minute per tab), a bouncing Dock
-  // icon on macOS, a flashing taskbar button on Windows. Clicking the notification opens that tab.
-  if (!win.isFocused() && Date.now() - (tab.checkNotifiedAt || 0) > 60000) {
+  if (Date.now() - (tab.checkNotifiedAt || 0) > 60000) {
     tab.checkNotifiedAt = Date.now();
     let host = '';
     try { host = new URL(tab.view.webContents.getURL()).hostname.replace(/^www\./, ''); } catch {}
-    const { Notification } = require('electron');
-    if (Notification.isSupported()) {
-      const n = new Notification({ title: 'Your turn in Skillerr', body: `${host || 'A page'} wants to check you're human. ${controller.name} is waiting for you.`, silent: false });
-      n.on('click', () => { if (win.isMinimized()) win.restore(); win.focus(); if (getTab(tab.id)) switchTab(tab.id); });
-      n.show();
-    }
-    if (process.platform === 'darwin') app.dock?.bounce('critical');
-    else win.flashFrame(true);
+    callForAttention('Your turn in Skillerr', `${host || 'A page'} wants to check you're human. ${controller.name} is waiting for you.`, tab.id);
   }
   return true;
+}
+
+// If Skillerr isn't in front, make sure the user notices: a notification, a bouncing Dock icon on macOS, a flashing
+// taskbar button on Windows, at most every 30 seconds. Clicking the notification brings Skillerr (and that tab) to the front.
+let attentionAt = 0;
+function callForAttention(title, body, tabId) {
+  if (!win || win.isDestroyed() || win.isFocused() || Date.now() - attentionAt < 30000) return;
+  attentionAt = Date.now();
+  const { Notification } = require('electron');
+  if (Notification.isSupported()) {
+    const n = new Notification({ title, body, silent: false });
+    n.on('click', () => { if (win.isMinimized()) win.restore(); win.focus(); if (tabId != null && getTab(tabId)) switchTab(tabId); });
+    n.show();
+  }
+  if (process.platform === 'darwin') app.dock?.bounce('critical');
+  else win.flashFrame(true);
 }
 
 const blocked = (controller) => controller.via === 'mcp' && (store.getSettings().blockedClients || []).includes(controller.name);
@@ -2159,10 +2168,11 @@ async function executeInSession(controller, name, args, session) {
   if (reason !== undefined) {
     const ok = await requestApproval(entry, reason);
     if (!ok) {
-      ui('log', { ...entry, state: 'error', summary: ok === null ? 'No one approved in time' : 'You declined this action' });
-      for (const u of requestedUrls(name, args)) audit(u, 'declined', { reason: ok === null ? 'No one approved in time' : 'You declined it' });
+      ui('log', { ...entry, state: 'error', summary: ok === null ? 'No answer yet, so nothing was done' : 'You declined this action' });
+      for (const u of requestedUrls(name, args)) audit(u, 'declined', { reason: ok === null ? 'No answer yet' : 'You declined it' });
       throw new Error(ok === null
-        ? 'This action needs the user\'s approval in Skillerr and nobody approved it in time. Ask the user to watch Skillerr and approve, then retry.'
+        ? 'No answer yet: this action needs the user\'s OK in Skillerr and they haven\'t answered, so nothing was done. It was not declined. ' +
+          'Tell the user it\'s waiting for their OK in Skillerr, then make the same call again.'
         : 'The user declined this action. Do not retry it.');
     }
     // The page may have moved on while the user was deciding: the files go only to the site they approved.

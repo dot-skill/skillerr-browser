@@ -234,8 +234,8 @@ async function main() {
         return { content: [{ type: 'text', text: e.message }], isError: true };
       }
     }
-    // `ask` waits minutes for the user's click: progress pings keep clients that honour them from giving up first.
-    const token = req.params.name === 'ask' ? req.params._meta?.progressToken : undefined;
+    // An approval or an `ask` can wait minutes for the user: progress pings keep clients that honour them from giving up first.
+    const token = req.params._meta?.progressToken;
     let n = 0;
     const ping = token !== undefined && setInterval(() => extra.sendNotification({ method: 'notifications/progress', params: { progressToken: token, progress: ++n } }).catch(() => {}), 15000);
     try {
