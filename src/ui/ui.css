@@ -541,13 +541,13 @@ body.os-other .tabstrip, body.os-other .top { -webkit-app-region: drag; }
 body.os-other .tab, body.os-other .ibtn, body.os-other button { -webkit-app-region: no-drag; }
 
 /* ---------- first launch ---------- */
-.onboard { position: fixed; inset: 0; z-index: 50; background: var(--chrome); display: grid; place-items: center; overflow: hidden; -webkit-app-region: drag;
+.onboard { position: fixed; inset: 0; z-index: 50; background: var(--chrome); display: grid; place-items: center; overflow: hidden;
   transition: opacity .45s, transform .45s; }
 .onboard[hidden] { display: none; }
 .onboard.leaving { opacity: 0; transform: scale(1.02); }
-.onboard button, .onboard label, .onboard .conn { -webkit-app-region: no-drag; }
+.onboard button, .onboard label, .onboard .conn, .ob-step { -webkit-app-region: no-drag; }
 .ob-glow { position: absolute; width: 900px; height: 900px; border-radius: 50%; filter: blur(90px); opacity: .22;
-  background: conic-gradient(from var(--spin), var(--aurora)); animation: spin 14s linear infinite; }
+  background: conic-gradient(from var(--spin), var(--aurora)); animation: spin 14s linear infinite; pointer-events: none; }
 .ob-step { grid-area: 1 / 1; position: relative; width: min(560px, 90vw); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px;
   opacity: 0; transform: translateY(14px); pointer-events: none; transition: opacity .4s, transform .5s cubic-bezier(.2, .8, .2, 1); }
 .ob-step.on { opacity: 1; transform: none; pointer-events: auto; }
@@ -1103,4 +1103,3 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .dv-clearbox { margin: 0 0 16px; padding: 14px 16px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2); }
 .dv-clearbox[hidden] { display: none; }
 .dv-clearhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
-
