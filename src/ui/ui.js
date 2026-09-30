@@ -88,6 +88,7 @@ skillerr.on('popup-blocked', ({ host, url }) => {
   const chip = $('popupChip');
   chip.hidden = false;
   chip.innerHTML = `${icon('x', 12)}<span>Pop-up blocked</span>`;
+  chip.title = `${host} tried to open a pop-up window`;
   const open = btn('Open', 'ghost', () => {
     skillerr.send('popup-open', url);
     chip.hidden = true;
@@ -122,9 +123,9 @@ skillerr.on('passkey-help', ({ tabId, reason, platform }) => {
   chip.hidden = false;
   const text = reason === 'failed' ? "That passkey isn't saved in Skillerr"
     : platform === 'darwin' ? 'Passkeys need the signed Skillerr for Mac' : "Passkeys aren't available here yet";
-  chip.title = reason === 'failed'
+  chip.title = `${text}. ` + (reason === 'failed'
     ? 'Skillerr can use passkeys created in Skillerr (Touch ID or Windows Hello). Passkeys saved in iCloud Keychain or another browser stay there. Sign in another way, then add a passkey for Skillerr in your account settings.'
-    : 'Sign in another way, like a password or a code sent to your phone.';
+    : 'Sign in another way, like a password or a code sent to your phone.');
   chip.innerHTML = `${icon('key', 12)}<span>${esc(text)}</span>`;
   chip.append(btn('Use another way', 'ghost', () => {
     skillerr.send('passkey-other-way', tabId);
