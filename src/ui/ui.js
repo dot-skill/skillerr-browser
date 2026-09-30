@@ -1382,7 +1382,16 @@ $('aiMsg').onsubmit = async (ev) => {
   $('aiMsgInput').value = '';
   if (r.start) return startTask(text); // the built-in AI had just finished: this is its next task
   if (!r.ok) return flash(r.message);
-  const b = h('div', 'say you', `${esc(text)}<span class="st">Waiting for ${esc(r.label)} to read it (with its next step)</span>`);
+  const b = h('div', 'say you', `${esc(text)}<span class="st">${esc(msgStatus(r))}</span>` +
+    (!r.builtin && !r.listening && r.canRedirect ? '<button type="button" class="btn ghost sm redirect">Send to Skillerr\'s AI instead</button>' : ''));
+  // The app isn't listening: the built-in AI can take it now instead (it leaves the app's inbox, unless already read).
+  b.querySelector('.redirect')?.addEventListener('click', async (ev) => {
+    ev.currentTarget.remove();
+    if (!(await skillerr.invoke('pilot-retract', r.id)).ok) return flash(`${r.label} has read it already.`);
+    sentMsgs.delete(r.id);
+    b.querySelector('.st').textContent = 'Sent to Skillerr\'s AI instead';
+    startTask(text);
+  });
   (r.builtin && task ? task : sessionFor({ controller: r.to })).steps.appendChild(b);
   if (r.builtin) toldBubbles.push(b);
   else sentMsgs.set(r.id, b);
@@ -1400,12 +1409,14 @@ function renderMsgTargets(targets = []) {
   sel.hidden = targets.length < 2;
   const cur = targets.find((t) => t.name === sel.value) || targets[0];
   $('aiMsgInput').placeholder = `Message ${cur.label}`;
+  $('aiMsgListening').hidden = cur.via === 'builtin' || !isListening(cur.name, status.listening);
 }
 $('aiMsgTo').onchange = () => renderMsgTargets(status.targets);
 skillerr.on('inbox-read', (ids) => {
   for (const id of ids) {
     const st = sentMsgs.get(id)?.querySelector('.st');
     if (st) st.textContent = 'Read';
+    sentMsgs.get(id)?.querySelector('.redirect')?.remove();
     sentMsgs.delete(id);
   }
 });

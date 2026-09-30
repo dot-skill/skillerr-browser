@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Skillerr inputs demo — special fields</title>
+  <style>
+    body { font: 15px/1.5 -apple-system, sans-serif; max-width: 560px; margin: 40px auto; padding: 0 20px; color: #1b1b22; }
+    .card { border: 1px solid #e3e3ea; border-radius: 14px; padding: 20px; margin: 16px 0; }
+    label { display: block; margin: 8px 0; }
+    input, select { font: inherit; margin-left: 6px; }
+    .note { background: #fff7e6; border-radius: 10px; padding: 10px 14px; font-size: 13px; }
+    #log { font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; background: #f6f6f9; border-radius: 10px; padding: 10px 14px; min-height: 3em; }
+  </style>
+</head>
+<body>
+  <p class="note">This is a <b>fake</b> page for testing Skillerr's <code>type</code> on fields that aren't plain text boxes.
+    Ask your AI to <code>type</code> "b@example.com" into Email, then "7:15 PM" into Delivery time, "2026-10-06" into Date, and so on.
+    Each field must get only its own value, and the log below shows the input and change events a framework would see.</p>
+
+  <form class="card" onsubmit="return false">
+    <label>Email <input id="email" type="email" name="email" /></label>
+    <label>Delivery time <input id="time" type="time" name="delivery" min="11:00" max="21:00" step="900" /></label>
+    <label>Date <input id="date" type="date" name="date" /></label>
+    <label>Date and time <input id="datetime" type="datetime-local" name="datetime" /></label>
+    <label>Month <input id="month" type="month" name="month" /></label>
+    <label>Week <input id="week" type="week" name="week" /></label>
+    <label>Colour <input id="color" type="color" name="color" /></label>
+    <label>Volume <input id="range" type="range" name="volume" min="0" max="10" /></label>
+    <label>Size
+      <select id="size" name="size">
+        <option value="s">Small</option>
+        <option value="m">Medium</option>
+        <option value="l">Large</option>
+      </select>
+    </label>
+  </form>
+
+  <div id="log"></div>
+
+  <script>
+    const log = document.getElementById('log');
+    for (const el of document.querySelectorAll('input, select')) {
+      for (const type of ['input', 'change']) {
+        el.addEventListener(type, () => { log.textContent += `${type} ${el.id} = ${JSON.stringify(el.value)}\n`; });
+      }
+    }
+  </script>
+</body>
+</html>

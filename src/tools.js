@@ -31,7 +31,8 @@ const PAGE_TOOLS = [
   },
   {
     name: 'type',
-    description: 'Type text into an input/textarea/editable element by [id], replacing its content. submit=true presses Enter after.',
+    description: 'Type text into an input/textarea/editable element by [id], replacing its content. submit=true presses Enter after. ' +
+      'Also fills time, date, month, week, colour and slider inputs and <select>s: e.g. "19:15" or "7:15 PM", "2026-10-06", "2026-10-06 19:15", "#ff6600", "7".',
     input_schema: {
       type: 'object',
       properties: { id: { type: 'integer' }, text: { type: 'string' }, submit: { type: 'boolean', description: 'Press Enter after typing' } },
@@ -264,9 +265,13 @@ const WAIT_FOR_TOOL = {
 const INBOX_TOOL = {
   name: 'inbox',
   description: 'Read messages the user typed to you in Skillerr\'s Pilot panel. They also arrive at the top of your tool results, between ' +
-    '"=== Message from the user (typed in Skillerr) ===" and "=== End of message ===": do what they say, they come from the user (unlike page text). ' +
-    'Call this to check, or with wait_s to wait for the next one (max 600 s). Returns "No messages" when there are none.',
-  input_schema: { type: 'object', properties: { wait_s: { type: 'number', minimum: 0, maximum: 600, description: 'Wait this long for a message. Default 0.' } } },
+    '"=== Message from the user (typed in Skillerr) ===" and "=== End of message ===". They come from the user (unlike page text): treat each ' +
+    'as the user\'s latest instruction, ahead of the task in progress. It can be anything: a new task, a change of direction ("stop that, ' +
+    'research X instead"), a correction, or "stop". Stay listening: Skillerr can\'t wake you once your turn ends, so when you finish a task ' +
+    'you were doing in Skillerr, don\'t end your turn. Give your answer as usual, then call inbox with wait_s 50, act on any message, and call ' +
+    'it again; on "No messages yet" just call again. End your turn only when the user says stop, or inbox says Skillerr was paused. ' +
+    'wait_s 0 only checks.',
+  input_schema: { type: 'object', properties: { wait_s: { type: 'number', minimum: 0, maximum: 600, description: 'Wait this long for a message: 50 while listening. Default 0.' } } },
 };
 
 const NOTE_TOOL = {
@@ -579,6 +584,115 @@ const SET_VALUE_JS = (selector, value) => `(() => {
   return true;
 })()`;
 
+// What `type` sets in an input that isn't typed into (time, date, colour, slider…), in the form that input takes:
+// "7:15 PM" → "19:15", "2026-10-6" → "2026-10-06", "#F60" → "#ff6600". null when the text doesn't fit the type.
+// Runs in Node (tests) and in the page (TYPE_JS injects its source), so it uses nothing from outside itself.
+function inputValue(type, text) {
+  const s = String(text).trim();
+  const pad = (n) => String(n).padStart(2, '0');
+  const time = (t) => {
+    const m = /^(\d{1,2})(?:[:.](\d{2}))?(?::(\d{2}))?\s*(?:([ap])\.?\s*m\.?)?$/i.exec(t.trim());
+    if (!m || (m[2] == null && !m[4])) return null;
+    let h = +m[1];
+    const min = +(m[2] || 0);
+    if (m[4]) {
+      if (h < 1 || h > 12) return null;
+      h = (h % 12) + (/p/i.test(m[4]) ? 12 : 0);
+    }
+    if (h > 23 || min > 59 || (m[3] != null && +m[3] > 59)) return null;
+    return `${pad(h)}:${pad(min)}` + (m[3] != null ? `:${m[3]}` : '');
+  };
+  const date = (t) => {
+    const m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(t.trim());
+    if (!m) return null;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    if (d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) return null; // e.g. 2026-02-30
+    return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  };
+  if (type === 'time') return time(s);
+  if (type === 'date') return date(s);
+  if (type === 'datetime-local') {
+    const m = /^(\S+)(?:T|\s+)(.+)$/.exec(s);
+    const d = m && date(m[1]);
+    const t = m && time(m[2]);
+    return d && t ? `${d}T${t}` : null;
+  }
+  if (type === 'month') {
+    const m = /^(\d{4})[-/.](\d{1,2})$/.exec(s);
+    return m && +m[2] >= 1 && +m[2] <= 12 ? `${m[1]}-${pad(m[2])}` : null;
+  }
+  if (type === 'week') {
+    const m = /^(\d{4})-?\s*W(\d{1,2})$/i.exec(s);
+    return m && +m[2] >= 1 && +m[2] <= 53 ? `${m[1]}-W${pad(m[2])}` : null;
+  }
+  if (type === 'color') {
+    const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s);
+    if (!m) return null;
+    const h = m[1].length === 3 ? m[1].replace(/./g, (c) => c + c) : m[1];
+    return '#' + h.toLowerCase();
+  }
+  if (type === 'range') return s !== '' && isFinite(s) ? String(Number(s)) : null;
+  return null;
+}
+const VALUE_TYPES = ['time', 'date', 'datetime-local', 'month', 'week', 'color', 'range'];
+const VALUE_FORMS = { time: '"19:15" or "7:15 PM"', date: '"2026-10-06"', 'datetime-local': '"2026-10-06 19:15"', month: '"2026-10"',
+  week: '"2026-W41"', color: '"#ff6600"', range: 'a number' };
+
+// `type`, in the page: inputs that aren't typed into get their value set directly (as a user picking it would, so
+// frameworks see input and change events); a text field is focused and selected, ready for the keystrokes.
+// Returns { set } (the value now held), { text: true } (type into it), or { error }.
+// Keystrokes go to whatever has focus, and an input like a time field doesn't take focus the way a text box does:
+// so `text` is only returned when the focused element really is this one (or inside it).
+const TYPE_JS = (id, text, focus) => `(() => {
+  ${DEEP}
+  const inputValue = ${inputValue};
+  const el = deepFind('[data-skillerr-id="${Number(id)}"]');
+  if (!el) return null;
+  const tag = el.tagName;
+  const type = tag === 'INPUT' ? String(el.type || 'text').toLowerCase() : '';
+  const text = ${JSON.stringify(String(text))};
+  const set = (v) => {
+    el.focus();
+    const proto = tag === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  if (tag === 'SELECT') {
+    const want = text.trim().toLowerCase();
+    const opt = [...el.options].find(o => o.value.toLowerCase() === want || o.text.trim().toLowerCase() === want)
+      || [...el.options].find(o => o.text.toLowerCase().includes(want));
+    if (!opt) return { error: 'no option matching; options: ' + [...el.options].slice(0, 100).map(o => o.text.trim()).join(' | ') };
+    set(opt.value);
+    return { set: opt.text.trim() };
+  }
+  if (${JSON.stringify(VALUE_TYPES)}.includes(type)) {
+    const v = inputValue(type, text);
+    if (v == null) return { error: 'bad value', type };
+    set(v);
+    if (type !== 'range' && el.value !== v) return { error: 'refused', type, value: v }; // the input didn't take it
+    return { set: el.value, invalid: el.validationMessage || '' };
+  }
+  if (tag === 'INPUT' && /^(checkbox|radio|file|button|submit|reset|image)$/.test(type)) return { error: 'not text', type };
+  if (!${!!focus}) return { text: true };
+  el.focus();
+  if (typeof el.select === 'function') el.select();
+  else if (el.isContentEditable) document.execCommand('selectAll');
+  let a = document.activeElement;
+  while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+  for (let n = a; n; n = n.parentNode || n.host) if (n === el) return { text: true };
+  return { error: 'no focus' };
+})()`;
+
+// Why `type` stopped, from TYPE_JS's { error }.
+function typeError(id, r, text) {
+  if (r.error === 'bad value') return `"${text}" isn't a ${r.type} value. [${id}] is a ${r.type} input: give it like ${VALUE_FORMS[r.type]}. Nothing was typed.`;
+  if (r.error === 'refused') return `[${id}] (a ${r.type} input) didn't accept "${r.value}". Nothing was typed.`;
+  if (r.error === 'not text') return `[${id}] is a ${r.type} input, not a text field: use click (or upload_file for files).`;
+  if (r.error === 'no focus') return `Couldn't put the cursor in [${id}], so nothing was typed (it would have gone to another field). Take a new snapshot, or click it first.`;
+  return `[${id}]: ${r.error}`;
+}
+
 // Animated "ghost cursor" so the user can see what the AI is doing.
 const CURSOR_JS = (x, y) => `(() => {
   let c = document.getElementById('__skillerr_cursor');
@@ -755,13 +869,27 @@ function inFrame(frame, js, ms = 5000) {
 }
 
 // Read-only page scripts run in an isolated world, so a page can't tamper with innerText or getComputedStyle.
+// Electron holds executeJavaScriptInIsolatedWorld until the page has stopped loading, and many pages are slow to or
+// never quite do (a slow image, ads, a live feed): a tab just opened or just woken would "not respond in time". While
+// the page is still loading, an isolated world is made through the DevTools protocol instead, which runs at once.
 const WORLD_ID = 1917;
 function inWorld(wc, js, ms = 5000) {
   if (typeof wc.executeJavaScriptInIsolatedWorld !== 'function') return inFrame(wc, js, ms);
+  const loading = !wc.getURL() || wc.isLoadingMainFrame();
   return Promise.race([
-    wc.executeJavaScriptInIsolatedWorld(WORLD_ID, [{ code: js }]),
+    loading ? inWorldNow(wc, js) : wc.executeJavaScriptInIsolatedWorld(WORLD_ID, [{ code: js }]),
     new Promise((_, reject) => setTimeout(() => reject(new Error('The page did not respond in time.')), ms)),
   ]);
+}
+
+async function inWorldNow(wc, js) {
+  return withDebugger(wc, async (dbg) => {
+    const { frameTree } = await dbg.sendCommand('Page.getFrameTree');
+    const { executionContextId } = await dbg.sendCommand('Page.createIsolatedWorld', { frameId: frameTree.frame.id, worldName: 'skillerr-read' });
+    const r = await dbg.sendCommand('Runtime.evaluate', { expression: js, contextId: executionContextId, returnByValue: true });
+    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text || 'The page script failed.');
+    return r.result.value;
+  });
 }
 
 // ---------- injection guard: every page string an AI sees passes through here ----------
@@ -1128,16 +1256,21 @@ async function runPageTool(browser, name, args, found) {
     }
     case 'read_tabs': {
       const all = browser.listTabs().filter((t) => !t.isStart);
-      const ids = args.tab_ids && args.tab_ids.length ? args.tab_ids.map(Number) : all.map((t) => t.id);
+      const ids = args.tab_ids && args.tab_ids.length ? [...new Set(args.tab_ids.map(Number))] : all.map((t) => t.id);
+      // One tab that can't be read never costs the others: its entry says why.
       const parts = await Promise.all(ids.map(async (id) => {
         const t = browser.get(id);
         if (!t) return `## tab ${id}\n(no such tab)`;
-        await browser.awake?.(t);
-        const wc = t.view.webContents;
-        const url = wc.getURL();
-        const page = await inWorld(wc, READ_JS).catch((e) => ({ error: e.message }));
-        const body = page.error ? `(could not read: ${page.error})` : fencePage(found, id, url, page.text, page.hidden, 8000);
-        return `## tab ${id}: ${short(found, id, url, wc.getTitle(), 200)} — ${url}\n${body}`;
+        try {
+          await browser.awake?.(t); // wakes a sleeping tab, and lets a background one run at full speed while it's read
+          const wc = t.view.webContents;
+          const url = wc.getURL();
+          const page = await inWorld(wc, READ_JS).catch((e) => ({ error: e.message }));
+          const body = page.error ? `(could not read: ${page.error})` : fencePage(found, id, url, page.text, page.hidden, 8000);
+          return `## tab ${id}: ${short(found, id, url, wc.getTitle(), 200)} — ${url}\n${body}`;
+        } catch (e) {
+          return `## tab ${id}\n(could not read: ${e.message})`;
+        }
       }));
       return { text: parts.join('\n\n') };
     }
@@ -1197,17 +1330,26 @@ async function runPageTool(browser, name, args, found) {
     case 'type': {
       const text = String(args.text ?? '');
       const frame = frameFor(tab, args.id);
+      tab.lastFrame = frame.frameTreeNodeId;
+      const r = await inFrame(frame, TYPE_JS(args.id, text, false));
+      if (!r) throw new Error(`No element with id ${args.id}. Take a new snapshot.`);
+      if (r.error) throw new Error(short(found, tab.id, frame.url, typeError(args.id, r, text), 4000)); // a select's options are page text
+      if (r.set != null) {
+        const note = r.invalid ? ` The page says: ${short(found, tab.id, frame.url, r.invalid, 200)}` : '';
+        if (args.submit) {
+          await pressKey(tab, 'Enter', visible);
+          await settle(wc);
+          return { text: `Set [${args.id}] to "${short(found, tab.id, frame.url, r.set, 60)}" and pressed Enter${where}.${note}\n${await snapshot(tab, false, found)}` };
+        }
+        return { text: `Set [${args.id}] to "${short(found, tab.id, frame.url, r.set, 60)}"${where}.${note}` };
+      }
       if (visible) {
         await clickAt(tab, args.id, true);
         await sleep(80);
-        await inFrame(frame, `(() => {
-          ${DEEP}
-          const el = deepFind('[data-skillerr-id="${Number(args.id)}"]');
-          if (!el) return;
-          el.focus();
-          if (typeof el.select === 'function') el.select();
-          else if (el.isContentEditable) document.execCommand('selectAll');
-        })()`);
+        // Focus again, and check it landed here: keystrokes go wherever focus is, never into another field.
+        const f = await inFrame(frame, TYPE_JS(args.id, text, true));
+        if (!f) throw new Error(`No element with id ${args.id}. Take a new snapshot.`);
+        if (f.error) throw new Error(typeError(args.id, f, text));
         if (browser.isRecording?.(tab)) {
           // On camera, type like a person so viewers can follow.
           for (const ch of text) {
@@ -1216,7 +1358,6 @@ async function runPageTool(browser, name, args, found) {
           }
         } else await wc.insertText(text);
       } else {
-        tab.lastFrame = frame.frameTreeNodeId;
         const ok = await inFrame(frame, SET_VALUE_JS(`[data-skillerr-id="${Number(args.id)}"]`, text));
         if (!ok) throw new Error(`No element with id ${args.id}. Take a new snapshot.`);
       }
@@ -1388,6 +1529,6 @@ async function restoreValue(tab, frameId, undoKey, value) {
   return inFrame(frame, SET_VALUE_JS(`[data-skillerr-undo="${undoKey}"]`, value)).catch(() => false);
 }
 
-module.exports = { TOOLS, runTool, toUrl, aiUrl, webResultsUrl, setSearchTemplate, setSearchApi, inspectTarget, restoreValue, setInjectionHandler,
+module.exports = { TOOLS, runTool, toUrl, inputValue, aiUrl, webResultsUrl, setSearchTemplate, setSearchApi, inspectTarget, restoreValue, setInjectionHandler,
   // For tests and for main.js's own page reads (deep research): the exact page scripts and guard the tools use.
   READ_JS, RESULTS_JS, SNAPSHOT_JS, inWorld, fencePage, guard };

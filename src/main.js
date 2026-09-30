@@ -13,7 +13,7 @@ const guard = require('./guard');
 const uploads = require('./uploads');
 const { opensAsPopup } = require('./popups');
 const { checkAsk, Asks } = require('./ask');
-const { Inbox, deliver, recipient } = require('./inbox');
+const { Inbox, deliver, listenText, recipient } = require('./inbox');
 const { checkUntil, met } = require('./wait-for');
 const { Recorder } = require('./recorder');
 const store = require('./store');
@@ -255,7 +255,7 @@ let idleTimer = null;
 let seq = 0;
 const pendingApprovals = new Map();
 const asks = new Asks(); // `ask` questions waiting for a click; never mixed with approvals
-const inbox = new Inbox(); // what the user typed to their AI in the Pilot panel, until it's delivered
+const inbox = new Inbox({ onListening: () => pushStatus() }); // what the user typed to their AI in the Pilot panel, until it's delivered
 
 function ui(channel, data) {
   if (chrome && !chrome.webContents.isDestroyed()) chrome.webContents.send(channel, data);
@@ -1819,6 +1819,9 @@ const browser = {
       await wake(t);
     }
     else if (t?.waking) await t.waking;
+    // An AI is about to use it: full speed, and not put back to sleep meanwhile. The tool call's own touch covers only
+    // its one tab; read_tabs reads several (a woken tab could otherwise sleep again before it was read).
+    if (t?.view && !t.view.webContents.isDestroyed()) touchTab(t);
   },
   isVisible: (t) => isShown(t) && win.isVisible() && !win.isMinimized(),
   isRecording: (t) => !!recorder && recorder.isRecording(t),
@@ -1835,7 +1838,7 @@ const browser = {
 // ---------------- the control gate every AI action passes through ----------------
 
 function pushStatus() {
-  ui('status', { ...status, targets: messageTargets() });
+  ui('status', { ...status, targets: messageTargets(), listening: inbox.listening() });
   if (hud) hud.setVisible(!!status.controller && (status.active || status.agentRunning || status.paused || status.awaitingApproval));
 }
 
@@ -2206,7 +2209,10 @@ const tabTitle = (t) => (t?.sleeping ? t.sleeping.title : t?.view && !t.view.web
 async function executeInSession(controller, name, args, session) {
   if (!TOOLS.some((t) => t.name === name)) throw new Error(`Unknown tool: ${name}`);
   if (blocked(controller)) throw new Error(`The user has turned off ${controller.name} in Skillerr, so it can't use the browser. Ask them to turn it back on in Skillerr → Connected AI apps.`);
-  if (status.paused) throw new Error('The user has paused AI control of the browser. Wait for them to resume.');
+  if (status.paused) {
+    if (name === 'inbox') return { text: listenText('stopped') }; // a listening app ends its turn cleanly
+    throw new Error('The user has paused AI control of the browser. Wait for them to resume.');
+  }
   markActive(controller);
   if (name === 'caption' && recorder?.info()?.scope === 'window') return BROWSER_TOOLS.caption(args); // narration, not a page action
   if (name === 'say') {
@@ -2222,7 +2228,9 @@ async function executeInSession(controller, name, args, session) {
   }
   if (name === 'inbox') {
     const stop = stillWorking(controller);
-    return { text: '', inbox: await inbox.wait(controller.name, Math.min(600, Math.max(0, Number(args.wait_s) || 0)) * 1000).finally(stop) };
+    const waitS = Math.min(600, Math.max(0, Number(args.wait_s) || 0));
+    const r = await inbox.listen(controller.name, waitS * 1000).finally(stop);
+    return { text: listenText(r.status, waitS > 0), inbox: r.messages };
   }
 
   const id = ++seq;
@@ -2752,6 +2760,7 @@ function setPaused(paused) {
     for (const w of workers) w.stop();
     for (const finish of [...pendingApprovals.values()]) finish(false);
     asks.finishAll('paused');
+    inbox.stop(); // a listening app hears "stopped" and ends its turn
   }
   pushStatus();
 }
@@ -2787,8 +2796,12 @@ function wireIpc() {
       return { ok: false, start: true }; // it just finished: the message starts a new task, as if typed below
     }
     const m = inbox.post(to, text);
-    return m ? { ok: true, id: m.id, to, label: target.label } : { ok: false, message: 'Type a message first.' };
+    // Listening: it has the message already. Otherwise it waits for the app's next call, which may be a while.
+    return m ? { ok: true, id: m.id, to, label: target.label, listening: inbox.isListening(to), canRedirect: agentReady() } : { ok: false, message: 'Type a message first.' };
   });
+  // "Send to Skillerr's AI instead", on a message the app hasn't read: it leaves that app's inbox, and the panel starts
+  // the built-in AI on it.
+  ipcMain.handle('pilot-retract', (_e, id) => ({ ok: !!inbox.retract(Number(id)) }));
   ipcMain.on('ask-choice', (_e, { id, choice }) => asks.answer(Number(id), String(choice))); // asks only, never an approval
   ipcMain.on('undo', (_e, id) => undo(id));
   ipcMain.on('mosaic-exit', () => exitMosaic());

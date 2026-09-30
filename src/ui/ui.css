@@ -1114,6 +1114,9 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .ai-msg input { flex: 1; min-width: 0; border: 0; outline: none; background: none; font-size: 13px; color: var(--text); }
 .say.you { align-self: flex-end; margin: 4px 0 4px 40px; padding: 7px 11px; border-radius: 12px 12px 4px 12px; background: var(--surface-3); color: var(--text); }
 .say.you .st { display: block; margin-top: 2px; font-size: 11px; color: var(--text-3); }
+.say.you .redirect { margin-top: 6px; }
+.ai-msg .listening { flex: none; align-self: center; font-size: 11px; color: var(--ok); }
+.ai-msg .listening[hidden] { display: none; }
 .no-pilot p { margin: 0; }
 .no-pilot b { color: var(--text); }
 .no-pilot .np-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 10px; }
