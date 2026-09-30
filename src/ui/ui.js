@@ -1,4 +1,4 @@
-/* global skillerr, icon, esc, trunc, detectIntent, looksLikeUrl, INTENTS, describeStep, markdown */
+/* global skillerr, icon, esc, trunc, detectIntent, looksLikeUrl, INTENTS, describeStep, markdown, needsConnectCard */
 const $ = (id) => document.getElementById(id);
 // Window buttons: macOS puts them top-left, Windows and Linux top-right; the tab strip leaves room for them.
 document.body.classList.add(/Mac/.test(navigator.platform) ? 'os-mac' : 'os-other');
@@ -20,6 +20,8 @@ const OTHER_PRESETS = {
   custom: { baseUrl: '', model: '' },
 };
 let aiReady = true; // is a built-in AI set up? (applyAiReady keeps it current)
+let appConnected = false; // is any AI app connected to Skillerr (connect-targets)?
+let appActed = false; // has an AI app called Skillerr in this run?
 const PRO_GATEWAY = 'https://ai-gateway.vercel.sh/v1'; // direct, for a gateway key (the owner's own)
 const PRO_API = 'https://skillerr.com/api/pro/v1'; // licensed: skillerr.com checks the license, then calls the gateway
 const PRO_NAMES = { 'anthropic/claude-sonnet-5': 'Claude Sonnet 5', 'anthropic/claude-opus-5.5': 'Claude Opus 5.5', 'anthropic/claude-haiku-4.5': 'Claude Haiku 4.5', 'google/gemini-3.5-flash': 'Gemini 3.5 Flash' };
@@ -1065,6 +1067,8 @@ IDEAS.forEach((text, i) => {
 
 async function renderAiCards() {
   const [targets, ready, local] = await Promise.all([skillerr.invoke('connect-targets'), skillerr.invoke('agent-ready'), skillerr.invoke('detect-local')]);
+  appConnected = targets.some((t) => t.connected);
+  renderNoPilot();
   const grid = $('aiGrid');
   grid.innerHTML = '';
 
@@ -1176,6 +1180,10 @@ function connCard(t, cls) {
 
 skillerr.on('status', (s) => {
   status = s;
+  if (s.controller?.via === 'mcp' && !appActed) {
+    appActed = true;
+    renderNoPilot();
+  }
   const driving = s.active && !s.paused;
   document.body.classList.toggle('driving', driving);
   document.body.classList.toggle('paused', s.paused);
@@ -1509,7 +1517,8 @@ function agentName() {
 }
 
 async function renderModelPill() {
-  const ready = await skillerr.invoke('agent-ready');
+  const [ready, targets] = await Promise.all([skillerr.invoke('agent-ready'), skillerr.invoke('connect-targets').catch(() => [])]);
+  appConnected = targets.some((t) => t.connected);
   applyAiReady(ready);
   const p = $('modelPill');
   p.className = 'model-pill ' + (ready ? 'ready' : 'setup');
@@ -1520,10 +1529,14 @@ $('modelPill').onclick = () => openSheet('settings');
 // Without a built-in AI, nothing in Skillerr may invite the user to type a task for it: the Pilot box gives way to a card
 // that says how Skillerr is driven (by the user's AI apps), and the address bar and start page only search and go, so a
 // long search is searched, not copied as a task.
+function renderNoPilot() {
+  $('noPilot').hidden = !needsConnectCard({ aiReady, appConnected, appActed });
+}
+
 function applyAiReady(ready) {
   aiReady = !!ready;
   $('composer').hidden = !aiReady;
-  $('noPilot').hidden = aiReady;
+  renderNoPilot();
   $('welcomeStep1').innerHTML = aiReady
     ? '<b>Say what you want.</b> Type below or in the address bar — “find”, “compare”, “summarize”, “fill in”.'
     : '<b>Connect your AI app.</b> Claude Desktop, Claude Code or Cursor: ask it to research or compare, and it browses here.';

@@ -186,6 +186,10 @@ function describeStep(e) {
   }
 }
 
+// The "Your AI apps drive Skillerr. Connect…" card stands in for the Pilot box when there's no built-in AI. It's only
+// for someone with no way to drive Skillerr yet: never once an AI app is connected, or has acted in this run.
+const needsConnectCard = ({ aiReady, appConnected, appActed }) => !aiReady && !appConnected && !appActed;
+
 // ---------- tiny, safe markdown for AI replies ----------
 
 function mdInline(s) {
