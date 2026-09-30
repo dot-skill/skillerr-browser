@@ -925,7 +925,7 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .hv-filter button[data-f="ai"].on { color: var(--hv-ai); }
 .hv-map .mv-search input { background: rgba(14, 14, 24, .78); border-color: rgba(255, 255, 255, .12); }
 .hv-map .mv-search input::placeholder { color: var(--text-3); }
-.hv-kilr-btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px 0 6px; border-radius: 17px; flex: none; font-weight: 650; font-size: 12.5px;
+.hv-kilr-btn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: 17px; flex: none; font-weight: 650; font-size: 12.5px;
   border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); transition: box-shadow .2s, border-color .2s; }
 .hv-kilr-btn canvas { width: 22px; height: 22px; display: block; }
 .hv-kilr-btn:hover { border-color: rgba(255, 180, 110, .45); box-shadow: 0 0 18px rgba(255, 150, 70, .25); }

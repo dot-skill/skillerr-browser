@@ -722,6 +722,7 @@
 
   function drawKilrIcon() {
     const c = $('hvKilrIcon');
+    if (!c) return; // the button is just "Orb" now: the big orb is on the page
     const g = c.getContext('2d');
     g.clearRect(0, 0, c.width, c.height);
     KilrOrb.draw(g, c.width / 2, c.height / 2, c.width * 0.36, Math.max(0.35, data.glow || 0), 1.2, { withBloom: true });
