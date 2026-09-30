@@ -8,8 +8,10 @@
   </picture>
 </a>
 
-<p><b>Research like it was meant to be.</b><br>
-Your AI browses in real tabs you can watch, asks before anything that matters, and keeps what it learns on your computer.</p>
+<p><b>See what your AI browses. Keep what it learns.</b><br>
+Claude, Cursor and Codex research the web in real tabs you can watch, so what your AI tells you comes from pages it
+checked today, not an old memory or a guess. Everything it reads is kept on your computer and sorted by your Orb, your
+own tiny AI model that sends nothing anywhere.</p>
 
 <p>
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-8b6cff"></a>
@@ -33,6 +35,19 @@ Your AI browses in real tabs you can watch, asks before anything that matters, a
 <img alt="Skillerr's fleet view: an AI researching power bank rules across TSA, FAA, JAL and Tokyo Cheapo in four live tabs, with the Pilot panel logging each step" src=".github/assets/fleet.png" width="100%">
 
 </div>
+
+## New in 0.1.6
+
+- **Can't close your tabs? Your Orb sorts them into journeys.** Every tab you and your AIs open in Skillerr files into
+  a trail (your Kyoto trip, that standing desk), on your computer. Close them all and pick any journey up where you
+  left off. Moving from Chrome? Your open Chrome tabs come over sorted the same way.
+- **One live view per chat** in Claude Desktop, showing only the pages this AI opened, and an **Audit** of every page
+  it opened, read or tried to. Click any to open it in Skillerr.
+- **Your AIs' research sits right of the address bar**, your trails left of it. Finished research is put away there,
+  its sources a click away.
+- **Plain web results** for AI searches (no AI Overviews), and **Deep research** (1 to 5 links deep) in Settings.
+- Site icons kept on your computer, History and Clear browsing data in one place, and fixes.
+  [Release notes](.github/release-notes/v0.1.6.md)
 
 ## The browser that skills your AI
 
