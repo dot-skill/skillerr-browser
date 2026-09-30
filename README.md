@@ -36,18 +36,19 @@ own tiny AI model that sends nothing anywhere.</p>
 
 </div>
 
-## New in 0.1.6
+## New in 0.1.9
 
-- **Can't close your tabs? Your Orb sorts them into journeys.** Every tab you and your AIs open in Skillerr files into
-  a trail (your Kyoto trip, that standing desk), on your computer. Close them all and pick any journey up where you
-  left off. Moving from Chrome? Your open Chrome tabs come over sorted the same way.
-- **One live view per chat** in Claude Desktop, showing only the pages this AI opened, and an **Audit** of every page
-  it opened, read or tried to. Click any to open it in Skillerr.
-- **Your AIs' research sits right of the address bar**, your trails left of it. Finished research is put away there,
-  its sources a click away.
-- **Plain web results** for AI searches (no AI Overviews), and **Deep research** (1 to 5 links deep) in Settings.
-- Site icons kept on your computer, History and Clear browsing data in one place, and fixes.
-  [Release notes](.github/release-notes/v0.1.6.md)
+- **Your AI can attach files.** Adding an image or video to a post on X, Reddit, LinkedIn or Product Hunt, or a
+  document to a form, no longer stops for you to do it by hand: `upload_file` fills the file input or the "Add photos"
+  picker. **Every upload waits for your OK in Skillerr**, naming the files and the site, and files in `~/.ssh`,
+  `~/.skillerr`, keychains, password managers and other credential stores are always refused.
+  [Release notes](.github/release-notes/v0.1.9.md)
+- **Sign in with Google and Apple works on sites like X** (0.1.8): their sign-in opens as a small pop-up window, as in
+  other browsers. [Release notes](.github/release-notes/v0.1.8.md)
+- **The first-run "Get started" button responds again** on desktop installers (0.1.7).
+  [Release notes](.github/release-notes/v0.1.7.md)
+- Earlier: your Orb sorts your tabs into journeys, one live view per chat, plain web results and Deep research
+  ([0.1.6](.github/release-notes/v0.1.6.md)).
 
 ## The browser that skills your AI
 
