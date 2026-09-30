@@ -85,3 +85,12 @@ test('a hello from another app never takes the header from the app that is drivi
   assert.strictEqual(helloTakesHeader(code, 'Claude Code', 50000, 60000, 90000), true);
   assert.strictEqual(helloTakesHeader(code, 'Claude Desktop', 0, 200000, 90000), true, 'nobody acted for a while');
 });
+
+test('a reported model is short plain text, or nothing', () => {
+  const { reportedModel } = require('../src/ai-activity');
+  assert.strictEqual(reportedModel('  Claude   Sonnet 5.5 '), 'Claude Sonnet 5.5');
+  assert.strictEqual(reportedModel('<img src=x onerror=alert(1)>'), 'img src=x onerror=alert(1)');
+  assert.strictEqual(reportedModel('x'.repeat(80)).length, 40);
+  assert.strictEqual(reportedModel(''), null);
+  assert.strictEqual(reportedModel(undefined), null);
+});

@@ -1192,8 +1192,11 @@ skillerr.on('status', (s) => {
   document.body.classList.toggle('paused', s.paused);
   $('orb').className = 'orb' + (s.paused ? ' paused' : driving ? ' live' : '');
   $('miniOrb').className = 'orb xs' + (s.paused ? ' paused' : driving ? ' live' : '');
-  $('whoName').innerHTML = s.paused ? 'AI paused' : s.controller ? `${brandIcon(s.controller.name, 15)}<span class="nm">${esc(s.controller.name)}</span>` : 'Skillerr Pilot';
-  $('whoName').title = s.controller && !s.paused ? s.controller.name : '';
+  // The model is the app's own word for it (MCP doesn't say), so it's shown as reported, and gives way first when space is short.
+  const model = !s.paused && s.controller?.model ? s.controller.model : null;
+  $('whoName').innerHTML = s.paused ? 'AI paused' : s.controller ? `${brandIcon(s.controller.name, 15)}<span class="nm">${esc(s.controller.name)}</span>` +
+    (model ? `<span class="model"> · ${esc(model.model)}</span>` : '') : 'Skillerr Pilot';
+  $('whoName').title = s.controller && !s.paused ? `${s.controller.name}${model ? ` · ${model.model} (model as reported by ${s.controller.name}${model.how === 'config' ? '\'s Skillerr config' : ''}; Skillerr can't check it)` : ''}` : '';
   $('whoSub').className = 'who-sub' + (s.paused ? ' paused' : driving ? ' live' : '');
   $('whoSub').textContent = s.paused ? 'You have control' : driving ? 'Driving now' : s.controller ? (s.controller.via === 'builtin' ? 'Idle' : 'Idle · connected') : 'Ready when you are';
   const pb = $('pauseBtn');

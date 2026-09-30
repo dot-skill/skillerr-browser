@@ -100,4 +100,12 @@ function helloTakesHeader(current, client, lastCallAt, now, quietMs) {
   return !current || current.name === client || now - lastCallAt >= quietMs;
 }
 
-module.exports = { AiActivity, pickPreviewTabs, pageKey, helloTakesHeader, SESSION_GAP_MS };
+// The model an AI app says it runs on. MCP's clientInfo names the app and its version, never the model, so this only
+// ever comes from the app itself (the whoami tool, or SKILLERR_MODEL in its Skillerr config) and is shown as reported.
+// Plain text, short: it's display text from outside.
+function reportedModel(s) {
+  const m = String(s ?? '').replace(/[\u0000-\u001f\u007f<>{}\[\]`]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  return m || null;
+}
+
+module.exports = { AiActivity, pickPreviewTabs, pageKey, helloTakesHeader, reportedModel, SESSION_GAP_MS };

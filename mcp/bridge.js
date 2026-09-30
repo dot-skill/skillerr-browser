@@ -71,6 +71,9 @@ const PREVIEW_TOOLS = [
   },
 ];
 
+// The model behind this AI app, if its Skillerr config says (MCP's clientInfo doesn't). Shown in Skillerr as reported.
+const MODEL = process.env.SKILLERR_MODEL || undefined;
+
 const log = (...a) => process.stderr.write('[skillerr-bridge] ' + a.join(' ') + '\n'); // stdout is the MCP channel
 
 function readSession() {
@@ -195,7 +198,7 @@ async function main() {
   // Only say hello if Skillerr is already open; the browser launches on the first real tool call.
   server.oninitialized = async () => {
     const s = readSession();
-    if (await alive(s)) api(s, 'POST', '/hello', { client: clientName(server) }).catch(() => {});
+    if (await alive(s)) api(s, 'POST', '/hello', { client: clientName(server), model: MODEL }).catch(() => {});
   };
 
   const liveView = () => !!server.getClientCapabilities()?.extensions?.[UI_EXTENSION] && fs.existsSync(PREVIEW_HTML);
@@ -241,7 +244,7 @@ async function main() {
     const ping = token !== undefined && setInterval(() => extra.sendNotification({ method: 'notifications/progress', params: { progressToken: token, progress: ++n } }).catch(() => {}), 15000);
     try {
       const s = await connect();
-      const r = await api(s, 'POST', '/call', { client: clientName(server), name: req.params.name, args: req.params.arguments || {} });
+      const r = await api(s, 'POST', '/call', { client: clientName(server), model: MODEL, name: req.params.name, args: req.params.arguments || {} });
       if (r.error) return { content: [{ type: 'text', text: r.error }], isError: true };
       const content = [{ type: 'text', text: r.text }];
       if (r.image) content.push({ type: 'image', data: r.image.data, mimeType: r.image.mimeType });

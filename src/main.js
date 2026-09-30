@@ -34,7 +34,7 @@ const freshData = !fs.existsSync(path.join(store.DIR, 'settings.json'));
 let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
 const { AsyncLocalStorage } = require('async_hooks');
-const { AiActivity, pickPreviewTabs, helloTakesHeader } = require('./ai-activity');
+const { AiActivity, pickPreviewTabs, helloTakesHeader, reportedModel } = require('./ai-activity');
 const { Favicons } = require('./favicons');
 // Site icons: the browser UI loads them from skillerr-icon:, answered from this computer (see "site icons" below).
 require('electron').protocol.registerSchemesAsPrivileged([{ scheme: 'skillerr-icon', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
@@ -1838,10 +1838,17 @@ function pushStatus() {
   if (hud) hud.setVisible(!!status.controller && (status.active || status.agentRunning || status.paused || status.awaitingApproval));
 }
 
+// Each AI app's model as it reported it: { model, how: 'whoami' | 'config' }. whoami wins over the config's SKILLERR_MODEL.
+const models = new Map();
+function noteModel(client, model, how) {
+  const m = reportedModel(model);
+  if (m && !(how === 'config' && models.get(client)?.how === 'whoami')) models.set(client, { model: m, how });
+}
+
 let lastCallAt = 0;
 function markActive(controller) {
   lastCallAt = Date.now();
-  status.controller = controller;
+  status.controller = { ...controller, model: models.get(controller.name) || null };
   status.active = true;
   clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
@@ -2128,6 +2135,11 @@ async function executeInSession(controller, name, args, session) {
   }
   // Returns before the approval gate below and never reaches it: an ask button steers the AI, it can't approve anything.
   if (name === 'ask') return askUser(controller, args, session);
+  if (name === 'whoami') {
+    noteModel(controller.name, args.model, 'whoami');
+    markActive(controller);
+    return { text: `Skillerr knows your app as "${controller.name}"${models.get(controller.name) ? ` and shows your model as "${models.get(controller.name).model}" (reported by you)` : ''}.` };
+  }
   if (name === 'inbox') return { text: '', inbox: await inbox.wait(controller.name, Math.min(600, Math.max(0, Number(args.wait_s) || 0)) * 1000) };
 
   const id = ++seq;
@@ -2566,7 +2578,7 @@ async function dispatch(controller, { instruction, tab_ids = [], urls = [] }) {
   if (!targets.length) throw new Error('Give tab_ids of open tabs and/or urls to open.');
   if (targets.length > MAX_WORKERS) throw new Error(`At most ${MAX_WORKERS} tabs per dispatch.`);
   enterMosaic(targets.map((t) => t.id));
-  const workerTools = TOOLS.filter((t) => !['list_tabs', 'new_tab', 'switch_tab', 'close_tab', 'open_tabs', 'read_tabs', 'dispatch', 'record_start', 'caption', 'record_stop', 'show_tabs', 'say', 'ask', 'inbox', 'save_note', 'save_skill', 'recall', 'tag_session', 'deep_research', 'my_research', 'read_note', 'open_view', 'save_screenshot', 'my_trails', 'continue_trail'].includes(t.name));
+  const workerTools = TOOLS.filter((t) => !['list_tabs', 'new_tab', 'switch_tab', 'close_tab', 'open_tabs', 'read_tabs', 'dispatch', 'record_start', 'caption', 'record_stop', 'show_tabs', 'say', 'ask', 'inbox', 'whoami', 'save_note', 'save_skill', 'recall', 'tag_session', 'deep_research', 'my_research', 'read_note', 'open_view', 'save_screenshot', 'my_trails', 'continue_trail'].includes(t.name));
 
   const reports = await Promise.all(targets.map(async (t) => {
     const worker = new Agent({
@@ -2598,7 +2610,7 @@ function agentLabel() {
 
 const agent = new Agent({
   getSettings: store.getSettings,
-  tools: TOOLS.filter((t) => !['say', 'ask', 'inbox'].includes(t.name)), // its replies already land in the panel, where the user types back
+  tools: TOOLS.filter((t) => !['say', 'ask', 'inbox', 'whoami'].includes(t.name)), // its replies already land in the panel, where the user types back
   execute: (name, args) => execute({ name: agentLabel(), via: 'builtin' }, name, args),
   onEvent: (ev) => ui('agent', ev),
   getContext: () => `Installed skills (call use_skill to load one when a task matches):\n${skills.catalog()}` +
@@ -3507,13 +3519,15 @@ app.whenReady().then(async () => {
       return op === 'action' ? previewAction(client, args) : op === 'audit' ? previewAudit(client) : previewFrame(client, args);
     },
     // A hello isn't driving: it names the app in the panel only if no other app is at work (helloTakesHeader).
-    onHello: (client) => ready.then(() => {
+    onHello: (client, { model } = {}) => ready.then(() => {
+      noteModel(client, model, 'config');
       if (!helloTakesHeader(status.controller, client, lastCallAt, Date.now(), AI_DONE_MS)) return;
-      status.controller = { name: client, via: 'mcp' };
+      status.controller = { name: client, via: 'mcp', model: models.get(client) || null };
       pushStatus();
     }),
-    onCall: async (client, name, args) => {
+    onCall: async (client, name, args, { model } = {}) => {
       await ready;
+      noteModel(client, model, 'config');
       const r = await execute({ name: client, via: 'mcp' }, name, args);
       // The user's Pilot panel messages ride along on the app's next result (src/inbox.js).
       const { text, ids } = deliver(inbox, client, name, r);

@@ -223,6 +223,14 @@ const ASK_TOOL = {
   },
 };
 
+// The model behind the AI app, as the app reports it: MCP doesn't say (src/ai-activity.js reportedModel).
+const WHOAMI_TOOL = {
+  name: 'whoami',
+  description: 'Tell Skillerr which model you are (e.g. "Claude Sonnet 5.5"), once per session, so the Pilot panel can show it next to your ' +
+    'app\'s name, marked as reported by you. Returns the name Skillerr knows your app by.',
+  input_schema: { type: 'object', properties: { model: { type: 'string', maxLength: 40 } }, required: ['model'] },
+};
+
 // Messages from the user, typed in the Pilot panel (src/inbox.js).
 const INBOX_TOOL = {
   name: 'inbox',
@@ -409,7 +417,7 @@ const SHOT_TOOL = {
   },
 };
 
-const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, ASK_TOOL, INBOX_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, CAPTURE_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...TRAIL_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
+const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, ASK_TOOL, INBOX_TOOL, WHOAMI_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, CAPTURE_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...TRAIL_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
 
 // ---------- page-side scripts ----------
 

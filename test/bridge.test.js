@@ -84,3 +84,22 @@ test('ask waits for the click and returns the choice', async (t) => {
   const r = await client.callTool({ name: 'ask', arguments: { text: 'Posted it?', options: ['Done, next', 'Skip'] } });
   assert.deepStrictEqual(JSON.parse(r.content[0].text), { choice: 'Done, next' });
 });
+
+// MCP's clientInfo names the app, never the model: the model only comes from the app's own config (or whoami).
+test('SKILLERR_MODEL from the app config goes along with each call, as reported', async (t) => {
+  const { startApiServer } = require('../src/api-server');
+  const seen = [];
+  const { server, port, token } = await startApiServer({ tools: [], onHello: (c, meta) => seen.push(['hello', c, meta.model]),
+    onCall: async (c, name, _args, meta) => (seen.push([name, c, meta.model]), { text: 'ok' }) });
+  t.after(() => server.close());
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'skillerr-bridge-'));
+  fs.mkdirSync(path.join(home, '.skillerr', 'browser'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.skillerr', 'browser', 'session.json'), JSON.stringify({ port, token }));
+  const client = new Client({ name: 'claude-code', version: '2.1.0' }, { capabilities: {} });
+  await client.connect(new StdioClientTransport({ command: process.execPath, args: [BRIDGE], env: { ...process.env, HOME: home, USERPROFILE: home, SKILLERR_MODEL: 'Claude Sonnet 5.5' }, stderr: 'ignore' }));
+  t.after(() => client.close());
+  await client.callTool({ name: 'snapshot', arguments: {} });
+  assert.deepStrictEqual(seen.find((x) => x[0] === 'snapshot'), ['snapshot', 'Claude Code', 'Claude Sonnet 5.5']);
+  const whoami = (await client.listTools()).tools.find((x) => x.name === 'whoami');
+  assert.deepStrictEqual(whoami.inputSchema.required, ['model']);
+});
