@@ -1,5 +1,5 @@
 /* global skillerr, esc, trunc, icon */
-// History (⌘Y), Bookmarks and Clear browsing data: one internal page, three modes, each its own menu item.
+// History (⌘Y, with Clear browsing data on it) and Bookmarks: one internal page, two modes, each its own menu item.
 (() => {
   const $ = (id) => document.getElementById(id);
   const selected = new Set();
@@ -21,11 +21,14 @@
 
   // One page, three modes, each reached from its own menu item: History (with its Clear button), Bookmarks, and Clear
   // browsing data (with a way back to History).
-  const TITLES = { history: 'History', bookmarks: 'Bookmarks', clear: 'Clear browsing data' };
+  // Clearing browsing data lives on History, as in any browser: a panel at the top of it ('clear' opens History with it).
+  const TITLES = { history: 'History', bookmarks: 'Bookmarks' };
   function showTab(name) {
+    const clear = name === 'clear';
+    if (clear) name = 'history';
     tab = name;
     $('dvTitle').textContent = TITLES[name] || 'History';
-    $('dvBack').hidden = name !== 'clear';
+    $('dvClearBox').hidden = !clear;
     skillerr.send('data-mode', name);
     document.querySelectorAll('#dataView .dv-pane').forEach((p) => p.classList.toggle('on', p.dataset.pane === name));
     refresh();
@@ -106,7 +109,7 @@
     clearTimeout(t);
     t = setTimeout(refresh, 150);
   };
-  $('dvBack').onclick = () => showTab('history');
+  $('dvClearClose').onclick = () => ($('dvClearBox').hidden = true);
   $('dvHistQ').oninput = debounced;
   $('dvBmQ').oninput = debounced;
   $('dvDelSel').onclick = async () => {
@@ -115,7 +118,7 @@
     $('dvDelSel').disabled = true;
     renderHistory();
   };
-  $('dvToClear').onclick = () => showTab('clear');
+  $('dvToClear').onclick = () => ($('dvClearBox').hidden = !$('dvClearBox').hidden);
   $('dvBmAdd').onclick = async () => {
     const r = await skillerr.invoke('bookmark-add');
     $('dvBmAdd').textContent = r.ok ? 'Bookmarked ✓' : r.message;
@@ -145,6 +148,7 @@
     what.since = range && !what.everything ? Date.now() - range : 0;
     $('dvResetMsg').textContent = await skillerr.invoke('data-reset', what);
     document.querySelectorAll('.dv-reset input').forEach((i) => (i.checked = false));
+    refresh(); // the history below reflects what was cleared
   };
   skillerr.on('data-tab', (name) => showTab(name));
 

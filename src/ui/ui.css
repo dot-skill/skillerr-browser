@@ -1096,3 +1096,9 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .no-pilot .np-own a { color: var(--violet); }
 
 #ideas[hidden] { display: none; }
+
+/* Clear browsing data: a panel at the top of History. */
+.dv-clearbox { margin: 0 0 16px; padding: 14px 16px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2); }
+.dv-clearbox[hidden] { display: none; }
+.dv-clearhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
+

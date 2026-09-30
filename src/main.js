@@ -683,9 +683,9 @@ function bookmarkActive() {
 }
 
 // Skillerr's own full-page views (drawn by the browser chrome, like the start page).
-// History, Bookmarks and Clear browsing data are one internal page in three modes, each opened by its own menu item and
-// titled for what it shows (never a page of tabs that repeats the others).
-const DATA_TITLES = { history: 'History', bookmarks: 'Bookmarks', clear: 'Clear browsing data' };
+// History (with Clear browsing data on it) and Bookmarks are one internal page in two modes, each opened by its own menu
+// item and titled for what it shows (never a page of tabs that repeats the other).
+const DATA_TITLES = { history: 'History', bookmarks: 'Bookmarks', clear: 'History' }; // clearing data is a panel on History
 function openData(which = 'history') {
   openInternal('data');
   const t = tabs.find((x) => x.internal === 'data');
