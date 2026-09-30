@@ -44,6 +44,23 @@ class Agent {
     this.getContext = getContext;
     this.history = []; // short summaries of previous commands, carried into the next task
     this.abort = null;
+    this.told = []; // what the user typed in the Pilot panel while a task runs: joins the loop at its next step
+  }
+
+  // A message from the user mid-task. False if no task is running (the caller starts one with it instead).
+  tell(text) {
+    const t = String(text || '').trim();
+    if (!this.running || !t) return false;
+    this.told.push(t);
+    return true;
+  }
+
+  // The user's messages as one plain user turn, or null. Small models follow a short, plain line best.
+  takeTold() {
+    if (!this.told.length) return null;
+    const t = this.told.splice(0);
+    this.onEvent({ type: 'told', count: t.length });
+    return `Message from the user (typed in Skillerr): ${t.join('\n')}`;
   }
 
   get running() {
@@ -58,6 +75,7 @@ class Agent {
   async run(task) {
     if (this.running) return { error: 'Agent is already running' };
     this.abort = new AbortController();
+    this.told = [];
     const settings = this.getSettings();
     const extra = this.getContext ? this.getContext() : '';
     this.system = extra ? `${this.baseSystem}\n\n${extra}` : this.baseSystem;
@@ -71,7 +89,7 @@ class Agent {
         : await this.runOpenAICompatible(settings, prompt);
       this.history.push({ task, answer: (answer || '').slice(0, 400) });
       this.onEvent({ type: 'done' });
-      return { answer };
+      return { answer, left: this.told.splice(0) }; // left: told as the task ended, for a new task
     } catch (err) {
       const aborted = this.abort.signal.aborted;
       const text = aborted ? 'Stopped.' : err.message || String(err);
@@ -139,7 +157,12 @@ class Agent {
 
       if (response.stop_reason === 'pause_turn') continue;
       const toolUses = response.content.filter((b) => b.type === 'tool_use');
-      if (toolUses.length === 0) break;
+      if (toolUses.length === 0) {
+        const told = this.takeTold(); // the user said something while it was answering: carry on with that
+        if (!told) break;
+        messages.push({ role: 'user', content: told });
+        continue;
+      }
 
       const outcomes = await this.runTools(toolUses.map((tu) => ({ name: tu.name, input: tu.input })));
       const results = [];
@@ -149,6 +172,8 @@ class Agent {
         if (r.image) content.push({ type: 'image', source: { type: 'base64', media_type: r.image.mimeType, data: r.image.data } });
         results.push({ type: 'tool_result', tool_use_id: tu.id, content, ...(r.ok ? {} : { is_error: true }) });
       }
+      const told = this.takeTold();
+      if (told) results.push({ type: 'text', text: told }); // after the results: the API wants tool results first
       messages.push({ role: 'user', content: results }); // all results in one message
     }
     return answer;
@@ -185,7 +210,12 @@ class Agent {
         this.onEvent({ type: 'text', text: msg.content });
       }
       messages.push({ role: 'assistant', content: msg.content || '', ...(msg.tool_calls ? { tool_calls: msg.tool_calls } : {}) });
-      if (!msg.tool_calls || msg.tool_calls.length === 0) break;
+      if (!msg.tool_calls || msg.tool_calls.length === 0) {
+        const told = this.takeTold();
+        if (!told) break;
+        messages.push({ role: 'user', content: told });
+        continue;
+      }
 
       const parsed = msg.tool_calls.map((call) => {
         try {
@@ -200,6 +230,8 @@ class Agent {
         const content = p.bad ? 'Error: arguments were not valid JSON' : outcomes[good.indexOf(p)].text;
         messages.push({ role: 'tool', tool_call_id: p.call.id, content });
       }
+      const told = this.takeTold();
+      if (told) messages.push({ role: 'user', content: told });
     }
     return answer;
   }

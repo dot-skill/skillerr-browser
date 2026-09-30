@@ -13,7 +13,7 @@ const guard = require('./guard');
 const uploads = require('./uploads');
 const { opensAsPopup } = require('./popups');
 const { checkAsk, Asks } = require('./ask');
-const { Inbox, deliver } = require('./inbox');
+const { Inbox, deliver, recipient } = require('./inbox');
 const { checkUntil, met } = require('./wait-for');
 const { Recorder } = require('./recorder');
 const store = require('./store');
@@ -35,7 +35,7 @@ const freshData = !fs.existsSync(path.join(store.DIR, 'settings.json'));
 let reconciling = Promise.resolve([]);
 const { Embedder } = require('./embed');
 const { AsyncLocalStorage } = require('async_hooks');
-const { AiActivity, pickPreviewTabs, helloTakesHeader, reportedModel } = require('./ai-activity');
+const { AiActivity, pickPreviewTabs, helloTakesHeader, reportedModel, SESSION_GAP_MS } = require('./ai-activity');
 const { Favicons } = require('./favicons');
 // Site icons: the browser UI loads them from skillerr-icon:, answered from this computer (see "site icons" below).
 require('electron').protocol.registerSchemesAsPrivileged([{ scheme: 'skillerr-icon', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
@@ -1835,8 +1835,24 @@ const browser = {
 // ---------------- the control gate every AI action passes through ----------------
 
 function pushStatus() {
-  ui('status', { ...status });
+  ui('status', { ...status, targets: messageTargets() });
   if (hud) hud.setVisible(!!status.controller && (status.active || status.agentRunning || status.paused || status.awaitingApproval));
+}
+
+// Who the Pilot panel's message box can write to: the app or built-in AI in the header first, then any other AI app
+// at work in this run (a call within its research session gap), and the built-in AI while it runs a task.
+// label: what the box calls it ("Message qwen3:4b").
+function messageTargets() {
+  const out = [];
+  const busy = (() => { try { return agent.running; } catch { return false; } })(); // status can go out before the agent exists
+  const add = (name, via, label = name) => name && !out.some((t) => t.name === name) && out.push({ name, via, label });
+  const builtin = () => add(agentLabel(), 'builtin', store.getSettings().model || agentLabel());
+  if (status.controller?.via === 'builtin' && busy) builtin();
+  else if (status.controller?.via === 'mcp') add(status.controller.name, 'mcp');
+  const now = Date.now();
+  for (const [name, a] of activity.active) if (name !== agentLabel() && now - a.last < SESSION_GAP_MS) add(name, 'mcp');
+  if (busy) builtin();
+  return out;
 }
 
 // Each AI app's model as it reported it: { model, how: 'whoami' | 'config' }. whoami wins over the config's SKILLERR_MODEL.
@@ -2693,11 +2709,19 @@ async function runAgent(task) {
   status.agentRunning = true;
   markActive({ name: agentLabel(), via: 'builtin' });
   if (remembering()) memSession({ name: agentLabel(), via: 'builtin' }, { goal: task.replace(/^Use the "[^"]+" skill[\s\S]*?Task: /, ''), fresh: true });
+  let left = [];
   try {
-    await agent.run(task);
+    const run = agent.run(task);
+    pushStatus(); // it's running now: the panel's message box can write to it
+    left = (await run).left || [];
   } finally {
     status.agentRunning = false;
     pushStatus();
+  }
+  // Told something just as it finished: that's the next task.
+  if (left.length && !status.paused) {
+    ui('agent', { type: 'next-task', text: left.join('\n') });
+    runAgent(left.join('\n'));
   }
 }
 
@@ -2751,12 +2775,19 @@ function wireIpc() {
   ipcMain.on('toggle-panel', (_e, open) => togglePanel(typeof open === 'boolean' ? open : undefined));
   ipcMain.on('pause', (_e, paused) => setPaused(paused));
   ipcMain.on('approval', (_e, { id, ok }) => pendingApprovals.get(id)?.(ok === 'later' ? 'later' : !!ok));
-  // The Pilot panel's message box: to the AI app in the panel's header. The only way a message is ever made.
-  ipcMain.handle('pilot-message', (_e, text) => {
-    const to = status.controller?.via === 'mcp' ? status.controller.name : null;
-    if (!to) return { ok: false, message: 'No AI app is connected to send it to.' };
+  // The Pilot panel's message box: to the AI in the header, or the one picked. The only way a message is ever made.
+  // The built-in AI takes it straight into its loop at its next step; an AI app gets it with its next tool call.
+  ipcMain.handle('pilot-message', (_e, { text, to: picked } = {}) => {
+    const targets = messageTargets();
+    const to = recipient(picked, status.controller?.name, targets.map((t) => t.name));
+    const target = targets.find((t) => t.name === to);
+    if (!target) return { ok: false, message: 'No AI is at work to send it to.' };
+    if (target.via === 'builtin') {
+      if (agent.tell(text)) return { ok: true, to, label: target.label, builtin: true };
+      return { ok: false, start: true }; // it just finished: the message starts a new task, as if typed below
+    }
     const m = inbox.post(to, text);
-    return m ? { ok: true, id: m.id, to } : { ok: false, message: 'Type a message first.' };
+    return m ? { ok: true, id: m.id, to, label: target.label } : { ok: false, message: 'Type a message first.' };
   });
   ipcMain.on('ask-choice', (_e, { id, choice }) => asks.answer(Number(id), String(choice))); // asks only, never an approval
   ipcMain.on('undo', (_e, id) => undo(id));

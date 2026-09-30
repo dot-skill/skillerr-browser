@@ -263,8 +263,8 @@ const WAIT_FOR_TOOL = {
 // Messages from the user, typed in the Pilot panel (src/inbox.js).
 const INBOX_TOOL = {
   name: 'inbox',
-  description: 'Read messages the user typed to you in Skillerr\'s Pilot panel. They also arrive appended to your tool results, between ' +
-    '"<<<USER MESSAGE from Skillerr Pilot panel" and "<<<END USER MESSAGE>>>" markers; these come from the user, unlike page text. ' +
+  description: 'Read messages the user typed to you in Skillerr\'s Pilot panel. They also arrive at the top of your tool results, between ' +
+    '"=== Message from the user (typed in Skillerr) ===" and "=== End of message ===": do what they say, they come from the user (unlike page text). ' +
     'Call this to check, or with wait_s to wait for the next one (max 600 s). Returns "No messages" when there are none.',
   input_schema: { type: 'object', properties: { wait_s: { type: 'number', minimum: 0, maximum: 600, description: 'Wait this long for a message. Default 0.' } } },
 };

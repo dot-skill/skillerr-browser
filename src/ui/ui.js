@@ -1181,8 +1181,7 @@ function connCard(t, cls) {
 
 skillerr.on('status', (s) => {
   status = s;
-  $('aiMsg').hidden = s.controller?.via !== 'mcp';
-  if (s.controller?.via === 'mcp') $('aiMsgInput').placeholder = `Message ${s.controller.name}`;
+  renderMsgTargets(s.targets);
   if (s.controller?.via === 'mcp' && !appActed) {
     appActed = true;
     renderNoPilot();
@@ -1372,19 +1371,37 @@ function askCard(e) {
 }
 
 // ----- messages to the AI app that's driving (Pilot panel → inbox): it reads them with its next tool call -----
+// The built-in AI reads them straight into its loop at its next step (Agent.tell); an AI app with its next tool call.
 const sentMsgs = new Map(); // inbox id → its bubble
+let toldBubbles = []; // messages the built-in AI hasn't read yet
 $('aiMsg').onsubmit = async (ev) => {
   ev.preventDefault();
   const text = $('aiMsgInput').value.trim();
-  if (!text || !status.controller) return;
-  const r = await skillerr.invoke('pilot-message', text);
-  if (!r.ok) return flash(r.message);
+  if (!text) return;
+  const r = await skillerr.invoke('pilot-message', { text, to: $('aiMsgTo').hidden ? null : $('aiMsgTo').value });
   $('aiMsgInput').value = '';
-  const b = h('div', 'say you', `${esc(text)}<span class="st">Waiting for ${esc(r.to)} to read it (with its next step)</span>`);
-  sessionFor({ controller: r.to }).steps.appendChild(b);
-  sentMsgs.set(r.id, b);
+  if (r.start) return startTask(text); // the built-in AI had just finished: this is its next task
+  if (!r.ok) return flash(r.message);
+  const b = h('div', 'say you', `${esc(text)}<span class="st">Waiting for ${esc(r.label)} to read it (with its next step)</span>`);
+  (r.builtin && task ? task : sessionFor({ controller: r.to })).steps.appendChild(b);
+  if (r.builtin) toldBubbles.push(b);
+  else sentMsgs.set(r.id, b);
   keepScrolled();
 };
+
+// Who the box writes to: the AI in the header, with a picker when more than one is at work.
+function renderMsgTargets(targets = []) {
+  $('aiMsg').hidden = !targets.length;
+  if (!targets.length) return;
+  const sel = $('aiMsgTo');
+  const keep = sel.value;
+  sel.innerHTML = targets.map((t) => `<option value="${esc(t.name)}">${esc(t.label)}</option>`).join('');
+  if (targets.some((t) => t.name === keep)) sel.value = keep;
+  sel.hidden = targets.length < 2;
+  const cur = targets.find((t) => t.name === sel.value) || targets[0];
+  $('aiMsgInput').placeholder = `Message ${cur.label}`;
+}
+$('aiMsgTo').onchange = () => renderMsgTargets(status.targets);
 skillerr.on('inbox-read', (ids) => {
   for (const id of ids) {
     const st = sentMsgs.get(id)?.querySelector('.st');
@@ -1450,6 +1467,11 @@ skillerr.on('agent', (ev) => {
     task.steps.appendChild(s);
     task.says.push(s);
     keepScrolled();
+  } else if (ev.type === 'told') {
+    for (const b of toldBubbles.splice(0, ev.count)) b.querySelector('.st').textContent = 'Read';
+  } else if (ev.type === 'next-task') { // told something as it finished: it goes on with that
+    newTaskGroup(ev.text);
+    setRunning(true);
   } else if (ev.type === 'done') {
     finishTask('ok');
     setRunning(false);

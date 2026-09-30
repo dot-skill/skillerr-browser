@@ -287,6 +287,7 @@
 
     <!-- A message to the AI app driving Skillerr: it gets it with its next tool call (src/inbox.js). -->
     <form class="ai-msg" id="aiMsg" autocomplete="off" hidden>
+      <select id="aiMsgTo" title="Who to send it to" hidden></select>
       <input id="aiMsgInput" spellcheck="true" maxlength="2000" placeholder="Message your AI" />
       <button type="submit" class="btn sm primary">Send</button>
     </form>
