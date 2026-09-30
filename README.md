@@ -38,8 +38,9 @@ own tiny AI model that sends nothing anywhere.</p>
 
 ## New in 0.1.6
 
-- **Your Orb sorts your Chrome tabs into journeys.** Bring your open Chrome tabs over and they arrive grouped by the
-  sitting you opened them in and what they're about, with their real icons. Nothing reloads, nothing closes in Chrome.
+- **Can't close your tabs? Your Orb sorts them into journeys.** Every tab you and your AIs open in Skillerr files into
+  a trail (your Kyoto trip, that standing desk), on your computer. Close them all and pick any journey up where you
+  left off. Moving from Chrome? Your open Chrome tabs come over sorted the same way.
 - **One live view per chat** in Claude Desktop, showing only the pages this AI opened, and an **Audit** of every page
   it opened, read or tried to. Click any to open it in Skillerr.
 - **Your AIs' research sits right of the address bar**, your trails left of it. Finished research is put away there,
