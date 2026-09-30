@@ -141,6 +141,9 @@ flowchart LR
 - **Fleet view** (⇧⌘F) shows every tab your AI is working in, side by side and live. Click a tile to step in.
 - **The Pilot panel** logs every step in plain English ("Opening jal.co.jp", "Reading several tabs"), with **Pause**,
   **Take over** (Human mode) and **Undo** on actions that can be undone.
+- **Quick questions.** `ask` puts a question and a few buttons ("Done, next", "Skip this one") in the Pilot panel and
+  waits for your click; the step log keeps it as "Asked: Posted it? → Done, next". Ask buttons only steer the AI: they
+  never approve anything. See [docs/ask.md](docs/ask.md).
 - **Deep research** follows the links that matter, 1 to 5 hops from the first pages. Off by default; turn it on in
   Settings (3 hops unless you pick another) or with the Deep button.
 - Tabs for one task are **grouped and named** after the AI that opened them. Show them all or close them all in one click.
@@ -280,7 +283,8 @@ See [docs/trails.md](docs/trails.md).
   invisible Unicode are stripped before your AI reads a page, and text that addresses the AI ("ignore your
   instructions …") is removed. Flagged pages are cleaned and reported in the Pilot panel.
 - **Approvals.** In auto mode, payments, passwords, sign-ins and deletions wait for you. In manual mode, Skillerr asks
-  before every action. Approvals are always decided in Skillerr, next to the page, never from the chat.
+  before every action. Approvals are always decided in Skillerr, next to the page, never from the chat, and never by
+  an `ask` button: those look different and can't satisfy or skip an approval.
 - **File uploads wait for you, every time.** `upload_file` lets your AI attach an image, video or document to a post or
   form (X, Reddit, LinkedIn, Product Hunt, any file input or "Add photos" button). Each upload asks for your OK in
   Skillerr, next to the page, naming the files and the site, in every approval mode; the Pilot panel logs it as
@@ -355,7 +359,7 @@ npm test                           # unit tests, including the recall quality ch
 ```
 
 Requires Node.js 22. More docs: [live view in Claude Desktop](docs/live-view.md), [passkeys](docs/passkeys.md),
-[recall by meaning](docs/recall-by-meaning.md), [trails](docs/trails.md), [the Orb](docs/orb.md), [benchmarks](docs/benchmarks.md).
+[recall by meaning](docs/recall-by-meaning.md), [ask buttons](docs/ask.md), [trails](docs/trails.md), [the Orb](docs/orb.md), [benchmarks](docs/benchmarks.md).
 
 <details>
 <summary><b>Project layout</b></summary>

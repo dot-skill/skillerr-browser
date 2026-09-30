@@ -43,6 +43,7 @@ const ICON_PATHS = {
   record: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>',
   doc: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
   trash: '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
+  help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
   hand: '<path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>',
 };
 
@@ -175,6 +176,11 @@ function describeStep(e) {
     case 'record_stop': return { icon: 'film', text: 'Saving the recording' };
     case 'show_tabs': return { icon: 'layers', text: (a.tab_ids || []).length ? `Showing ${a.tab_ids.length} tabs side by side` : 'Showing tabs side by side' };
     case 'say': return { icon: 'sparkle', text: 'Posting an answer' };
+    case 'ask': {
+      const line = String(a.text || '').split('\n').find((l) => l.trim()) || 'a question';
+      const q = trunc(line.replace(/^[#>\s]+/, '').replace(/\*\*|`/g, ''), 60); // the question's first line, without markdown
+      return { icon: 'help', text: `Asked: ${q}${e.choice != null ? ` → ${e.choice}` : e.status ? ` → ${e.status}` : ''}` };
+    }
     case 'view_capture': return { icon: 'eye', text: 'Looking at what you shared' };
     default: { const n = String(e.tool || '').replace(/_/g, ' '); return { icon: 'sparkle', text: n.charAt(0).toUpperCase() + n.slice(1) }; }
   }

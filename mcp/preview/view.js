@@ -18,7 +18,7 @@ const SVG = {
   full: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
   inline: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
 };
-const MARK = { ok: '✓', error: '✕', approval: '✋', running: '…' };
+const MARK = { ok: '✓', error: '✕', approval: '✋', running: '…', asking: '?' };
 const AUDIT_MARK = { read: '✓', opened: '↗', failed: '✕', blocked: '✋', declined: '⊘' };
 const AUDIT_WORD = { read: 'Read', opened: 'Opened', failed: "Couldn't open", blocked: 'Blocked', declined: 'Not allowed' };
 
@@ -101,7 +101,7 @@ function renderSteps(steps) {
   $('steps').innerHTML = steps.slice().reverse().map((e) => {
     const d = describeStep(e);
     const state = e.state === 'approval' ? 'approval' : e.state || 'running';
-    const text = state === 'approval' ? `Needs your OK in Skillerr: ${d.text}` : d.text;
+    const text = state === 'approval' ? `Needs your OK in Skillerr: ${d.text}` : state === 'asking' ? `Waiting for your answer in Skillerr: ${d.text}` : d.text;
     return `<li class="${state}"><i>${MARK[state] || '·'}</i><span>${esc(text)}</span></li>`;
   }).join('');
 }
@@ -136,18 +136,19 @@ function render(f) {
   $('deep').hidden = !f.deep;
   $('deep').textContent = f.deep ? `Deep · depth ${f.deep}` : '';
   const approval = f.awaitingApproval;
+  const waiting = approval || f.asking; // an approval, or an `ask` question: both are answered in Skillerr
   setState(approval ? 'approval' : f.paused ? 'paused' : f.live ? 'live' : 'idle');
-  $('state').textContent = approval ? 'Needs your OK' : f.paused ? 'Paused' : f.live ? (f.mode === 'fleet' ? `Working · ${f.tiles.length} tabs` : 'Working') : 'Idle';
+  $('state').textContent = approval ? 'Needs your OK' : f.asking ? 'Question for you' : f.paused ? 'Paused' : f.live ? (f.mode === 'fleet' ? `Working · ${f.tiles.length} tabs` : 'Working') : 'Idle';
   $('pause').hidden = false;
   $('pause').textContent = f.paused ? 'Resume' : 'Pause';
   // A pending approval is decided in Skillerr, next to the page, never from the chat.
-  $('takeover').hidden = f.paused && !approval;
-  $('takeover').textContent = approval ? 'Review in Skillerr' : 'Take over';
-  reveal(f.tiles.length > 0 || !!approval);
+  $('takeover').hidden = f.paused && !waiting;
+  $('takeover').textContent = waiting ? 'Review in Skillerr' : 'Take over';
+  reveal(f.tiles.length > 0 || !!waiting);
   renderTiles(f);
   renderSteps(f.steps || []);
-  note(!f.tiles.length ? (f.count ? 'Its pages are closed now. Audit lists them all.' : 'No page open yet.') : approval ? 'Skillerr is waiting for you to allow or deny an action.' : '');
-  if (f.live || approval) lastActivity = Date.now();
+  note(!f.tiles.length ? (f.count ? 'Its pages are closed now. Audit lists them all.' : 'No page open yet.') : approval ? 'Skillerr is waiting for you to allow or deny an action.' : f.asking ? 'Your AI asked you something in Skillerr\'s panel.' : '');
+  if (f.live || waiting) lastActivity = Date.now();
 }
 
 function renderCount(n) {
@@ -232,7 +233,7 @@ function schedule() {
     root.addEventListener('click', wake, { once: true });
     return;
   }
-  timer = setTimeout(poll, frame?.live || frame?.awaitingApproval ? LIVE_MS : IDLE_MS);
+  timer = setTimeout(poll, frame?.live || frame?.awaitingApproval || frame?.asking ? LIVE_MS : IDLE_MS);
 }
 
 function stop() {
@@ -254,7 +255,7 @@ async function act(action, tabId, url) {
 }
 
 $('pause').onclick = () => act(frame?.paused ? 'resume' : 'pause');
-$('takeover').onclick = () => act(frame?.awaitingApproval ? 'focus' : 'takeover', frame?.tiles?.find((t) => t.working)?.id ?? frame?.tiles?.[0]?.id);
+$('takeover').onclick = () => act(frame?.awaitingApproval || frame?.asking ? 'focus' : 'takeover', frame?.tiles?.find((t) => t.working)?.id ?? frame?.tiles?.[0]?.id);
 $('audit').onclick = toggleAudit;
 // The header opens Skillerr on what the AI is working on.
 $('open').onclick = () => !frame?.superseded && act('focus', frame?.tiles?.find((t) => t.working)?.id ?? frame?.tiles?.[0]?.id);

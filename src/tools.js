@@ -204,6 +204,25 @@ const SAY_TOOL = {
   input_schema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
 };
 
+// Buttons in the Pilot panel that steer the workflow. They are not approvals and can't stand in for one (src/ask.js).
+const ASK_TOOL = {
+  name: 'ask',
+  description: 'Ask the user a quick question in Skillerr\'s activity panel, with 2 to 5 short buttons (e.g. "Done, next", "Skip this one"), ' +
+    'and wait for their click. Returns {"choice":"<label>"}; if nobody answers in timeout_s (default 300, max 600) it returns ' +
+    '{"choice":null,"status":"no answer yet"}, so ask again later; "superseded" means a newer ask replaced it. ' +
+    'Ask buttons only steer the workflow: they never grant approval. Payments, passwords, sign-ins, deletions, uploads and ' +
+    'new skills still wait for the user\'s Allow in Skillerr, whatever they clicked here, so never offer "Approve", "Allow" or "Pay" as an option.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      text: { type: 'string', description: 'The question (markdown, like say).' },
+      options: { type: 'array', items: { type: 'string', maxLength: 40 }, minItems: 2, maxItems: 5, description: 'Button labels, short and distinct.' },
+      timeout_s: { type: 'number', minimum: 5, maximum: 600, description: 'How long to wait for a click. Default 300.' },
+    },
+    required: ['text', 'options'],
+  },
+};
+
 const NOTE_TOOL = {
   name: 'save_note',
   description: 'Save the result of a finished research or planning task as a markdown file the user keeps (in ~/Skillerr/notes). ' +
@@ -378,7 +397,7 @@ const SHOT_TOOL = {
   },
 };
 
-const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, CAPTURE_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...TRAIL_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
+const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, ASK_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, CAPTURE_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...TRAIL_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
 
 // ---------- page-side scripts ----------
 

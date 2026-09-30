@@ -11,6 +11,7 @@ const connectors = require('./connect');
 const skills = require('./skills');
 const guard = require('./guard');
 const uploads = require('./uploads');
+const { checkAsk, Asks } = require('./ask');
 const { Recorder } = require('./recorder');
 const store = require('./store');
 const { Memory, recallText, tokens } = require('./memory');
@@ -251,6 +252,7 @@ const status = {
 let idleTimer = null;
 let seq = 0;
 const pendingApprovals = new Map();
+const asks = new Asks(); // `ask` questions waiting for a click; never mixed with approvals
 
 function ui(channel, data) {
   if (chrome && !chrome.webContents.isDestroyed()) chrome.webContents.send(channel, data);
@@ -324,7 +326,7 @@ async function previewFrame(client, { viewId = '', createdAt = 0 } = {}) {
     superseded, mode: pick.mode, tiles, steps, count, deep: deep.on ? deep.depth : 0,
     // The view is this app's: it's live while this app is the one at work, and says so by name.
     controller: client || status.controller?.name || null, live: !!(status.active || status.agentRunning) && (!client || status.controller?.name === client), paused: status.paused,
-    awaitingApproval: status.awaitingApproval, ts: now,
+    awaitingApproval: status.awaitingApproval, asking: asks.size > 0, ts: now,
   };
 }
 
@@ -2066,6 +2068,16 @@ const siteOf = (u) => {
   }
 };
 const sizeText = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
+// The `ask` tool: the question and its buttons go in the Pilot panel as a step; the call waits for the click (src/ask.js).
+async function askUser(controller, args, session) {
+  const q = checkAsk(args);
+  const entry = { id: ++seq, ts: Date.now(), controller: controller.name, via: controller.via, session, tool: 'ask', args: { text: q.text, options: q.options }, target: '', state: 'asking' };
+  ui('log', entry);
+  const r = await asks.open(entry.id, controller.name, q.options, q.ms);
+  ui('log', { ...entry, state: r.choice != null ? 'ok' : 'done', choice: r.choice, status: r.status, ts: Date.now() });
+  markActive(controller);
+  return { text: JSON.stringify(r) };
+}
 const tabTitle = (t) => (t?.sleeping ? t.sleeping.title : t?.view && !t.view.webContents.isDestroyed() ? t.view.webContents.getTitle() : '');
 
 async function executeInSession(controller, name, args, session) {
@@ -2078,6 +2090,8 @@ async function executeInSession(controller, name, args, session) {
     ui('say', { controller: controller.name, via: controller.via, text: String(args.text || '').slice(0, 4000) });
     return { text: 'Shown to the user.' };
   }
+  // Returns before the approval gate below and never reaches it: an ask button steers the AI, it can't approve anything.
+  if (name === 'ask') return askUser(controller, args, session);
 
   const id = ++seq;
   if (args.tab_id != null && !getTab(Number(args.tab_id)) && tuckedAiTabs.has(Number(args.tab_id))) {
@@ -2496,7 +2510,7 @@ async function dispatch(controller, { instruction, tab_ids = [], urls = [] }) {
   if (!targets.length) throw new Error('Give tab_ids of open tabs and/or urls to open.');
   if (targets.length > MAX_WORKERS) throw new Error(`At most ${MAX_WORKERS} tabs per dispatch.`);
   enterMosaic(targets.map((t) => t.id));
-  const workerTools = TOOLS.filter((t) => !['list_tabs', 'new_tab', 'switch_tab', 'close_tab', 'open_tabs', 'read_tabs', 'dispatch', 'record_start', 'caption', 'record_stop', 'show_tabs', 'say', 'save_note', 'save_skill', 'recall', 'tag_session', 'deep_research', 'my_research', 'read_note', 'open_view', 'save_screenshot', 'my_trails', 'continue_trail'].includes(t.name));
+  const workerTools = TOOLS.filter((t) => !['list_tabs', 'new_tab', 'switch_tab', 'close_tab', 'open_tabs', 'read_tabs', 'dispatch', 'record_start', 'caption', 'record_stop', 'show_tabs', 'say', 'ask', 'save_note', 'save_skill', 'recall', 'tag_session', 'deep_research', 'my_research', 'read_note', 'open_view', 'save_screenshot', 'my_trails', 'continue_trail'].includes(t.name));
 
   const reports = await Promise.all(targets.map(async (t) => {
     const worker = new Agent({
@@ -2528,7 +2542,7 @@ function agentLabel() {
 
 const agent = new Agent({
   getSettings: store.getSettings,
-  tools: TOOLS.filter((t) => t.name !== 'say'),
+  tools: TOOLS.filter((t) => t.name !== 'say' && t.name !== 'ask'), // its replies already land in the panel, where the user types back
   execute: (name, args) => execute({ name: agentLabel(), via: 'builtin' }, name, args),
   onEvent: (ev) => ui('agent', ev),
   getContext: () => `Installed skills (call use_skill to load one when a task matches):\n${skills.catalog()}` +
@@ -2577,6 +2591,7 @@ function setPaused(paused) {
     agent.stop();
     for (const w of workers) w.stop();
     for (const finish of [...pendingApprovals.values()]) finish(false);
+    asks.finishAll('paused');
   }
   pushStatus();
 }
@@ -2600,6 +2615,7 @@ function wireIpc() {
   ipcMain.on('toggle-panel', (_e, open) => togglePanel(typeof open === 'boolean' ? open : undefined));
   ipcMain.on('pause', (_e, paused) => setPaused(paused));
   ipcMain.on('approval', (_e, { id, ok }) => pendingApprovals.get(id)?.(!!ok));
+  ipcMain.on('ask-choice', (_e, { id, choice }) => asks.answer(Number(id), String(choice))); // asks only, never an approval
   ipcMain.on('undo', (_e, id) => undo(id));
   ipcMain.on('mosaic-exit', () => exitMosaic());
   ipcMain.handle('tabs-refresh', () => pushTabs());
@@ -3505,6 +3521,7 @@ function startWidevine() {
 }
 
 app.on('before-quit', snapshotForQuit);
+app.on('before-quit', () => asks.finishAll('closed')); // an AI waiting on a question hears Skillerr closed
 app.on('will-quit', () => {
   store.clearSession();
   try {

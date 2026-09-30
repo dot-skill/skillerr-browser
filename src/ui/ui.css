@@ -271,6 +271,13 @@ body.panel-closed .panel { display: none; }
 .approve-row { flex-basis: 100%; display: flex; gap: 8px; margin: 8px 0 0 31px; }
 .approve-row .btn.allow { background: var(--ok); color: #05150e; }
 .approve-row .btn.allow:hover { filter: brightness(1.08); }
+.step.ask { margin: 4px 0; padding: 10px; border: 1px dashed color-mix(in srgb, var(--violet) 45%, transparent); color: var(--text); }
+.step.ask .ic { color: var(--violet); background: color-mix(in srgb, var(--violet) 14%, transparent); }
+.step.ask .say.ask-q { padding: 6px 0 0; color: var(--text); }
+.ask-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ask-row .btn.ask-opt:disabled { opacity: .45; cursor: default; }
+.ask-row .btn.ask-opt.chosen { opacity: 1; color: var(--violet); border-color: var(--violet); background: color-mix(in srgb, var(--violet) 12%, transparent); }
+.ask-note { color: var(--text-3); font-size: 11.5px; margin-top: 6px; }
 
 .say { padding: 6px 12px; color: var(--text-2); font-size: 13px; }
 .say.answer { color: var(--text); font-size: 13.5px; padding: 8px 14px 4px; }

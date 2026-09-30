@@ -1323,7 +1323,14 @@ function renderStep(el, e) {
     body = `<div class="main"><b>Needs your OK:</b> ${tag}${esc(d.text)}</div><div class="why">${esc(e.reason || 'You asked Skillerr to check before every action.')}</div>`;
   }
   if (e.state === 'error' && e.summary) body += `<div class="err">${esc(trunc(e.summary, 200))}</div>`;
+  if (e.tool === 'ask') body += askCard(e);
   el.innerHTML = `<div class="ic">${icon(e.state === 'approval' ? 'hand' : d.icon, 13)}</div><div class="txt">${body}</div>${trailing}`;
+  if (e.tool === 'ask') el.classList.add('ask');
+  if (e.state === 'asking') {
+    el.querySelectorAll('.ask-opt').forEach((b, i) => (b.onclick = () => skillerr.send('ask-choice', { id: e.id, choice: e.args.options[i] })));
+    skillerr.send('toggle-panel', true);
+    el.scrollIntoView({ block: 'nearest' });
+  }
   if (e.state === 'approval') {
     const row = h('div', 'approve-row', '<button type="button" class="btn ghost sm deny">Deny</button><button type="button" class="btn sm allow">Allow</button>');
     row.querySelector('.allow').onclick = () => skillerr.send('approval', { id: e.id, ok: true });
@@ -1333,6 +1340,15 @@ function renderStep(el, e) {
     el.scrollIntoView({ block: 'nearest' });
   }
   el.querySelector('.undo')?.addEventListener('click', () => skillerr.send('undo', e.id));
+}
+
+// An `ask` from the AI: its question and one button per option. Deliberately unlike an approval (no "Needs your OK",
+// no Allow/Deny, not amber): these buttons only tell the AI what to do next, and the label says so. Labels are escaped.
+function askCard(e) {
+  const opts = (e.args?.options || []).map((o) => `<button type="button" class="btn ghost sm ask-opt${o === e.choice ? ' chosen' : ''}"${e.state === 'asking' ? '' : ' disabled'}>${esc(o)}</button>`).join('');
+  const who = esc(e.controller || 'Your AI');
+  return `<div class="say ask-q">${markdown(e.args?.text || '')}</div><div class="ask-row">${opts}</div>` +
+    `<div class="ask-note">${e.state === 'asking' ? `Your answer only steers ${who}. It never approves anything: approvals always ask “Needs your OK”.` : e.choice != null ? 'You answered.' : `No answer (${esc(e.status || 'closed')}).`}</div>`;
 }
 
 skillerr.on('undo-top', (id) => {
