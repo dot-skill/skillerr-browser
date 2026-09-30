@@ -18,7 +18,7 @@ if ($args -contains '--uninstall') {
 }
 # The newest published release, unless SKILLERR_VERSION pins one.
 $version = if ($env:SKILLERR_VERSION) { $env:SKILLERR_VERSION } else {
-  try { (Invoke-RestMethod 'https://api.github.com/repos/dot-skill/skillerr-releases/releases/latest' -UseBasicParsing).tag_name.TrimStart('v') } catch { '0.1.4' }
+  try { (Invoke-RestMethod 'https://api.github.com/repos/dot-skill/skillerr-releases/releases/latest' -UseBasicParsing).tag_name.TrimStart('v') } catch { '0.1.9' }
 }
 $base = if ($env:SKILLERR_RELEASE) { $env:SKILLERR_RELEASE } else { "https://github.com/dot-skill/skillerr-releases/releases/download/v$version" }
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
