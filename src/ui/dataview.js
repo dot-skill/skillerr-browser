@@ -1,5 +1,5 @@
 /* global skillerr, esc, trunc, icon */
-// History & Bookmarks page (⌘Y): browsing history by day, bookmarks, and clearing browsing data by time range.
+// History (⌘Y), Bookmarks and Clear browsing data: one internal page, three modes, each its own menu item.
 (() => {
   const $ = (id) => document.getElementById(id);
   const selected = new Set();
@@ -19,9 +19,14 @@
     }
   };
 
+  // One page, three modes, each reached from its own menu item: History (with its Clear button), Bookmarks, and Clear
+  // browsing data (with a way back to History).
+  const TITLES = { history: 'History', bookmarks: 'Bookmarks', clear: 'Clear browsing data' };
   function showTab(name) {
     tab = name;
-    document.querySelectorAll('#dvTabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+    $('dvTitle').textContent = TITLES[name] || 'History';
+    $('dvBack').hidden = name !== 'clear';
+    skillerr.send('data-mode', name);
     document.querySelectorAll('#dataView .dv-pane').forEach((p) => p.classList.toggle('on', p.dataset.pane === name));
     refresh();
   }
@@ -101,7 +106,7 @@
     clearTimeout(t);
     t = setTimeout(refresh, 150);
   };
-  document.querySelectorAll('#dvTabs button').forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
+  $('dvBack').onclick = () => showTab('history');
   $('dvHistQ').oninput = debounced;
   $('dvBmQ').oninput = debounced;
   $('dvDelSel').onclick = async () => {

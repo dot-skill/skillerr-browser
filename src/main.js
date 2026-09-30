@@ -373,7 +373,7 @@ function baseTabInfo(t) {
   const wc = t.view.webContents;
   return {
     id: t.id,
-    title: t.internal === 'memory' ? 'Your Orb' : t.internal === 'data' ? 'History & Bookmarks' : t.internal === 'trails' ? 'Trails' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
+    title: t.internal === 'memory' ? 'Your Orb' : t.internal === 'data' ? DATA_TITLES[t.dataTab] || 'History' : t.internal === 'trails' ? 'Trails' : t.isStart ? 'New Tab' : wc.getTitle() || wc.getURL() || 'Loading…',
     url: t.isStart ? '' : wc.getURL(),
     internal: t.internal || null,
     isStart: t.isStart,
@@ -683,6 +683,17 @@ function bookmarkActive() {
 }
 
 // Skillerr's own full-page views (drawn by the browser chrome, like the start page).
+// History, Bookmarks and Clear browsing data are one internal page in three modes, each opened by its own menu item and
+// titled for what it shows (never a page of tabs that repeats the others).
+const DATA_TITLES = { history: 'History', bookmarks: 'Bookmarks', clear: 'Clear browsing data' };
+function openData(which = 'history') {
+  openInternal('data');
+  const t = tabs.find((x) => x.internal === 'data');
+  if (t) t.dataTab = which;
+  ui('data-tab', which);
+  pushTabs();
+}
+
 function openInternal(kind) {
   const existing = tabs.find((t) => t.internal === kind);
   if (existing) return switchTab(existing.id);
@@ -2295,10 +2306,11 @@ const BROWSER_TOOLS = {
     const v = String(args.view || '');
     if (v === 'trails') {
       openInternal('trails');
-    } else if (v === 'memory' || v === 'folders' || v === 'history' || v === 'bookmarks') {
-      openInternal(v === 'memory' || v === 'folders' ? 'memory' : 'data');
+    } else if (v === 'history' || v === 'bookmarks') {
+      openData(v);
+    } else if (v === 'memory' || v === 'folders') {
+      openInternal('memory');
       if (v === 'folders') setTimeout(() => ui('memory-mode', { mode: 'folders', query: args.query || '' }), 300);
-      if (v === 'bookmarks' || v === 'history') ui('data-tab', v);
       if (v === 'memory' && args.query) setTimeout(() => ui('memory-search', String(args.query)), 400);
     } else if (['settings', 'skills', 'connect'].includes(v)) {
       togglePanel(true);
@@ -2616,7 +2628,8 @@ function wireIpc() {
   });
   ipcMain.on('sign-in-google', () => newTab('https://accounts.google.com/signin'));
   ipcMain.on('open-memory', () => openInternal('memory'));
-  ipcMain.on('open-data', () => openInternal('data'));
+  ipcMain.on('open-data', () => openData('history'));
+  ipcMain.on('data-mode', (_e, which) => { const t = tabs.find((x) => x.internal === 'data'); if (t) { t.dataTab = which; pushTabs(); } });
 
   // Trails (see the trails section above).
   const changed = (r) => (trailsChanged(), r);
@@ -2888,10 +2901,10 @@ function wireIpc() {
       { label: 'New Tab', accelerator: 'CmdOrCtrl+T', click: () => newTab() },
       { label: 'Fleet View', accelerator: 'CmdOrCtrl+Shift+F', type: 'checkbox', checked: !!mosaic, click: () => (mosaic ? exitMosaic() : enterMosaic(tabs.map((t) => t.id))) },
       { type: 'separator' },
-      { label: 'History', accelerator: 'CmdOrCtrl+Y', click: () => { openInternal('data'); ui('data-tab', 'history'); } },
+      { label: 'History', accelerator: 'CmdOrCtrl+Y', click: () => openData('history') },
       { label: 'Your Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: () => openInternal('memory') },
       { label: 'Trails', click: () => openInternal('trails') },
-      { label: 'Bookmarks', click: () => { openInternal('data'); ui('data-tab', 'bookmarks'); } },
+      { label: 'Bookmarks', click: () => openData('bookmarks') },
       { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: () => bookmarkActive() },
       { label: 'Skills…', click: sheet('skills') },
       { label: 'Connected AI Apps…', click: sheet('connect') },
@@ -2912,7 +2925,7 @@ function wireIpc() {
       { label: status.paused ? 'Resume AI' : 'Pause AI', accelerator: 'CmdOrCtrl+Shift+P', click: () => setPaused(!status.paused) },
       { label: 'Remember Research', type: 'checkbox', checked: s.remember !== false, click: (item) => store.saveSettings({ ...store.getSettings(), remember: item.checked }) },
       { type: 'separator' },
-      { label: 'Clear Browsing Data…', accelerator: 'CmdOrCtrl+Shift+Backspace', click: () => { openInternal('data'); ui('data-tab', 'clear'); } },
+      { label: 'Clear Browsing Data…', accelerator: 'CmdOrCtrl+Shift+Backspace', click: () => openData('clear') },
       { label: 'Recordings Folder', click: open(path.join(app.getPath('videos'), 'Skillerr')) },
       { label: 'Notes Folder', click: open(NOTES_DIR) },
       { type: 'separator' },
@@ -3184,9 +3197,9 @@ function buildMenu() {
         { label: 'Open Location…', accelerator: 'CmdOrCtrl+L', click: guard(() => ui('focus-url')) },
         { label: 'Reopen Closed Tab', accelerator: 'CmdOrCtrl+Shift+T', click: guard(() => closedTabs.length && newTab(closedTabs.pop())) },
         { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: guard(() => activeTab()?.view.webContents.print()) },
-        { label: 'History', accelerator: 'CmdOrCtrl+Y', click: guard(() => { openInternal('data'); ui('data-tab', 'history'); }) },
+        { label: 'History', accelerator: 'CmdOrCtrl+Y', click: guard(() => openData('history')) },
         { label: 'Your Orb', accelerator: 'CmdOrCtrl+Shift+Y', click: guard(() => openInternal('memory')) },
-        { label: 'Bookmarks', click: guard(() => { openInternal('data'); ui('data-tab', 'bookmarks'); }) },
+        { label: 'Bookmarks', click: guard(() => openData('bookmarks')) },
         { label: 'Trails', accelerator: 'CmdOrCtrl+Shift+L', click: guard(() => openInternal('trails')) },
         { label: 'Bookmark This Page', accelerator: 'CmdOrCtrl+D', click: guard(() => bookmarkActive()) },
       ],
