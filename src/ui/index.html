@@ -285,6 +285,12 @@
       <p class="np-own">Or <a href="#" data-sheet="settings" data-pane="local">connect a local AI model</a> (Ollama or LM Studio) to run tasks right here.</p>
     </div>
 
+    <!-- A message to the AI app driving Skillerr: it gets it with its next tool call (src/inbox.js). -->
+    <form class="ai-msg" id="aiMsg" autocomplete="off" hidden>
+      <input id="aiMsgInput" spellcheck="true" maxlength="2000" placeholder="Message your AI" />
+      <button type="submit" class="btn sm primary">Send</button>
+    </form>
+
     <form class="composer" id="composer" autocomplete="off">
       <div class="chips" id="chips"></div>
       <div class="slash" id="slash" hidden></div>

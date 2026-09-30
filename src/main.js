@@ -13,6 +13,7 @@ const guard = require('./guard');
 const uploads = require('./uploads');
 const { opensAsPopup } = require('./popups');
 const { checkAsk, Asks } = require('./ask');
+const { Inbox, deliver } = require('./inbox');
 const { Recorder } = require('./recorder');
 const store = require('./store');
 const { Memory, recallText, tokens } = require('./memory');
@@ -253,6 +254,7 @@ let idleTimer = null;
 let seq = 0;
 const pendingApprovals = new Map();
 const asks = new Asks(); // `ask` questions waiting for a click; never mixed with approvals
+const inbox = new Inbox(); // what the user typed to their AI in the Pilot panel, until it's delivered
 
 function ui(channel, data) {
   if (chrome && !chrome.webContents.isDestroyed()) chrome.webContents.send(channel, data);
@@ -2126,6 +2128,7 @@ async function executeInSession(controller, name, args, session) {
   }
   // Returns before the approval gate below and never reaches it: an ask button steers the AI, it can't approve anything.
   if (name === 'ask') return askUser(controller, args, session);
+  if (name === 'inbox') return { text: '', inbox: await inbox.wait(controller.name, Math.min(600, Math.max(0, Number(args.wait_s) || 0)) * 1000) };
 
   const id = ++seq;
   if (args.tab_id != null && !getTab(Number(args.tab_id)) && tuckedAiTabs.has(Number(args.tab_id))) {
@@ -2563,7 +2566,7 @@ async function dispatch(controller, { instruction, tab_ids = [], urls = [] }) {
   if (!targets.length) throw new Error('Give tab_ids of open tabs and/or urls to open.');
   if (targets.length > MAX_WORKERS) throw new Error(`At most ${MAX_WORKERS} tabs per dispatch.`);
   enterMosaic(targets.map((t) => t.id));
-  const workerTools = TOOLS.filter((t) => !['list_tabs', 'new_tab', 'switch_tab', 'close_tab', 'open_tabs', 'read_tabs', 'dispatch', 'record_start', 'caption', 'record_stop', 'show_tabs', 'say', 'ask', 'save_note', 'save_skill', 'recall', 'tag_session', 'deep_research', 'my_research', 'read_note', 'open_view', 'save_screenshot', 'my_trails', 'continue_trail'].includes(t.name));
+  const workerTools = TOOLS.filter((t) => !['list_tabs', 'new_tab', 'switch_tab', 'close_tab', 'open_tabs', 'read_tabs', 'dispatch', 'record_start', 'caption', 'record_stop', 'show_tabs', 'say', 'ask', 'inbox', 'save_note', 'save_skill', 'recall', 'tag_session', 'deep_research', 'my_research', 'read_note', 'open_view', 'save_screenshot', 'my_trails', 'continue_trail'].includes(t.name));
 
   const reports = await Promise.all(targets.map(async (t) => {
     const worker = new Agent({
@@ -2595,7 +2598,7 @@ function agentLabel() {
 
 const agent = new Agent({
   getSettings: store.getSettings,
-  tools: TOOLS.filter((t) => t.name !== 'say' && t.name !== 'ask'), // its replies already land in the panel, where the user types back
+  tools: TOOLS.filter((t) => !['say', 'ask', 'inbox'].includes(t.name)), // its replies already land in the panel, where the user types back
   execute: (name, args) => execute({ name: agentLabel(), via: 'builtin' }, name, args),
   onEvent: (ev) => ui('agent', ev),
   getContext: () => `Installed skills (call use_skill to load one when a task matches):\n${skills.catalog()}` +
@@ -2668,6 +2671,13 @@ function wireIpc() {
   ipcMain.on('toggle-panel', (_e, open) => togglePanel(typeof open === 'boolean' ? open : undefined));
   ipcMain.on('pause', (_e, paused) => setPaused(paused));
   ipcMain.on('approval', (_e, { id, ok }) => pendingApprovals.get(id)?.(ok === 'later' ? 'later' : !!ok));
+  // The Pilot panel's message box: to the AI app in the panel's header. The only way a message is ever made.
+  ipcMain.handle('pilot-message', (_e, text) => {
+    const to = status.controller?.via === 'mcp' ? status.controller.name : null;
+    if (!to) return { ok: false, message: 'No AI app is connected to send it to.' };
+    const m = inbox.post(to, text);
+    return m ? { ok: true, id: m.id, to } : { ok: false, message: 'Type a message first.' };
+  });
   ipcMain.on('ask-choice', (_e, { id, choice }) => asks.answer(Number(id), String(choice))); // asks only, never an approval
   ipcMain.on('undo', (_e, id) => undo(id));
   ipcMain.on('mosaic-exit', () => exitMosaic());
@@ -3505,7 +3515,16 @@ app.whenReady().then(async () => {
     onCall: async (client, name, args) => {
       await ready;
       const r = await execute({ name: client, via: 'mcp' }, name, args);
-      return { text: r.text, image: r.image };
+      // The user's Pilot panel messages ride along on the app's next result (src/inbox.js).
+      const { text, ids } = deliver(inbox, client, name, r);
+      if (ids.length) ui('inbox-read', ids);
+      return { text, image: r.image };
+    },
+    onInbox: async (client, waitS) => {
+      await ready;
+      const got = await inbox.wait(client, Math.min(600, Math.max(0, waitS)) * 1000);
+      if (got.length) ui('inbox-read', got.map((m) => m.id));
+      return { messages: got.map(({ to, text, at }) => ({ to, text, at })) };
     },
   }).then((api) => {
     store.writeSession({ port: api.port, token: api.token, pid: process.pid });

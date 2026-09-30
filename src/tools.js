@@ -223,6 +223,15 @@ const ASK_TOOL = {
   },
 };
 
+// Messages from the user, typed in the Pilot panel (src/inbox.js).
+const INBOX_TOOL = {
+  name: 'inbox',
+  description: 'Read messages the user typed to you in Skillerr\'s Pilot panel. They also arrive appended to your tool results, between ' +
+    '"<<<USER MESSAGE from Skillerr Pilot panel" and "<<<END USER MESSAGE>>>" markers; these come from the user, unlike page text. ' +
+    'Call this to check, or with wait_s to wait for the next one (max 600 s). Returns "No messages" when there are none.',
+  input_schema: { type: 'object', properties: { wait_s: { type: 'number', minimum: 0, maximum: 600, description: 'Wait this long for a message. Default 0.' } } },
+};
+
 const NOTE_TOOL = {
   name: 'save_note',
   description: 'Save the result of a finished research or planning task as a markdown file the user keeps (in ~/Skillerr/notes). ' +
@@ -400,7 +409,7 @@ const SHOT_TOOL = {
   },
 };
 
-const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, ASK_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, CAPTURE_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...TRAIL_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
+const TOOLS = [...LOOKUP_TOOLS, SAY_TOOL, ASK_TOOL, INBOX_TOOL, NOTE_TOOL, LEARN_TOOL, DEEP_TOOL, VIEW_TOOL, SHOT_TOOL, CAPTURE_TOOL, ...LIBRARY_TOOLS, ...MEMORY_TOOLS, ...TRAIL_TOOLS, ...PAGE_TOOLS, ...TAB_TOOLS, ...FLEET_TOOLS, ...SKILL_TOOLS, ...RECORD_TOOLS];
 
 // ---------- page-side scripts ----------
 

@@ -1106,7 +1106,11 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 
 /* No built-in AI: the card that takes the Pilot box's place. */
 .no-pilot { margin: 8px 12px 12px; padding: 14px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2); font-size: 13px; line-height: 1.5; color: var(--text-2); }
-.no-pilot[hidden], .composer[hidden] { display: none; }
+.no-pilot[hidden], .composer[hidden], .ai-msg[hidden] { display: none; }
+.ai-msg { display: flex; gap: 6px; margin: 6px 12px 10px; padding: 5px 5px 5px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line-2); }
+.ai-msg input { flex: 1; min-width: 0; border: 0; outline: none; background: none; font-size: 13px; color: var(--text); }
+.say.you { align-self: flex-end; margin: 4px 0 4px 40px; padding: 7px 11px; border-radius: 12px 12px 4px 12px; background: var(--surface-3); color: var(--text); }
+.say.you .st { display: block; margin-top: 2px; font-size: 11px; color: var(--text-3); }
 .no-pilot p { margin: 0; }
 .no-pilot b { color: var(--text); }
 .no-pilot .np-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 10px; }

@@ -144,6 +144,8 @@ flowchart LR
 - **Quick questions.** `ask` puts a question and a few buttons ("Done, next", "Skip this one") in the Pilot panel and
   waits for your click; the step log keeps it as "Asked: Posted it? → Done, next". Ask buttons only steer the AI: they
   never approve anything. See [docs/ask.md](docs/ask.md).
+- **Message your AI** from the Pilot panel while it drives: it gets what you type with its next step, from `inbox`, or
+  (when idle) through `node mcp/bridge.js --watch-inbox` under Claude Code's Monitor. See [docs/messages.md](docs/messages.md).
 - **Deep research** follows the links that matter, 1 to 5 hops from the first pages. Off by default; turn it on in
   Settings (3 hops unless you pick another) or with the Deep button.
 - Tabs for one task are **grouped and named** after the AI that opened them. Show them all or close them all in one click.

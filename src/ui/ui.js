@@ -1181,6 +1181,8 @@ function connCard(t, cls) {
 
 skillerr.on('status', (s) => {
   status = s;
+  $('aiMsg').hidden = s.controller?.via !== 'mcp';
+  if (s.controller?.via === 'mcp') $('aiMsgInput').placeholder = `Message ${s.controller.name}`;
   if (s.controller?.via === 'mcp' && !appActed) {
     appActed = true;
     renderNoPilot();
@@ -1363,6 +1365,28 @@ function askCard(e) {
   return `<div class="say ask-q">${markdown(e.args?.text || '')}</div><div class="ask-row">${opts}</div>` +
     `<div class="ask-note">${e.state === 'asking' ? `Your answer only steers ${who}. It never approves anything: approvals always ask “Needs your OK”.` : e.choice != null ? 'You answered.' : `No answer (${esc(e.status || 'closed')}).`}</div>`;
 }
+
+// ----- messages to the AI app that's driving (Pilot panel → inbox): it reads them with its next tool call -----
+const sentMsgs = new Map(); // inbox id → its bubble
+$('aiMsg').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const text = $('aiMsgInput').value.trim();
+  if (!text || !status.controller) return;
+  const r = await skillerr.invoke('pilot-message', text);
+  if (!r.ok) return flash(r.message);
+  $('aiMsgInput').value = '';
+  const b = h('div', 'say you', `${esc(text)}<span class="st">Waiting for ${esc(r.to)} to read it (with its next step)</span>`);
+  sessionFor({ controller: r.to }).steps.appendChild(b);
+  sentMsgs.set(r.id, b);
+  keepScrolled();
+};
+skillerr.on('inbox-read', (ids) => {
+  for (const id of ids) {
+    const st = sentMsgs.get(id)?.querySelector('.st');
+    if (st) st.textContent = 'Read';
+    sentMsgs.delete(id);
+  }
+});
 
 skillerr.on('undo-top', (id) => {
   undoTop = id;
