@@ -294,7 +294,7 @@ See [docs/trails.md](docs/trails.md).
   into robot checks.
 - **In-place updates.** Windows, the Linux AppImage and signed Mac builds update themselves ("Restart to update").
   Other Mac builds get a download link. **Settings → Beta updates** opts in to prereleases.
-- Tab groups per research task, tab sleeping to stay light, per-tab zoom, a pop-up blocker, site permission prompts,
+- Tab groups per research task, tab sleeping to stay light, per-tab zoom, a pop-up blocker (sign-in pop-ups like Google's and Apple's open as real pop-up windows), site permission prompts,
   find in page, downloads, a context menu with "Ask Skillerr", history with Clear browsing data, bookmarks, Chrome import, and light and
   dark themes.
 - Recordings of a tab or the window with captions, and screenshots, saved to your Movies and Pictures folders.
