@@ -400,11 +400,16 @@ function placePop(chip, side) {
   const box = side === 'ais' ? '#shelfAi' : '#shelf';
   const anchor = [chip, document.querySelector(`${box} .shelf-trail[data-trail="${chip?.dataset?.trail}"]`), document.querySelector(`${box} .shelf-trail.stack`), document.querySelector(box)]
     .find((el) => el && el.isConnected && el.getBoundingClientRect().width);
-  const r = anchor ? anchor.getBoundingClientRect() : { left: 8, bottom: 46 };
-  const w = pop.classList.contains('list') ? 368 : 348;
-  pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - w - 8))}px`;
-  pop.style.top = `${Math.max(46, r.bottom + 6)}px`;
+  const r = anchor ? anchor.getBoundingClientRect() : { left: 8, right: 8, bottom: 46 };
+  const top = Math.max(46, r.bottom + 6);
+  pop.style.top = `${top}px`;
+  pop.style.maxHeight = `${window.innerHeight - top - 12}px`; // its buttons stay on screen however long the list
+  pop.style.left = '0px';
   pop.hidden = false;
+  // Placed by its real width: the AIs' shelf (right of the address bar) opens leftward from its box's right edge.
+  const w = pop.getBoundingClientRect().width;
+  const want = side === 'ais' ? r.right - w : r.left;
+  pop.style.left = `${Math.max(8, Math.min(want, window.innerWidth - w - 8))}px`;
   skillerr.send('chrome-on-top', true); // over the page, or it would be hidden behind it
 }
 // A trail's panel opened from the list gets a way back to it.

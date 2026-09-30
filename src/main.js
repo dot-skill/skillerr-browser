@@ -2068,6 +2068,10 @@ async function executeInSession(controller, name, args, session) {
   if (name === 'fetch_page' && args.tab_id == null) args = { ...args, tab_id: newTab(undefined, { background: !activeTab()?.isStart }).id };
   // So does web_search, rather than taking over a page the user has open (a blank tab or this AI's own is fine).
   const mine = (t) => t && t.aiBy === controller.name && t.aiSession === session;
+  // read_tabs with no ids reads your tabs and this AI's own, never the tabs another AI app is researching in.
+  if (name === 'read_tabs' && !args.tab_ids?.length) {
+    args = { ...args, tab_ids: tabs.filter((t) => !t.isStart && (!t.aiBy || t.aiBy === controller.name)).map((t) => t.id) };
+  }
   if (name === 'web_search' && args.tab_id == null && activeTab() && !activeTab().isStart && !mine(activeTab())) {
     args = { ...args, tab_id: newTab(undefined, { background: true }).id };
   }

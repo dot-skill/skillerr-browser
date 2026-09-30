@@ -110,7 +110,7 @@ const FLEET_TOOLS = [
   },
   {
     name: 'read_tabs',
-    description: 'Read the text of several tabs in one call (default: all tabs). Use to compare or aggregate across tabs.',
+    description: 'Read the text of several tabs in one call (default: the user\'s tabs and the ones you opened; never another AI app\'s). Use to compare or aggregate across tabs.',
     input_schema: { type: 'object', properties: { tab_ids: { type: 'array', items: { type: 'integer' } } } },
   },
   {

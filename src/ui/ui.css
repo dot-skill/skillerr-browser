@@ -815,8 +815,10 @@ body.human-mode .tab.ai::before, body.human-mode .tab-group.live .gdot { animati
 .st-bar i { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--violet), var(--teal)); }
 .shelf-trail .st-bar { position: absolute; left: 6px; right: 6px; bottom: 2px; height: 2px; background: transparent; }
 .st-bar.big { flex: 1; height: 5px; }
-.shelf-pop { position: fixed; z-index: 60; width: 340px; padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2);
-  box-shadow: var(--shadow); animation: rise .15s both; }
+.shelf-pop { position: fixed; z-index: 60; width: 340px; max-width: calc(100vw - 16px); padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line-2);
+  box-shadow: var(--shadow); animation: rise .15s both; overflow-y: auto; overscroll-behavior: contain; }
+/* A long panel scrolls; its buttons stay pinned at the bottom. */
+.shelf-pop .sp-acts { position: sticky; bottom: -12px; margin-bottom: -12px; padding: 10px 0 12px; background: var(--surface); }
 .shelf-pop[hidden] { display: none; }
 .sp-title { font-weight: 600; font-size: 13.5px; line-height: 1.35; color: var(--text); }
 .sp-sub { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
